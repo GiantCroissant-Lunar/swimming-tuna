@@ -149,6 +149,7 @@ public sealed class SwarmAgentActorTests : TestKit
         var response = ExpectMsg<HelpResponse>();
         Assert.Equal("task-help", response.TaskId);
         Assert.Contains("Need additional implementation support", response.Output);
+        Assert.False(string.IsNullOrWhiteSpace(response.FromAgent));
     }
 
     [Fact]

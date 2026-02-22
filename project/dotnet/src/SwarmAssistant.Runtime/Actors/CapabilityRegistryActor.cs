@@ -125,13 +125,15 @@ public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
             return;
         }
 
+        // Contract Net Protocol winner selection: choose the lowest-cost bid first,
+        // then shortest estimate, and finally stable lexical actor-path ordering.
         var winner = state.Bids
             .OrderBy(pair => pair.Value.EstimatedCost)
             .ThenBy(pair => pair.Value.EstimatedTimeMs)
             .ThenBy(pair => pair.Value.FromAgent, StringComparer.Ordinal)
             .FirstOrDefault();
 
-        if (winner.Key is null)
+        if (winner.Equals(default(KeyValuePair<IActorRef, ContractNetBid>)))
         {
             state.Requester.Tell(new ContractNetNoBid(finalize.AuctionId, finalize.TaskId, finalize.Role, "No bids received"));
             return;

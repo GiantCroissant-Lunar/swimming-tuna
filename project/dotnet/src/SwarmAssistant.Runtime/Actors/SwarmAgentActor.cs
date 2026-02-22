@@ -9,6 +9,8 @@ namespace SwarmAssistant.Runtime.Actors;
 
 public sealed class SwarmAgentActor : ReceiveActor
 {
+    private const int EstimatedTimePerCostMs = 1_000;
+
     private readonly RuntimeOptions _options;
     private readonly AgentFrameworkRoleEngine _agentFrameworkRoleEngine;
     private readonly RuntimeTelemetry _telemetry;
@@ -185,7 +187,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         }
 
         var estimatedCost = _currentLoad + 1;
-        var estimatedTimeMs = estimatedCost * 1_000;
+        var estimatedTimeMs = estimatedCost * EstimatedTimePerCostMs;
         Sender.Tell(new ContractNetBid(
             request.AuctionId,
             request.TaskId,
