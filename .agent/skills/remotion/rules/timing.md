@@ -73,9 +73,9 @@ Use the `delay` parameter to delay the animation by a number of frames.
 
 ```tsx
 const entrance = spring({
-  frame: frame - ENTRANCE_DELAY,
+  frame,
   fps,
-  delay: 20,
+  delay: ENTRANCE_DELAY,
 });
 ```
 
@@ -162,7 +162,7 @@ Convexities and curves need be combined for an easing function:
 
 ```ts
 const value1 = interpolate(frame, [0, 100], [0, 1], {
-  easing: Easing.inOut(Easing.quad),
+  easing: Easing.in(Easing.exp),
   extrapolateLeft: "clamp",
   extrapolateRight: "clamp",
 });
