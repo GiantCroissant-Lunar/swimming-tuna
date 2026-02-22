@@ -35,7 +35,7 @@ var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
 var options = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
 logger.LogInformation(
-    "Starting SwarmAssistant.Runtime with profile={Profile}, orchestration={RoleSystem}, agentExecution={AgentExecution}, agentFrameworkMode={AgentFrameworkExecutionMode}, roleExecutionTimeoutSeconds={RoleExecutionTimeoutSeconds}, cliAdapterOrder={CliAdapterOrder}, sandbox={SandboxMode}, agUiEnabled={AgUiEnabled}, agUiBindUrl={AgUiBindUrl}, agUiProtocolVersion={AgUiProtocolVersion}, a2aEnabled={A2AEnabled}, arcadeDbEnabled={ArcadeDbEnabled}, arcadeDbDatabase={ArcadeDbDatabase}, langfuse={LangfuseBaseUrl}, langfuseTracingEnabled={LangfuseTracingEnabled}",
+    "Starting SwarmAssistant.Runtime with profile={Profile}, orchestration={RoleSystem}, agentExecution={AgentExecution}, agentFrameworkMode={AgentFrameworkExecutionMode}, roleExecutionTimeoutSeconds={RoleExecutionTimeoutSeconds}, cliAdapterOrder={CliAdapterOrder}, sandbox={SandboxMode}, agUiEnabled={AgUiEnabled}, agUiBindUrl={AgUiBindUrl}, agUiProtocolVersion={AgUiProtocolVersion}, a2aEnabled={A2AEnabled}, arcadeDbEnabled={ArcadeDbEnabled}, arcadeDbDatabase={ArcadeDbDatabase}, memoryBootstrapEnabled={MemoryBootstrapEnabled}, memoryBootstrapLimit={MemoryBootstrapLimit}, langfuse={LangfuseBaseUrl}, langfuseTracingEnabled={LangfuseTracingEnabled}",
     options.Profile,
     options.RoleSystem,
     options.AgentExecution,
@@ -49,6 +49,8 @@ logger.LogInformation(
     options.A2AEnabled,
     options.ArcadeDbEnabled,
     options.ArcadeDbDatabase,
+    options.MemoryBootstrapEnabled,
+    options.MemoryBootstrapLimit,
     options.LangfuseBaseUrl,
     options.LangfuseTracingEnabled);
 
@@ -341,7 +343,7 @@ if (options.A2AEnabled)
         return Results.Ok(new
         {
             name = "swarm-assistant",
-            version = "phase-9",
+            version = "phase-10",
             protocol = "a2a",
             capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "ag-ui-actions", "arcadedb-memory" },
             endpoints = new

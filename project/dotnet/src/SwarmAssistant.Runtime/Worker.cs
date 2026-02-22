@@ -19,6 +19,7 @@ public sealed class Worker : BackgroundService
     private readonly UiEventStream _uiEvents;
     private readonly RuntimeActorRegistry _actorRegistry;
     private readonly TaskRegistry _taskRegistry;
+    private readonly ITaskMemoryReader _taskMemoryReader;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -30,7 +31,8 @@ public sealed class Worker : BackgroundService
         IOptions<RuntimeOptions> options,
         UiEventStream uiEvents,
         RuntimeActorRegistry actorRegistry,
-        TaskRegistry taskRegistry)
+        TaskRegistry taskRegistry,
+        ITaskMemoryReader taskMemoryReader)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -38,6 +40,7 @@ public sealed class Worker : BackgroundService
         _uiEvents = uiEvents;
         _actorRegistry = actorRegistry;
         _taskRegistry = taskRegistry;
+        _taskMemoryReader = taskMemoryReader;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -99,8 +102,9 @@ public sealed class Worker : BackgroundService
         _actorRegistry.SetCoordinator(coordinator);
 
         _supervisor = supervisor;
+        await RestoreTaskMemorySnapshots(stoppingToken);
 
-        if (_options.AutoSubmitDemoTask)
+        if (_options.AutoSubmitDemoTask && _taskRegistry.Count == 0)
         {
             var task = new TaskAssigned(
                 $"task-{Guid.NewGuid():N}",
@@ -148,6 +152,115 @@ public sealed class Worker : BackgroundService
 
             _telemetry?.Dispose();
             _telemetry = null;
+        }
+    }
+
+    private async Task RestoreTaskMemorySnapshots(CancellationToken cancellationToken)
+    {
+        if (!_options.MemoryBootstrapEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var limit = Math.Clamp(_options.MemoryBootstrapLimit, 1, 1000);
+            var memorySnapshots = await _taskMemoryReader.ListAsync(limit, cancellationToken);
+            if (memorySnapshots.Count == 0)
+            {
+                return;
+            }
+
+            var importedCount = _taskRegistry.ImportSnapshots(memorySnapshots);
+            if (importedCount == 0)
+            {
+                return;
+            }
+
+            var statusCounts = memorySnapshots
+                .GroupBy(task => task.Status.ToString().ToLowerInvariant())
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+            var summaryItems = memorySnapshots
+                .Select(snapshot => new
+                {
+                    taskId = snapshot.TaskId,
+                    title = snapshot.Title,
+                    status = snapshot.Status.ToString().ToLowerInvariant(),
+                    updatedAt = snapshot.UpdatedAt,
+                    error = snapshot.Error
+                })
+                .ToList();
+
+            _logger.LogInformation(
+                "Restored task snapshots from memory imported={ImportedCount} fetched={FetchedCount}",
+                importedCount,
+                memorySnapshots.Count);
+
+            _uiEvents.Publish(
+                type: "agui.memory.bootstrap",
+                taskId: null,
+                payload: new
+                {
+                    source = "arcadedb",
+                    importedCount,
+                    fetchedCount = memorySnapshots.Count,
+                    statusCounts
+                });
+
+            _uiEvents.Publish(
+                type: "agui.memory.tasks",
+                taskId: null,
+                payload: new
+                {
+                    source = "arcadedb",
+                    count = summaryItems.Count,
+                    items = summaryItems
+                });
+
+            foreach (var snapshot in memorySnapshots.Take(3))
+            {
+                _uiEvents.Publish(
+                    type: "agui.ui.surface",
+                    taskId: snapshot.TaskId,
+                    payload: new
+                    {
+                        source = "memory-bootstrap",
+                        a2ui = A2UiPayloadFactory.CreateSurface(
+                            snapshot.TaskId,
+                            snapshot.Title,
+                            snapshot.Description,
+                            snapshot.Status)
+                    });
+
+                _uiEvents.Publish(
+                    type: "agui.ui.patch",
+                    taskId: snapshot.TaskId,
+                    payload: new
+                    {
+                        source = "memory-bootstrap",
+                        a2ui = A2UiPayloadFactory.UpdateStatus(
+                            snapshot.TaskId,
+                            snapshot.Status,
+                            snapshot.Error ?? snapshot.Summary)
+                    });
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogInformation("Memory snapshot restore canceled.");
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to restore memory snapshots at startup.");
+            _uiEvents.Publish(
+                type: "agui.memory.bootstrap.failed",
+                taskId: null,
+                payload: new
+                {
+                    source = "arcadedb",
+                    error = exception.Message
+                });
         }
     }
 

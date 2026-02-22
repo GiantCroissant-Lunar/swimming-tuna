@@ -40,6 +40,8 @@ docker compose --env-file env/local.env down
 - `Runtime__ArcadeDbUser`
 - `Runtime__ArcadeDbPassword`
 - `Runtime__ArcadeDbAutoCreateSchema`
+- `Runtime__MemoryBootstrapEnabled`
+- `Runtime__MemoryBootstrapLimit`
 
 ## Write Model
 

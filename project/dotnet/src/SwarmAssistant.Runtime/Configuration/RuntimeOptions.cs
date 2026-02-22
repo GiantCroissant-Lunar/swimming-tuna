@@ -24,6 +24,8 @@ public sealed class RuntimeOptions
     public string ArcadeDbUser { get; init; } = "root";
     public string ArcadeDbPassword { get; init; } = string.Empty;
     public bool ArcadeDbAutoCreateSchema { get; init; } = true;
+    public bool MemoryBootstrapEnabled { get; init; } = true;
+    public int MemoryBootstrapLimit { get; init; } = 200;
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;
 

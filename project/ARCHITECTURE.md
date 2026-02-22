@@ -105,6 +105,16 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `POST /ag-ui/actions` now supports `load_memory` and publishes `agui.memory.tasks` with task summaries for UI consumption.
 - `godot-ui/scripts/Main.cs` includes a `Load Memory` action that fetches persisted tasks and updates active task selection/log output.
 
+## Startup Memory Bootstrap (Phase 10)
+
+- `Worker` now restores persisted snapshots at runtime startup via `ITaskMemoryReader` when `MemoryBootstrapEnabled=true`.
+- `TaskRegistry.ImportSnapshots(...)` seeds in-memory task state without re-writing memory storage.
+- Runtime emits:
+- `agui.memory.bootstrap` (restore summary)
+- `agui.memory.bootstrap.failed` (restore failure)
+- bootstrap-triggered `agui.ui.surface` / `agui.ui.patch` events for recent restored tasks.
+- Demo task auto-submit is skipped when restored tasks already exist in registry.
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:

@@ -131,6 +131,29 @@ public sealed class TaskRegistry
         return snapshot;
     }
 
+    public int Count => _tasks.Count;
+
+    public int ImportSnapshots(IEnumerable<TaskSnapshot> snapshots, bool overwrite = false)
+    {
+        var imported = 0;
+        foreach (var snapshot in snapshots)
+        {
+            if (overwrite)
+            {
+                _tasks[snapshot.TaskId] = snapshot;
+                imported++;
+                continue;
+            }
+
+            if (_tasks.TryAdd(snapshot.TaskId, snapshot))
+            {
+                imported++;
+            }
+        }
+
+        return imported;
+    }
+
     public IReadOnlyList<TaskSnapshot> GetTasks(int limit = 50)
     {
         return _tasks.Values

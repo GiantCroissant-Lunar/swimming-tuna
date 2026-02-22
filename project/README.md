@@ -11,7 +11,7 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway + A2A task endpoints + ArcadeDB write/read path + AG-UI action loop (Phase 9).
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway + A2A task endpoints + ArcadeDB write/read path + AG-UI action loop + startup memory bootstrap (Phase 10).
 - `godot-ui/`: Godot Mono client that polls AG-UI recent events, renders A2UI payloads, and sends AG-UI actions back to runtime.
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 - `infra/arcadedb/`: Phase 7 task-persistence notes for ArcadeDB command API wiring.
@@ -26,7 +26,7 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 9)
+## .NET Runtime Commands (Phase 10)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
@@ -61,6 +61,8 @@ Runtime config includes:
 - `ArcadeDbUser`
 - `ArcadeDbPassword`
 - `ArcadeDbAutoCreateSchema`
+- `MemoryBootstrapEnabled`
+- `MemoryBootstrapLimit`
 - `LangfuseTracingEnabled`
 - `LangfusePublicKey`
 - `LangfuseSecretKey`
@@ -115,7 +117,7 @@ A2A endpoints (when `Runtime__A2AEnabled=true`):
 
 ```bash
 curl -s http://127.0.0.1:5080/.well-known/agent-card.json
-curl -s -X POST http://127.0.0.1:5080/a2a/tasks -H 'content-type: application/json' -d '{"title":"Phase 9 API test","description":"submit via A2A endpoint"}'
+curl -s -X POST http://127.0.0.1:5080/a2a/tasks -H 'content-type: application/json' -d '{"title":"Phase 10 API test","description":"submit via A2A endpoint"}'
 curl -s http://127.0.0.1:5080/a2a/tasks
 curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
 curl -s 'http://127.0.0.1:5080/memory/tasks?limit=20'
@@ -131,6 +133,8 @@ export Runtime__ArcadeDbDatabase=swarm_assistant
 export Runtime__ArcadeDbUser=root
 export Runtime__ArcadeDbPassword=<password>
 export Runtime__ArcadeDbAutoCreateSchema=true
+export Runtime__MemoryBootstrapEnabled=true
+export Runtime__MemoryBootstrapLimit=200
 ```
 
 Run Godot windowed client:

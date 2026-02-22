@@ -81,6 +81,44 @@ public sealed class TaskRegistryTests
         Assert.Equal("Original Title", snapshot.Title);
     }
 
+    [Fact]
+    public void Registry_ImportSnapshotsAddsMissingTasks()
+    {
+        var registry = new TaskRegistry(new InMemoryTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var now = DateTimeOffset.UtcNow;
+        var imported = registry.ImportSnapshots(new[]
+        {
+            new TaskSnapshot("task-10", "Title 10", "Desc 10", TaskState.Done, now, now, Summary: "ok"),
+            new TaskSnapshot("task-11", "Title 11", "Desc 11", TaskState.Blocked, now, now, Error: "boom")
+        });
+
+        Assert.Equal(2, imported);
+        Assert.Equal(2, registry.Count);
+        Assert.Equal(TaskState.Done, registry.GetTask("task-10")!.Status);
+        Assert.Equal(TaskState.Blocked, registry.GetTask("task-11")!.Status);
+    }
+
+    [Fact]
+    public void Registry_ImportSnapshotsSkipsExistingWhenOverwriteFalse()
+    {
+        var registry = new TaskRegistry(new InMemoryTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var now = DateTimeOffset.UtcNow;
+
+        registry.ImportSnapshots(new[]
+        {
+            new TaskSnapshot("task-12", "Original", "Desc", TaskState.Queued, now, now)
+        });
+
+        var imported = registry.ImportSnapshots(new[]
+        {
+            new TaskSnapshot("task-12", "Updated", "Desc", TaskState.Done, now, now)
+        });
+
+        Assert.Equal(0, imported);
+        Assert.Equal("Original", registry.GetTask("task-12")!.Title);
+        Assert.Equal(TaskState.Queued, registry.GetTask("task-12")!.Status);
+    }
+
     private sealed class InMemoryTaskMemoryWriter : ITaskMemoryWriter
     {
         public Task WriteAsync(TaskSnapshot snapshot, CancellationToken cancellationToken = default)

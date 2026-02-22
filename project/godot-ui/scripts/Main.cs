@@ -353,6 +353,27 @@ public partial class Main : Control
                     }
                 }
                 break;
+
+            case "agui.memory.bootstrap":
+                var importedCount = payload.TryGetProperty("importedCount", out var importedElement) &&
+                                    importedElement.ValueKind == JsonValueKind.Number
+                    ? importedElement.GetInt32()
+                    : 0;
+                var fetchedCount = payload.TryGetProperty("fetchedCount", out var fetchedElement) &&
+                                   fetchedElement.ValueKind == JsonValueKind.Number
+                    ? fetchedElement.GetInt32()
+                    : 0;
+                _statusLabel!.Text = $"Status: memory bootstrap ({importedCount}/{fetchedCount})";
+                AppendLog($"[memory-bootstrap] imported={importedCount} fetched={fetchedCount}");
+                break;
+
+            case "agui.memory.bootstrap.failed":
+                var error = payload.TryGetProperty("error", out var errorElement) &&
+                            errorElement.ValueKind == JsonValueKind.String
+                    ? errorElement.GetString() ?? "unknown"
+                    : "unknown";
+                AppendLog($"[memory-bootstrap] failed error={error}");
+                break;
         }
     }
 

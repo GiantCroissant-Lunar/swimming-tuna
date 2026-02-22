@@ -1,4 +1,4 @@
-# SwarmAssistant Godot UI (Phase 9)
+# SwarmAssistant Godot UI (Phase 10)
 
 This project is a Godot Mono (C#) client that renders A2UI payloads received from AG-UI events exposed by `SwarmAssistant.Runtime`.
 
@@ -12,7 +12,7 @@ Rendering strategy:
 - snapshot button sends `request_snapshot`
 - refresh button sends `refresh_surface`
 - load memory button sends `load_memory`
-- runtime responses (`agui.action.task.submitted`, `agui.task.snapshot`, `agui.memory.tasks`) are reflected in the status/log panel.
+- startup restore events (`agui.memory.bootstrap`) and runtime responses (`agui.action.task.submitted`, `agui.task.snapshot`, `agui.memory.tasks`) are reflected in the status/log panel.
 
 ## Prerequisites
 
