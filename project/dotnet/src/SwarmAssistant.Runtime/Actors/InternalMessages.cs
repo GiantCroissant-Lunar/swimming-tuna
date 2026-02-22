@@ -65,3 +65,54 @@ internal sealed record WorldStateUpdated(
     WorldKey Key,
     bool Value
 );
+
+// Coordinator → Supervisor: detailed role failure report for active supervision
+internal sealed record RoleFailureReport(
+    string TaskId,
+    SwarmRole FailedRole,
+    string Error,
+    int RetryCount,
+    DateTimeOffset At
+);
+
+// Supervisor → Coordinator: retry a specific role (optionally skipping an adapter)
+internal sealed record RetryRole(
+    string TaskId,
+    SwarmRole Role,
+    string? SkipAdapter,
+    string Reason
+);
+
+// Supervisor → broadcast via EventStream: adapter circuit breaker state
+internal sealed record AdapterCircuitOpen(
+    string AdapterId,
+    DateTimeOffset Until
+);
+
+internal sealed record AdapterCircuitClosed(
+    string AdapterId
+);
+
+// Monitor → Workers: health check ping/pong
+internal sealed record HealthCheckRequest(
+    string RequestId,
+    DateTimeOffset At
+);
+
+internal sealed record HealthCheckResponse(
+    string RequestId,
+    string ActorName,
+    int ActiveTasks,
+    DateTimeOffset At
+);
+
+// Formal escalation record for supervisor tracking
+internal sealed record TaskEscalated(
+    string TaskId,
+    string Reason,
+    int Level,
+    DateTimeOffset At
+);
+
+// Monitor self-scheduling tick
+internal sealed record MonitorTick;

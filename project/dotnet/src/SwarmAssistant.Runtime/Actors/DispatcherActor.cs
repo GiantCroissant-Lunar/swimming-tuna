@@ -12,9 +12,17 @@ namespace SwarmAssistant.Runtime.Actors;
 /// <summary>
 /// Routes incoming tasks to per-task <see cref="TaskCoordinatorActor"/> instances.
 /// Each task gets its own coordinator actor that manages the full GOAP lifecycle.
+/// Tier 0 supervision: automatically restarts crashed coordinator children.
 /// </summary>
 public sealed class DispatcherActor : ReceiveActor
 {
+    private static readonly SupervisorStrategy Strategy = new OneForOneStrategy(
+        maxNrOfRetries: 3,
+        withinTimeRange: TimeSpan.FromMinutes(1),
+        localOnlyDecider: ex => Directive.Restart);
+
+    protected override SupervisorStrategy SupervisorStrategy() => Strategy;
+
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;

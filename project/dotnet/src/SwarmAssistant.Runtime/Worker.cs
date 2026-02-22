@@ -105,6 +105,16 @@ public sealed class Worker : BackgroundService
             workerPoolSize,
             reviewerPoolSize,
             _options.MaxCliConcurrency);
+
+        var monitorTickSeconds = Math.Max(5, _options.HealthHeartbeatSeconds);
+        _actorSystem.ActorOf(
+            Props.Create(() => new MonitorActor(
+                supervisor,
+                _loggerFactory,
+                _telemetry,
+                monitorTickSeconds)),
+            "monitor");
+
         var blackboardActor = _actorSystem.ActorOf(
             Props.Create(() => new BlackboardActor(_loggerFactory)),
             "blackboard");

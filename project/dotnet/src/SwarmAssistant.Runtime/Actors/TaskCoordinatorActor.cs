@@ -86,6 +86,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<StartCoordination>(_ => OnStart());
         Receive<RoleTaskSucceeded>(OnRoleSucceeded);
         Receive<RoleTaskFailed>(OnRoleFailed);
+        Receive<RetryRole>(OnRetryRole);
     }
 
     private void OnStart()
@@ -190,6 +191,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             "Role failed taskId={TaskId} role={Role} error={Error}",
             _taskId, message.Role, message.Error);
 
+        // Send detailed failure report to supervisor for active retry decisions
+        _supervisorActor.Tell(new RoleFailureReport(
+            _taskId,
+            message.Role,
+            message.Error,
+            _retryCount,
+            message.FailedAt));
+
         // Mark the task as blocked
         _worldState = (WorldState)_worldState.With(WorldKey.TaskBlocked, true);
 
@@ -219,6 +228,50 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, message.Error)
             });
     }
+
+    private void OnRetryRole(RetryRole message)
+    {
+        using var activity = _telemetry.StartActivity(
+            "task-coordinator.retry",
+            taskId: _taskId,
+            role: message.Role.ToString().ToLowerInvariant(),
+            tags: new Dictionary<string, object?>
+            {
+                ["retry.reason"] = message.Reason,
+                ["retry.skip_adapter"] = message.SkipAdapter,
+            });
+
+        _logger.LogInformation(
+            "Supervisor-initiated retry taskId={TaskId} role={Role} reason={Reason}",
+            _taskId, message.Role, message.Reason);
+
+        // Unblock the task so GOAP can plan again
+        _worldState = (WorldState)_worldState.With(WorldKey.TaskBlocked, false);
+
+        StoreBlackboard($"supervisor_retry_{message.Role.ToString().ToLowerInvariant()}", message.Reason);
+
+        _uiEvents.Publish(
+            type: "agui.task.retry",
+            taskId: _taskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                role = message.Role.ToString().ToLowerInvariant(),
+                reason = message.Reason,
+            });
+
+        // Re-dispatch the failed role
+        var actionName = MapRoleToActionName(message.Role);
+        DispatchAction(actionName);
+    }
+
+    private static string MapRoleToActionName(SwarmRole role) => role switch
+    {
+        SwarmRole.Planner => "Plan",
+        SwarmRole.Builder => "Build",
+        SwarmRole.Reviewer => "Review",
+        _ => "Plan"
+    };
 
     private void DecideAndExecute()
     {
