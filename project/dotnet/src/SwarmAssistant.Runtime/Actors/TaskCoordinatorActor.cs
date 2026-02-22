@@ -61,9 +61,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private int _retryCount;
     private readonly int _maxRetries;
     private GoapPlanResult? _lastGoapPlan;
-    private readonly Dictionary<string, string> _blackboardEntries = new(StringComparer.Ordinal);
     private readonly HashSet<string> _childTaskIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pendingChildTaskIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _blackboardEntries = new(StringComparer.Ordinal);
 
     // Stigmergy: local cache of global blackboard signals, kept in sync via EventStream subscription
     private readonly Dictionary<string, string> _globalBlackboardCache = new(StringComparer.Ordinal);
@@ -109,9 +109,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<StartCoordination>(_ => OnStart());
         Receive<RoleTaskSucceeded>(OnRoleSucceeded);
         Receive<RoleTaskFailed>(OnRoleFailed);
-        Receive<RetryRole>(OnRetryRole);
         Receive<SubTaskCompleted>(OnSubTaskCompleted);
         Receive<SubTaskFailed>(OnSubTaskFailed);
+        Receive<RetryRole>(OnRetryRole);
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
     }
 

@@ -12,9 +12,9 @@ public enum WorldKey
     RetryLimitReached,
     TaskCompleted,
     TaskBlocked,
-    AdapterAvailable,
     SubTasksSpawned,
     SubTasksCompleted,
+    AdapterAvailable,
 
     // Stigmergy WorldKeys for swarm coordination
     HighFailureRateDetected,
