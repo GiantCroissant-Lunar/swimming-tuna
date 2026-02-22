@@ -183,3 +183,19 @@ internal sealed record SubTaskFailed(
     string ChildTaskId,
     string Error
 );
+
+// Dynamic topology: on-demand agent spawning
+internal sealed record SpawnAgent(
+    SwarmRole[] Capabilities,
+    TimeSpan IdleTtl
+);
+
+internal sealed record AgentSpawned(
+    string AgentId,
+    IActorRef AgentRef
+);
+
+internal sealed record AgentRetired(
+    string AgentId,
+    string Reason
+);

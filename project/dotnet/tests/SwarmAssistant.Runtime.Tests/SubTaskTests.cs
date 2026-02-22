@@ -493,7 +493,8 @@ public sealed class SubTaskTests : TestKit
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                _options)),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);
