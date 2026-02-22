@@ -11,9 +11,6 @@ public partial class Main : Control
     [Export] public float PollIntervalSeconds { get; set; } = 0.75f;
     [Export] public int RecentEventCount { get; set; } = 100;
 
-    private readonly PackedScene _textComponentScene = GD.Load<PackedScene>("res://scenes/components/A2TextComponent.tscn");
-    private readonly PackedScene _buttonComponentScene = GD.Load<PackedScene>("res://scenes/components/A2ButtonComponent.tscn");
-
     private HttpRequest? _recentRequest;
     private HttpRequest? _actionRequest;
     private Timer? _pollTimer;
@@ -437,49 +434,8 @@ public partial class Main : Control
 
         foreach (var component in components.EnumerateArray())
         {
-            if (!component.TryGetProperty("type", out var typeElement) ||
-                typeElement.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            var type = typeElement.GetString() ?? string.Empty;
-            if (!component.TryGetProperty("id", out var idElement))
-            {
-                continue;
-            }
-
-            var componentId = idElement.GetString() ?? string.Empty;
-            var props = component.TryGetProperty("props", out var propsElement)
-                ? propsElement
-                : default;
-
-            switch (type)
-            {
-                case "text":
-                    var textNode = _textComponentScene.Instantiate<A2TextComponent>();
-                    var text = props.ValueKind == JsonValueKind.Object &&
-                               props.TryGetProperty("text", out var textElement)
-                        ? textElement.GetString() ?? string.Empty
-                        : string.Empty;
-                    textNode.Configure(componentId, text);
-                    _componentContainer.AddChild(textNode);
-                    break;
-                case "button":
-                    var buttonNode = _buttonComponentScene.Instantiate<A2ButtonComponent>();
-                    var label = props.ValueKind == JsonValueKind.Object &&
-                                props.TryGetProperty("label", out var labelElement)
-                        ? labelElement.GetString() ?? "Action"
-                        : "Action";
-                    var actionId = props.ValueKind == JsonValueKind.Object &&
-                                   props.TryGetProperty("actionId", out var actionElement)
-                        ? actionElement.GetString() ?? "unknown_action"
-                        : "unknown_action";
-                    buttonNode.Configure(componentId, label, actionId);
-                    buttonNode.ActionRequested += OnActionRequested;
-                    _componentContainer.AddChild(buttonNode);
-                    break;
-            }
+            var node = GenUiNodeFactory.Build(component, OnActionRequested);
+            _componentContainer.AddChild(node);
         }
     }
 
