@@ -4,6 +4,8 @@ namespace SwarmAssistant.Runtime.Tasks;
 
 public sealed class StartupMemoryBootstrapper
 {
+    private const int MaxBootstrapUiEvents = 3;
+
     private readonly ITaskMemoryReader _taskMemoryReader;
     private readonly TaskRegistry _taskRegistry;
     private readonly UiEventStream _uiEvents;
@@ -84,7 +86,7 @@ public sealed class StartupMemoryBootstrapper
                     items = summaryItems
                 });
 
-            foreach (var snapshot in memorySnapshots.Take(3))
+            foreach (var snapshot in memorySnapshots.Take(MaxBootstrapUiEvents))
             {
                 _uiEvents.Publish(
                     type: "agui.ui.surface",

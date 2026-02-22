@@ -28,7 +28,12 @@ public partial class Main : Control
     private VBoxContainer? _componentContainer;
     private RichTextLabel? _logOutput;
 
-    private readonly List<string> _taskListTaskIds = [];
+    private const int TaskIdShortLength = 8;
+    private const int TaskTitleMaxLength = 44;
+    private const int TaskTitleTruncatedLength = 41;
+
+    private readonly Dictionary<string, int> _taskListTaskIds = [];
+    private readonly Dictionary<int, string> _taskListByIndex = [];
     private long _lastSequence;
     private string? _activeTaskId;
     private string? _pendingSelectionRefreshTaskId;
@@ -546,12 +551,12 @@ public partial class Main : Control
 
     private void OnTaskListItemSelected(long index)
     {
-        if (_taskList is null || index < 0 || index >= _taskListTaskIds.Count)
+        if (_taskList is null || index < 0)
         {
             return;
         }
 
-        var taskId = _taskListTaskIds[(int)index];
+        var taskId = _taskListByIndex.TryGetValue((int)index, out var id) ? id : null;
         if (string.IsNullOrWhiteSpace(taskId))
         {
             return;
@@ -661,6 +666,7 @@ public partial class Main : Control
 
         _taskList.Clear();
         _taskListTaskIds.Clear();
+        _taskListByIndex.Clear();
 
         foreach (var item in items.EnumerateArray())
         {
@@ -690,7 +696,9 @@ public partial class Main : Control
                 ? updatedAtElement.ToString()
                 : null;
 
-            _taskListTaskIds.Add(taskId);
+            var idx = _taskList.ItemCount;
+            _taskListTaskIds[taskId] = idx;
+            _taskListByIndex[idx] = taskId;
             _taskList.AddItem(FormatTaskListItem(taskId, title, status, updatedAt));
 
             if (string.IsNullOrWhiteSpace(_activeTaskId))
@@ -715,14 +723,15 @@ public partial class Main : Control
         }
 
         var displayText = FormatTaskListItem(taskId, title, status, updatedAt);
-        var index = _taskListTaskIds.IndexOf(taskId);
-        if (index >= 0)
+        if (_taskListTaskIds.TryGetValue(taskId, out var index))
         {
             _taskList.SetItemText(index, displayText);
             return;
         }
 
-        _taskListTaskIds.Add(taskId);
+        var newIndex = _taskList.ItemCount;
+        _taskListTaskIds[taskId] = newIndex;
+        _taskListByIndex[newIndex] = taskId;
         _taskList.AddItem(displayText);
     }
 
@@ -733,8 +742,7 @@ public partial class Main : Control
             return;
         }
 
-        var index = _taskListTaskIds.IndexOf(taskId);
-        if (index < 0)
+        if (!_taskListTaskIds.TryGetValue(taskId, out var index))
         {
             return;
         }
@@ -744,12 +752,12 @@ public partial class Main : Control
 
     private static string FormatTaskListItem(string taskId, string title, string status, string? updatedAt)
     {
-        var shortId = taskId.Length <= 8 ? taskId : taskId[..8];
+        var shortId = taskId.Length <= TaskIdShortLength ? taskId : taskId[..TaskIdShortLength];
         var normalizedStatus = string.IsNullOrWhiteSpace(status) ? "unknown" : status;
         var normalizedTitle = string.IsNullOrWhiteSpace(title) ? "(untitled)" : title;
-        if (normalizedTitle.Length > 44)
+        if (normalizedTitle.Length > TaskTitleMaxLength)
         {
-            normalizedTitle = normalizedTitle[..41] + "...";
+            normalizedTitle = normalizedTitle[..TaskTitleTruncatedLength] + "...";
         }
 
         var updatedSuffix = string.IsNullOrWhiteSpace(updatedAt)
