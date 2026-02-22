@@ -46,6 +46,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _reviewOutput;
     private int _retryCount;
     private readonly int _maxRetries;
+    private GoapPlanResult? _lastGoapPlan;
+    private readonly Dictionary<string, string> _blackboardEntries = new(StringComparer.Ordinal);
 
     public TaskCoordinatorActor(
         string taskId,
@@ -113,6 +115,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         switch (message.Role)
         {
+            case SwarmRole.Orchestrator:
+                HandleOrchestratorResponse(message.Output);
+                return;
+
             case SwarmRole.Planner:
                 _planningOutput = message.Output;
                 _worldState = (WorldState)_worldState.With(WorldKey.PlanExists, true);
@@ -190,6 +196,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _logger.LogWarning(
             "Role failed taskId={TaskId} role={Role} error={Error}",
             _taskId, message.Role, message.Error);
+
+        // Orchestrator failures are non-fatal: fall back to GOAP deterministic execution
+        if (message.Role == SwarmRole.Orchestrator)
+        {
+            _logger.LogWarning(
+                "Orchestrator failed, falling back to GOAP taskId={TaskId}",
+                _taskId);
+            FallbackToGoap();
+            return;
+        }
 
         // Send detailed failure report to supervisor for active retry decisions
         _supervisorActor.Tell(new RoleFailureReport(
@@ -276,6 +292,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private void DecideAndExecute()
     {
         var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask);
+        _lastGoapPlan = planResult;
 
         _logger.LogInformation(
             "GOAP plan taskId={TaskId} deadEnd={DeadEnd} recommended={Recommended}",
@@ -298,17 +315,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             return;
         }
 
-        // Use GOAP recommendation directly for deterministic execution.
-        // In a future phase, this is where the CLI orchestrator agent call would go:
-        //   1. Build prompt with GoapContextSerializer.Serialize(worldState, planResult)
-        //   2. Call CLI agent
-        //   3. Parse ACTION from response
-        // For now, follow GOAP's recommended next action deterministically.
-        var nextAction = planResult.RecommendedPlan![0];
+        // Build orchestrator prompt with GOAP context + task history
+        var goapContext = GoapContextSerializer.Serialize(_worldState, planResult);
+        var orchestratorPrompt = RolePromptFactory.BuildOrchestratorPrompt(
+            _taskId, _title, _description, goapContext, _blackboardEntries);
 
         _logger.LogInformation(
-            "Executing action taskId={TaskId} action={Action}",
-            _taskId, nextAction.Name);
+            "Requesting orchestrator decision taskId={TaskId} goapAction={GoapAction}",
+            _taskId,
+            planResult.RecommendedPlan![0].Name);
 
         _uiEvents.Publish(
             type: "agui.task.transition",
@@ -316,11 +331,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             payload: new
             {
                 source = Self.Path.Name,
-                action = nextAction.Name,
+                phase = "orchestrating",
                 goapPlan = planResult.RecommendedPlan.Select(a => a.Name).ToArray(),
             });
 
-        DispatchAction(nextAction.Name);
+        // Send orchestrator task to worker pool — response handled in OnRoleSucceeded
+        _workerActor.Tell(new ExecuteRoleTask(
+            _taskId,
+            SwarmRole.Orchestrator,
+            _title,
+            _description,
+            null,
+            null,
+            orchestratorPrompt));
     }
 
     private void DispatchAction(string actionName)
@@ -454,8 +477,76 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             });
     }
 
+    private void HandleOrchestratorResponse(string output)
+    {
+        using var activity = _telemetry.StartActivity(
+            "task-coordinator.orchestrator.decision",
+            taskId: _taskId);
+
+        var match = ActionRegex.Match(output);
+        if (match.Success)
+        {
+            var actionName = match.Groups[1].Value;
+            _logger.LogInformation(
+                "Orchestrator decided action={Action} taskId={TaskId}",
+                actionName, _taskId);
+
+            StoreBlackboard("orchestrator_decision", output);
+            activity?.SetTag("orchestrator.action", actionName);
+
+            _uiEvents.Publish(
+                type: "agui.task.transition",
+                taskId: _taskId,
+                payload: new
+                {
+                    source = Self.Path.Name,
+                    action = actionName,
+                    decidedBy = "orchestrator",
+                });
+
+            DispatchAction(actionName);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Could not parse orchestrator output, falling back to GOAP taskId={TaskId}",
+                _taskId);
+
+            activity?.SetTag("orchestrator.fallback", true);
+            FallbackToGoap();
+        }
+    }
+
+    private void FallbackToGoap()
+    {
+        if (_lastGoapPlan?.RecommendedPlan is { Count: > 0 } plan)
+        {
+            var action = plan[0];
+            _logger.LogInformation(
+                "GOAP fallback action={Action} taskId={TaskId}",
+                action.Name, _taskId);
+
+            _uiEvents.Publish(
+                type: "agui.task.transition",
+                taskId: _taskId,
+                payload: new
+                {
+                    source = Self.Path.Name,
+                    action = action.Name,
+                    decidedBy = "goap-fallback",
+                });
+
+            DispatchAction(action.Name);
+        }
+        else
+        {
+            HandleDeadEnd();
+        }
+    }
+
     private void StoreBlackboard(string key, string value)
     {
+        _blackboardEntries[key] = value;
         _blackboardActor.Tell(new UpdateBlackboard(_taskId, key, value));
     }
 

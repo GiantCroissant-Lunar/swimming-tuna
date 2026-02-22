@@ -9,7 +9,8 @@ internal sealed record ExecuteRoleTask(
     string Title,
     string Description,
     string? PlanningOutput,
-    string? BuildOutput
+    string? BuildOutput,
+    string? OrchestratorPrompt = null
 );
 
 internal sealed record RoleTaskSucceeded(

@@ -29,6 +29,8 @@ internal static class RolePromptFactory
                 $"Planner output: {command.PlanningOutput ?? "(none)"}",
                 $"Builder output: {command.BuildOutput ?? "(none)"}",
                 "Find defects, risks, and missing tests. Keep it specific."),
+            SwarmRole.Orchestrator => command.OrchestratorPrompt
+                ?? "You are the orchestrator agent. Decide the next action. Respond with ACTION: <action> and REASON: <reason>.",
             _ => $"Unsupported role {command.Role}"
         };
     }

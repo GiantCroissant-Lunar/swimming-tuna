@@ -42,7 +42,7 @@ public sealed class WorkerActor : ReceiveActor
                 ["engine"] = "microsoft-agent-framework",
             });
 
-        if (command.Role is not SwarmRole.Planner and not SwarmRole.Builder)
+        if (command.Role is not SwarmRole.Planner and not SwarmRole.Builder and not SwarmRole.Orchestrator)
         {
             var error = $"WorkerActor does not process role {command.Role}";
             activity?.SetStatus(ActivityStatusCode.Error, error);
