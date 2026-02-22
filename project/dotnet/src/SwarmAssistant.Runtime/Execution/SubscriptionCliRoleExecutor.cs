@@ -191,6 +191,21 @@ internal sealed class SubscriptionCliRoleExecutor
                 "- Checked lifecycle transitions and error propagation.",
                 "- Suggested coverage for success and escalation paths."),
             Contracts.Messaging.SwarmRole.Orchestrator => BuildOrchestratorEcho(command),
+            Contracts.Messaging.SwarmRole.Researcher => string.Join(
+                Environment.NewLine,
+                $"[LocalEcho/Researcher] Task: {command.Title}",
+                "- Gathered contextual constraints and relevant references.",
+                "- Highlighted unknowns requiring validation."),
+            Contracts.Messaging.SwarmRole.Debugger => string.Join(
+                Environment.NewLine,
+                $"[LocalEcho/Debugger] Task: {command.Title}",
+                "- Isolated likely fault boundaries from recent changes.",
+                "- Proposed smallest safe fix candidates."),
+            Contracts.Messaging.SwarmRole.Tester => string.Join(
+                Environment.NewLine,
+                $"[LocalEcho/Tester] Task: {command.Title}",
+                "- Added focused positive and negative test scenarios.",
+                "- Covered regression checks for impacted paths."),
             _ => $"[LocalEcho] Unsupported role {command.Role}"
         };
     }
