@@ -36,7 +36,9 @@ internal sealed record SupervisorSnapshot(
     int Escalations
 );
 
-// Orchestrator decision from CLI agent
+// Orchestrator decision from CLI agent — reserved for future phases where the
+// orchestrator publishes its structured decision to the event stream instead of
+// returning plain text. Produced by TaskCoordinatorActor; consumed by telemetry/UI.
 internal sealed record OrchestratorDecision(
     string TaskId,
     string ChosenAction,
@@ -64,7 +66,9 @@ internal sealed record BlackboardContext(
     IReadOnlyDictionary<string, string> Entries
 );
 
-// World state snapshot for telemetry/UI
+// World state snapshot for telemetry/UI — reserved for future phases where world-state
+// changes are published as discrete events (e.g., to a replay log or the AG-UI stream).
+// Produced by TaskCoordinatorActor on each TransitionTo call.
 internal sealed record WorldStateUpdated(
     string TaskId,
     WorldKey Key,
@@ -98,7 +102,9 @@ internal sealed record AdapterCircuitClosed(
     string AdapterId
 );
 
-// Monitor → Workers: health check ping/pong
+// Monitor → Workers: health check ping/pong — reserved for future phases where the
+// MonitorActor actively probes worker/reviewer actors for liveness rather than relying
+// solely on supervisor snapshots. Request sent by MonitorActor; response from WorkerActor.
 internal sealed record HealthCheckRequest(
     string RequestId,
     DateTimeOffset At
@@ -111,7 +117,9 @@ internal sealed record HealthCheckResponse(
     DateTimeOffset At
 );
 
-// Formal escalation record for supervisor tracking
+// Formal escalation record for supervisor tracking — reserved for future phases where
+// the SupervisorActor persists or forwards a structured escalation record (e.g., to an
+// external incident tracker). Produced by TaskCoordinatorActor on terminal failures.
 internal sealed record TaskEscalated(
     string TaskId,
     string Reason,

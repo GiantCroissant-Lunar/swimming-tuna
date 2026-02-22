@@ -30,6 +30,7 @@ public sealed class SupervisorActor : ReceiveActor
     // Active supervision state
     private readonly Dictionary<string, IActorRef> _taskCoordinators = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _taskRetryCounts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _startedTaskIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _adapterFailureCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _openCircuits = new(StringComparer.OrdinalIgnoreCase);
 
@@ -61,7 +62,12 @@ public sealed class SupervisorActor : ReceiveActor
         // Track the coordinator ref for active retry decisions
         _taskCoordinators[message.TaskId] = Sender;
 
-        _started += 1;
+        // Count each unique task only once regardless of how many state-transition
+        // TaskStarted messages the coordinator emits.
+        if (_startedTaskIds.Add(message.TaskId))
+        {
+            _started += 1;
+        }
         _logger.LogInformation(
             "Task started taskId={TaskId} status={Status} actor={ActorName}",
             message.TaskId,
@@ -87,6 +93,7 @@ public sealed class SupervisorActor : ReceiveActor
             // Clean up tracking state for completed tasks
             _taskCoordinators.Remove(message.TaskId);
             _taskRetryCounts.Remove(message.TaskId);
+            _startedTaskIds.Remove(message.TaskId);
         }
 
         _logger.LogInformation(
@@ -113,6 +120,7 @@ public sealed class SupervisorActor : ReceiveActor
         // Clean up tracking state for permanently failed tasks
         _taskCoordinators.Remove(message.TaskId);
         _taskRetryCounts.Remove(message.TaskId);
+        _startedTaskIds.Remove(message.TaskId);
         _logger.LogWarning(
             "Task failed taskId={TaskId} status={Status} actor={ActorName} error={Error}",
             message.TaskId,

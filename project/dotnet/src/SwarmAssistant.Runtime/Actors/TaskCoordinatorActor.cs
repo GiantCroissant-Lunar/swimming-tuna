@@ -274,6 +274,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // Unblock the task so GOAP can plan again
         _worldState = (WorldState)_worldState.With(WorldKey.TaskBlocked, false);
 
+        // Sync the registry: clear the previous blocked/failed status so the task
+        // is no longer reported as blocked while it retries.
+        _taskRegistry.Transition(_taskId, MapRoleToState(message.Role));
+
         StoreBlackboard($"supervisor_retry_{message.Role.ToString().ToLowerInvariant()}", message.Reason);
 
         _uiEvents.Publish(
@@ -418,7 +422,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         _logger.LogInformation("Task transition taskId={TaskId} to={Target}", _taskId, target);
 
-        _supervisorActor.Tell(new TaskStarted(_taskId, target, DateTimeOffset.UtcNow, Self.Path.Name));
+        // Only notify the supervisor for non-terminal transitions; terminal states
+        // (Done, Blocked) are reported via TaskResult / TaskFailed instead.
+        if (target != TaskState.Done && target != TaskState.Blocked)
+        {
+            _supervisorActor.Tell(new TaskStarted(_taskId, target, DateTimeOffset.UtcNow, Self.Path.Name));
+        }
+
         _taskRegistry.Transition(_taskId, target);
 
         _uiEvents.Publish(

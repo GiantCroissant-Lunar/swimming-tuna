@@ -105,7 +105,7 @@ public sealed class Worker : BackgroundService
             "Actor pools created workerPoolSize={WorkerPoolSize} reviewerPoolSize={ReviewerPoolSize} maxCliConcurrency={MaxCliConcurrency}",
             workerPoolSize,
             reviewerPoolSize,
-            _options.MaxCliConcurrency);
+            maxCliConcurrency);
 
         var monitorTickSeconds = Math.Max(5, _options.HealthHeartbeatSeconds);
         _actorSystem.ActorOf(
