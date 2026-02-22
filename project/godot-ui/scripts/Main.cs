@@ -68,18 +68,24 @@ public partial class Main : Control
         {
             _pollTimer.Stop();
             _pollTimer.Timeout -= TriggerPoll;
+            _pollTimer.QueueFree();
+            _pollTimer = null;
         }
 
         if (_recentRequest is not null)
         {
             _recentRequest.CancelRequest();
             _recentRequest.RequestCompleted -= OnRecentRequestCompleted;
+            _recentRequest.QueueFree();
+            _recentRequest = null;
         }
 
         if (_actionRequest is not null)
         {
             _actionRequest.CancelRequest();
             _actionRequest.RequestCompleted -= OnActionRequestCompleted;
+            _actionRequest.QueueFree();
+            _actionRequest = null;
         }
     }
 

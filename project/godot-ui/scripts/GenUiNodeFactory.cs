@@ -245,7 +245,7 @@ public static class GenUiNodeFactory
         value = 0;
         if (el.ValueKind != JsonValueKind.Object) return false;
         if (!el.TryGetProperty(key, out var v)) return false;
-        if (v.ValueKind == JsonValueKind.Number) { value = v.GetInt32(); return true; }
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out value)) return true;
         return false;
     }
 
