@@ -1,4 +1,4 @@
-# SwarmAssistant .NET Runtime (Phase 7)
+# SwarmAssistant .NET Runtime (Phase 8)
 
 ## Projects
 
@@ -78,6 +78,12 @@ DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-hor
 curl -N http://127.0.0.1:5080/ag-ui/events
 curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 ```
+
+Supported AG-UI actions (Phase 8):
+
+- `request_snapshot`
+- `refresh_surface`
+- `submit_task` (payload requires `title`; optional `description`)
 
 ## A2A + ArcadeDB Integration (Phase 7)
 

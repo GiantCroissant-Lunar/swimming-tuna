@@ -11,8 +11,8 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway + A2A task endpoints + ArcadeDB write path (Phase 7).
-- `godot-ui/`: Godot Mono client that polls AG-UI recent events and renders A2UI payloads.
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway + A2A task endpoints + ArcadeDB write path + AG-UI action loop (Phase 8).
+- `godot-ui/`: Godot Mono client that polls AG-UI recent events, renders A2UI payloads, and sends AG-UI actions back to runtime.
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 - `infra/arcadedb/`: Phase 7 task-persistence notes for ArcadeDB command API wiring.
 
@@ -26,7 +26,7 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 7)
+## .NET Runtime Commands (Phase 8)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
@@ -103,11 +103,18 @@ curl -N http://127.0.0.1:5080/ag-ui/events
 curl -s -X POST http://127.0.0.1:5080/ag-ui/actions -H 'content-type: application/json' -d '{"taskId":"manual-test","actionId":"request_snapshot","payload":{"source":"cli"}}'
 ```
 
+AG-UI action examples:
+
+```bash
+curl -s -X POST http://127.0.0.1:5080/ag-ui/actions -H 'content-type: application/json' -d '{"actionId":"request_snapshot","payload":{"source":"cli"}}'
+curl -s -X POST http://127.0.0.1:5080/ag-ui/actions -H 'content-type: application/json' -d '{"actionId":"submit_task","payload":{"title":"UI Submitted Task","description":"Created from AG-UI action"}}'
+```
+
 A2A endpoints (when `Runtime__A2AEnabled=true`):
 
 ```bash
 curl -s http://127.0.0.1:5080/.well-known/agent-card.json
-curl -s -X POST http://127.0.0.1:5080/a2a/tasks -H 'content-type: application/json' -d '{"title":"Phase 7 API test","description":"submit via A2A endpoint"}'
+curl -s -X POST http://127.0.0.1:5080/a2a/tasks -H 'content-type: application/json' -d '{"title":"Phase 8 API test","description":"submit via A2A endpoint"}'
 curl -s http://127.0.0.1:5080/a2a/tasks
 curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
 ```

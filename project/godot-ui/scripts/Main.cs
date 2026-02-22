@@ -22,6 +22,8 @@ public partial class Main : Control
 
     private Label? _titleLabel;
     private Label? _statusLabel;
+    private LineEdit? _taskTitleInput;
+    private LineEdit? _taskDescriptionInput;
     private VBoxContainer? _componentContainer;
     private RichTextLabel? _logOutput;
 
@@ -57,6 +59,38 @@ public partial class Main : Control
 
         _statusLabel = new Label { Text = "Connecting..." };
         layout.AddChild(_statusLabel);
+
+        var submitRow = new HBoxContainer();
+        layout.AddChild(submitRow);
+
+        _taskTitleInput = new LineEdit
+        {
+            PlaceholderText = "Task title",
+            CustomMinimumSize = new Vector2(300, 0)
+        };
+        submitRow.AddChild(_taskTitleInput);
+
+        _taskDescriptionInput = new LineEdit
+        {
+            PlaceholderText = "Task description",
+            CustomMinimumSize = new Vector2(420, 0)
+        };
+        submitRow.AddChild(_taskDescriptionInput);
+
+        var submitButton = new Button { Text = "Submit Task" };
+        submitButton.Pressed += OnSubmitTaskPressed;
+        submitRow.AddChild(submitButton);
+
+        var actionRow = new HBoxContainer();
+        layout.AddChild(actionRow);
+
+        var snapshotButton = new Button { Text = "Request Snapshot" };
+        snapshotButton.Pressed += OnRequestSnapshotPressed;
+        actionRow.AddChild(snapshotButton);
+
+        var refreshButton = new Button { Text = "Refresh Surface" };
+        refreshButton.Pressed += OnRefreshSurfacePressed;
+        actionRow.AddChild(refreshButton);
 
         _componentContainer = new VBoxContainer();
         layout.AddChild(_componentContainer);
@@ -169,6 +203,8 @@ public partial class Main : Control
             return;
         }
 
+        ApplyEventPayload(eventType, payload);
+
         if (!payload.TryGetProperty("a2ui", out var a2ui))
         {
             return;
@@ -188,6 +224,65 @@ public partial class Main : Control
                 break;
             case "updateDataModel":
                 ApplyDataModelPatch(a2ui);
+                break;
+        }
+    }
+
+    private void ApplyEventPayload(string eventType, JsonElement payload)
+    {
+        switch (eventType)
+        {
+            case "a2a.task.submitted":
+            case "agui.action.task.submitted":
+                if (payload.TryGetProperty("taskId", out var submittedTaskId) &&
+                    submittedTaskId.ValueKind == JsonValueKind.String)
+                {
+                    _activeTaskId = submittedTaskId.GetString();
+                    _statusLabel!.Text = $"Status: task submitted ({_activeTaskId})";
+                }
+                break;
+
+            case "agui.runtime.snapshot":
+                var totalTasks = payload.TryGetProperty("totalTasks", out var totalElement) &&
+                                 totalElement.ValueKind == JsonValueKind.Number
+                    ? totalElement.GetInt32()
+                    : 0;
+
+                var statuses = "n/a";
+                if (payload.TryGetProperty("statusCounts", out var countsElement) &&
+                    countsElement.ValueKind == JsonValueKind.Object)
+                {
+                    var parts = new List<string>();
+                    foreach (var property in countsElement.EnumerateObject())
+                    {
+                        parts.Add($"{property.Name}:{property.Value.GetInt32()}");
+                    }
+
+                    if (parts.Count > 0)
+                    {
+                        statuses = string.Join(", ", parts);
+                    }
+                }
+
+                AppendLog($"[runtime] total={totalTasks} statuses={statuses}");
+                break;
+
+            case "agui.task.snapshot":
+                if (payload.TryGetProperty("task", out var taskElement) &&
+                    taskElement.ValueKind == JsonValueKind.Object)
+                {
+                    if (taskElement.TryGetProperty("taskId", out var taskIdElement) &&
+                        taskIdElement.ValueKind == JsonValueKind.String)
+                    {
+                        _activeTaskId = taskIdElement.GetString();
+                    }
+
+                    if (taskElement.TryGetProperty("status", out var statusElement) &&
+                        statusElement.ValueKind == JsonValueKind.String)
+                    {
+                        _statusLabel!.Text = $"Status: {statusElement.GetString() ?? "unknown"}";
+                    }
+                }
                 break;
         }
     }
@@ -288,20 +383,64 @@ public partial class Main : Control
 
     private void OnActionRequested(string actionId)
     {
+        SendAction(actionId);
+    }
+
+    private void OnSubmitTaskPressed()
+    {
+        var title = _taskTitleInput?.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            AppendLog("[warn] Task title is required for submit.");
+            return;
+        }
+
+        var description = _taskDescriptionInput?.Text?.Trim() ?? string.Empty;
+
+        SendAction("submit_task", new Dictionary<string, object?>
+        {
+            ["title"] = title,
+            ["description"] = description
+        });
+    }
+
+    private void OnRequestSnapshotPressed()
+    {
+        SendAction("request_snapshot");
+    }
+
+    private void OnRefreshSurfacePressed()
+    {
+        if (string.IsNullOrWhiteSpace(_activeTaskId))
+        {
+            AppendLog("[warn] No active task for refresh_surface.");
+            return;
+        }
+
+        SendAction("refresh_surface");
+    }
+
+    private void SendAction(
+        string actionId,
+        Dictionary<string, object?>? actionPayload = null,
+        string? taskId = null)
+    {
         if (_actionInFlight || _actionRequest is null)
         {
             return;
         }
 
+        var payload = actionPayload is null
+            ? new Dictionary<string, object?>()
+            : new Dictionary<string, object?>(actionPayload);
+        payload["source"] = "godot-ui";
+        payload["at"] = DateTimeOffset.UtcNow;
+
         var body = JsonSerializer.Serialize(new
         {
-            taskId = _activeTaskId,
+            taskId = taskId ?? _activeTaskId,
             actionId,
-            payload = new Dictionary<string, object?>
-            {
-                ["source"] = "godot-ui",
-                ["at"] = DateTimeOffset.UtcNow
-            }
+            payload
         });
 
         _actionInFlight = true;
@@ -321,13 +460,33 @@ public partial class Main : Control
     private void OnActionRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
     {
         _actionInFlight = false;
+        var responseBody = Encoding.UTF8.GetString(body);
+
         if (result == (long)HttpRequest.Result.Success && responseCode >= 200 && responseCode <= 299)
         {
-            AppendLog("[action] Sent.");
+            if (!string.IsNullOrWhiteSpace(responseBody))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(responseBody);
+                    if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                        document.RootElement.TryGetProperty("taskId", out var taskIdElement) &&
+                        taskIdElement.ValueKind == JsonValueKind.String)
+                    {
+                        _activeTaskId = taskIdElement.GetString();
+                    }
+                }
+                catch
+                {
+                    // Ignore non-JSON responses.
+                }
+            }
+
+            AppendLog($"[action] Sent (http={responseCode}).");
             return;
         }
 
-        AppendLog($"[warn] Action response result={result} http={responseCode}");
+        AppendLog($"[warn] Action response result={result} http={responseCode} body={responseBody}");
     }
 
     private void AppendLog(string line)

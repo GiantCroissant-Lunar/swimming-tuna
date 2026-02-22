@@ -40,6 +40,12 @@ internal static class A2UiPayloadFactory
                         id = "request-snapshot",
                         type = "button",
                         props = new { label = "Request Snapshot", actionId = "request_snapshot" }
+                    },
+                    new
+                    {
+                        id = "refresh-surface",
+                        type = "button",
+                        props = new { label = "Refresh Surface", actionId = "refresh_surface" }
                     }
                 }
             }

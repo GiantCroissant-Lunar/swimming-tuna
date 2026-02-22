@@ -53,6 +53,75 @@ logger.LogInformation(
 
 app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
 
+static object MapTaskSnapshot(TaskSnapshot snapshot)
+{
+    return new
+    {
+        taskId = snapshot.TaskId,
+        title = snapshot.Title,
+        description = snapshot.Description,
+        status = snapshot.Status.ToString().ToLowerInvariant(),
+        createdAt = snapshot.CreatedAt,
+        updatedAt = snapshot.UpdatedAt,
+        planningOutput = snapshot.PlanningOutput,
+        buildOutput = snapshot.BuildOutput,
+        reviewOutput = snapshot.ReviewOutput,
+        summary = snapshot.Summary,
+        error = snapshot.Error
+    };
+}
+
+static IResult SubmitTask(
+    string? requestedTaskId,
+    string? title,
+    string? description,
+    Dictionary<string, object?>? metadata,
+    RuntimeActorRegistry actorRegistry,
+    TaskRegistry taskRegistry,
+    UiEventStream uiEvents,
+    string eventType)
+{
+    if (string.IsNullOrWhiteSpace(title))
+    {
+        return Results.BadRequest(new { error = "title is required." });
+    }
+
+    if (!actorRegistry.TryGetCoordinator(out var coordinator) || coordinator is null)
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var taskId = string.IsNullOrWhiteSpace(requestedTaskId)
+        ? $"task-{Guid.NewGuid():N}"
+        : requestedTaskId;
+    var task = new TaskAssigned(
+        taskId,
+        title.Trim(),
+        description?.Trim() ?? string.Empty,
+        DateTimeOffset.UtcNow);
+
+    coordinator.Tell(task, ActorRefs.NoSender);
+    taskRegistry.Register(task);
+
+    uiEvents.Publish(
+        type: eventType,
+        taskId: taskId,
+        payload: new
+        {
+            taskId,
+            task.Title,
+            task.Description,
+            metadata
+        });
+
+    return Results.Accepted($"/a2a/tasks/{taskId}", new
+    {
+        taskId,
+        status = "accepted",
+        statusUrl = $"/a2a/tasks/{taskId}"
+    });
+}
+
 if (options.AgUiEnabled)
 {
     app.MapGet("/ag-ui/recent", (int? count, UiEventStream stream) =>
@@ -60,7 +129,11 @@ if (options.AgUiEnabled)
         return Results.Ok(stream.GetRecent(count ?? 50));
     });
 
-    app.MapPost("/ag-ui/actions", (UiActionRequest action, UiEventStream stream) =>
+    app.MapPost("/ag-ui/actions", (
+        UiActionRequest action,
+        UiEventStream stream,
+        TaskRegistry taskRegistry,
+        RuntimeActorRegistry actorRegistry) =>
     {
         if (string.IsNullOrWhiteSpace(action.ActionId))
         {
@@ -76,7 +149,89 @@ if (options.AgUiEnabled)
                 action.Payload
             });
 
-        return Results.Accepted();
+        switch (action.ActionId.Trim().ToLowerInvariant())
+        {
+            case "request_snapshot":
+                if (!string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    var task = taskRegistry.GetTask(action.TaskId);
+                    if (task is null)
+                    {
+                        return Results.NotFound(new { error = "task not found", taskId = action.TaskId });
+                    }
+
+                    stream.Publish(
+                        type: "agui.task.snapshot",
+                        taskId: task.TaskId,
+                        payload: new
+                        {
+                            task = MapTaskSnapshot(task),
+                            a2ui = A2UiPayloadFactory.UpdateStatus(task.TaskId, task.Status, task.Error ?? task.Summary)
+                        });
+
+                    return Results.Accepted();
+                }
+
+                var tasks = taskRegistry.GetTasks(500);
+                var statusCounts = tasks
+                    .GroupBy(task => task.Status.ToString().ToLowerInvariant())
+                    .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+                stream.Publish(
+                    type: "agui.runtime.snapshot",
+                    taskId: null,
+                    payload: new
+                    {
+                        totalTasks = tasks.Count,
+                        statusCounts
+                    });
+                return Results.Accepted();
+
+            case "refresh_surface":
+                if (string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    return Results.BadRequest(new { error = "taskId is required for refresh_surface." });
+                }
+
+                var targetTask = taskRegistry.GetTask(action.TaskId);
+                if (targetTask is null)
+                {
+                    return Results.NotFound(new { error = "task not found", taskId = action.TaskId });
+                }
+
+                stream.Publish(
+                    type: "agui.ui.surface",
+                    taskId: targetTask.TaskId,
+                    payload: new
+                    {
+                        source = "ag-ui-action",
+                        a2ui = A2UiPayloadFactory.CreateSurface(
+                            targetTask.TaskId,
+                            targetTask.Title,
+                            targetTask.Description,
+                            targetTask.Status)
+                    });
+                return Results.Accepted();
+
+            case "submit_task":
+                return SubmitTask(
+                    requestedTaskId: UiActionPayload.GetString(action.Payload, "taskId"),
+                    title: UiActionPayload.GetString(action.Payload, "title"),
+                    description: UiActionPayload.GetString(action.Payload, "description"),
+                    metadata: action.Payload,
+                    actorRegistry,
+                    taskRegistry,
+                    stream,
+                    eventType: "agui.action.task.submitted");
+
+            default:
+                return Results.BadRequest(new
+                {
+                    error = "Unsupported actionId.",
+                    actionId = action.ActionId,
+                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task" }
+                });
+        }
     });
 
     app.MapGet("/ag-ui/events", async (HttpContext context, UiEventStream stream, CancellationToken cancellationToken) =>
@@ -109,9 +264,9 @@ if (options.A2AEnabled)
         return Results.Ok(new
         {
             name = "swarm-assistant",
-            version = "phase-7",
+            version = "phase-8",
             protocol = "a2a",
-            capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "arcadedb-memory" },
+            capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "ag-ui-actions", "arcadedb-memory" },
             endpoints = new
             {
                 agUiEvents = "/ag-ui/events",
@@ -129,45 +284,15 @@ if (options.A2AEnabled)
         TaskRegistry taskRegistry,
         UiEventStream uiEvents) =>
     {
-        if (string.IsNullOrWhiteSpace(request.Title))
-        {
-            return Results.BadRequest(new { error = "title is required." });
-        }
-
-        if (!actorRegistry.TryGetCoordinator(out var coordinator) || coordinator is null)
-        {
-            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        }
-
-        var taskId = string.IsNullOrWhiteSpace(request.TaskId)
-            ? $"task-{Guid.NewGuid():N}"
-            : request.TaskId;
-        var task = new TaskAssigned(
-            taskId,
-            request.Title.Trim(),
-            request.Description?.Trim() ?? string.Empty,
-            DateTimeOffset.UtcNow);
-
-        coordinator.Tell(task, ActorRefs.NoSender);
-        taskRegistry.Register(task);
-
-        uiEvents.Publish(
-            type: "a2a.task.submitted",
-            taskId: taskId,
-            payload: new
-            {
-                taskId,
-                task.Title,
-                task.Description,
-                metadata = request.Metadata
-            });
-
-        return Results.Accepted($"/a2a/tasks/{taskId}", new
-        {
-            taskId,
-            status = "accepted",
-            statusUrl = $"/a2a/tasks/{taskId}"
-        });
+        return SubmitTask(
+            requestedTaskId: request.TaskId,
+            title: request.Title,
+            description: request.Description,
+            metadata: request.Metadata,
+            actorRegistry,
+            taskRegistry,
+            uiEvents,
+            eventType: "a2a.task.submitted");
     });
 
     app.MapGet("/a2a/tasks/{taskId}", (string taskId, TaskRegistry taskRegistry) =>
@@ -178,20 +303,7 @@ if (options.A2AEnabled)
             return Results.NotFound(new { error = "task not found", taskId });
         }
 
-        return Results.Ok(new
-        {
-            taskId = snapshot.TaskId,
-            title = snapshot.Title,
-            description = snapshot.Description,
-            status = snapshot.Status.ToString().ToLowerInvariant(),
-            createdAt = snapshot.CreatedAt,
-            updatedAt = snapshot.UpdatedAt,
-            planningOutput = snapshot.PlanningOutput,
-            buildOutput = snapshot.BuildOutput,
-            reviewOutput = snapshot.ReviewOutput,
-            summary = snapshot.Summary,
-            error = snapshot.Error
-        });
+        return Results.Ok(MapTaskSnapshot(snapshot));
     });
 
     app.MapGet("/a2a/tasks", (int? limit, TaskRegistry taskRegistry) =>

@@ -87,6 +87,15 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `ITaskMemoryWriter` abstraction is wired to `ArcadeDbTaskMemoryWriter` by default.
 - `ArcadeDbTaskMemoryWriter` writes `TaskRegistry` snapshots using ArcadeDB command API delete+insert operations and can bootstrap schema when `ArcadeDbAutoCreateSchema=true`.
 
+## AG-UI Action Loop (Phase 8)
+
+- `POST /ag-ui/actions` now dispatches supported actions:
+- `request_snapshot`: publish runtime or per-task snapshot events.
+- `refresh_surface`: rebuild and publish A2UI surface for active task.
+- `submit_task`: submit new tasks from UI payloads (`title`, `description`).
+- `godot-ui/scripts/Main.cs` includes submit/snapshot/refresh controls and maps button-driven A2UI actions to `/ag-ui/actions`.
+- Runtime emits `agui.action.task.submitted` and `agui.task.snapshot` events so the exported Godot app can confirm action round-trips.
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:
