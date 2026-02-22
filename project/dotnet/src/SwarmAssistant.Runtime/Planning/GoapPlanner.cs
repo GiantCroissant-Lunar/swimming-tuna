@@ -95,13 +95,13 @@ public sealed class GoapPlanner : IGoapPlanner
             return ws;
         }
 
-        var result = new WorldState();
+        IWorldState current = new WorldState();
         foreach (var (key, value) in state.GetAll())
         {
-            result = (WorldState)result.With(key, value);
+            current = current.With(key, value);
         }
 
-        return result;
+        return (WorldState)current;
     }
 
     private sealed record SearchNode(

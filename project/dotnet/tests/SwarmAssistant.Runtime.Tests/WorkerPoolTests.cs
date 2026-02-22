@@ -15,8 +15,7 @@ public sealed class WorkerPoolTests
     public void WorkerPoolSize_ClampedToValidRange(int poolSize)
     {
         var options = new RuntimeOptions { WorkerPoolSize = poolSize };
-        var clamped = Math.Clamp(options.WorkerPoolSize, 1, 16);
-        Assert.Equal(poolSize, clamped);
+        Assert.Equal(poolSize, options.WorkerPoolSize);
     }
 
     [Theory]
@@ -26,8 +25,7 @@ public sealed class WorkerPoolTests
     public void WorkerPoolSize_OutOfRange_GetsClampedAtBoundary(int input, int expected)
     {
         var options = new RuntimeOptions { WorkerPoolSize = input };
-        var clamped = Math.Clamp(options.WorkerPoolSize, 1, 16);
-        Assert.Equal(expected, clamped);
+        Assert.Equal(expected, options.WorkerPoolSize);
     }
 
     [Theory]
@@ -37,8 +35,7 @@ public sealed class WorkerPoolTests
     public void ReviewerPoolSize_ClampedToValidRange(int poolSize)
     {
         var options = new RuntimeOptions { ReviewerPoolSize = poolSize };
-        var clamped = Math.Clamp(options.ReviewerPoolSize, 1, 16);
-        Assert.Equal(poolSize, clamped);
+        Assert.Equal(poolSize, options.ReviewerPoolSize);
     }
 
     [Theory]
@@ -48,8 +45,7 @@ public sealed class WorkerPoolTests
     public void MaxCliConcurrency_ClampedToValidRange(int concurrency)
     {
         var options = new RuntimeOptions { MaxCliConcurrency = concurrency };
-        var clamped = Math.Clamp(options.MaxCliConcurrency, 1, 32);
-        Assert.Equal(concurrency, clamped);
+        Assert.Equal(concurrency, options.MaxCliConcurrency);
     }
 
     [Theory]
@@ -59,8 +55,7 @@ public sealed class WorkerPoolTests
     public void MaxCliConcurrency_OutOfRange_GetsClampedAtBoundary(int input, int expected)
     {
         var options = new RuntimeOptions { MaxCliConcurrency = input };
-        var clamped = Math.Clamp(options.MaxCliConcurrency, 1, 32);
-        Assert.Equal(expected, clamped);
+        Assert.Equal(expected, options.MaxCliConcurrency);
     }
 
     [Fact]
@@ -88,21 +83,40 @@ public sealed class WorkerPoolTests
 
         // Fire 5 concurrent requests. With concurrency=2, they should all succeed
         // (local-echo is fast) but the semaphore ensures at most 2 run at a time.
+        int active = 0;
+        int maxObserved = 0;
         var tasks = Enumerable.Range(0, 5).Select(i =>
-            executor.ExecuteAsync(
-                new ExecuteRoleTask(
-                    $"task-{i}",
-                    SwarmRole.Planner,
-                    $"Task {i}",
-                    "Concurrent test",
-                    null,
-                    null),
-                CancellationToken.None));
+            Task.Run(async () =>
+            {
+                var current = Interlocked.Increment(ref active);
+                // Update maxObserved with a CAS loop to avoid races
+                while (current > maxObserved)
+                {
+                    int snapshot = maxObserved;
+                    if (Interlocked.CompareExchange(ref maxObserved, current, snapshot) == snapshot)
+                    {
+                        break;
+                    }
+                }
+
+                var result = await executor.ExecuteAsync(
+                    new ExecuteRoleTask(
+                        $"task-{i}",
+                        SwarmRole.Planner,
+                        $"Task {i}",
+                        "Concurrent test",
+                        null,
+                        null),
+                    CancellationToken.None);
+                Interlocked.Decrement(ref active);
+                return result;
+            }));
 
         var results = await Task.WhenAll(tasks);
 
         Assert.Equal(5, results.Length);
         Assert.All(results, r => Assert.Equal("local-echo", r.AdapterId));
+        Assert.True(maxObserved <= 2, $"Peak concurrency {maxObserved} exceeded limit of 2");
     }
 
     [Fact]

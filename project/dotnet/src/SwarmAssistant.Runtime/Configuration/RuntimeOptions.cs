@@ -50,19 +50,40 @@ public sealed class RuntimeOptions
     /// <summary>
     /// Number of worker actor instances in the SmallestMailbox pool.
     /// Each instance can handle one role execution (Plan/Build) at a time.
+    /// Values are clamped to [1, 16].
     /// </summary>
-    public int WorkerPoolSize { get; init; } = 3;
+    // Default must be within [1, 16]; the backing field bypasses the init setter.
+    private int _workerPoolSize = 3;
+    public int WorkerPoolSize
+    {
+        get => _workerPoolSize;
+        init => _workerPoolSize = Math.Clamp(value, 1, 16);
+    }
 
     /// <summary>
     /// Number of reviewer actor instances in the SmallestMailbox pool.
+    /// Values are clamped to [1, 16].
     /// </summary>
-    public int ReviewerPoolSize { get; init; } = 2;
+    // Default must be within [1, 16]; the backing field bypasses the init setter.
+    private int _reviewerPoolSize = 2;
+    public int ReviewerPoolSize
+    {
+        get => _reviewerPoolSize;
+        init => _reviewerPoolSize = Math.Clamp(value, 1, 16);
+    }
 
     /// <summary>
     /// Maximum number of concurrent CLI subprocess executions across all actors.
     /// Prevents resource exhaustion when multiple pool instances run simultaneously.
+    /// Values are clamped to [1, 32].
     /// </summary>
-    public int MaxCliConcurrency { get; init; } = 4;
+    // Default must be within [1, 32]; the backing field bypasses the init setter.
+    private int _maxCliConcurrency = 4;
+    public int MaxCliConcurrency
+    {
+        get => _maxCliConcurrency;
+        init => _maxCliConcurrency = Math.Clamp(value, 1, 32);
+    }
 
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;

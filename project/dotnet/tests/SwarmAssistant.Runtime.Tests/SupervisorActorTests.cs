@@ -23,7 +23,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         supervisor.Tell(new GetSupervisorSnapshot());
         var snapshot = ExpectMsg<SupervisorSnapshot>();
@@ -39,7 +39,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         supervisor.Tell(new TaskStarted("task-1", TaskState.Planning, DateTimeOffset.UtcNow, "coordinator"));
         supervisor.Tell(new TaskResult("task-1", TaskState.Done, "output", DateTimeOffset.UtcNow, "coordinator"));
@@ -56,7 +56,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         supervisor.Tell(new TaskFailed("task-1", TaskState.Blocked, "error", DateTimeOffset.UtcNow, "coordinator"));
         supervisor.Tell(new EscalationRaised("task-1", "reason", 1, DateTimeOffset.UtcNow, "coordinator"));
@@ -73,7 +73,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         // Register a coordinator ref by sending TaskStarted from TestActor
         supervisor.Tell(new TaskStarted("task-1", TaskState.Building, DateTimeOffset.UtcNow, "coordinator"));
@@ -98,7 +98,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         supervisor.Tell(new TaskStarted("task-1", TaskState.Building, DateTimeOffset.UtcNow, "coordinator"));
 
@@ -118,7 +118,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         supervisor.Tell(new TaskStarted("task-1", TaskState.Building, DateTimeOffset.UtcNow, "coordinator"));
 
@@ -141,7 +141,7 @@ public sealed class SupervisorActorTests : TestKit
     {
         var telemetry = CreateTelemetry();
         var supervisor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry)));
+            Props.Create(() => new SupervisorActor(_loggerFactory, telemetry, null)));
 
         // Subscribe to EventStream for circuit open events
         Sys.EventStream.Subscribe(TestActor, typeof(AdapterCircuitOpen));

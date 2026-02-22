@@ -19,7 +19,7 @@ public sealed class DispatcherActor : ReceiveActor
     private static readonly SupervisorStrategy Strategy = new OneForOneStrategy(
         maxNrOfRetries: 3,
         withinTimeRange: TimeSpan.FromMinutes(1),
-        localOnlyDecider: ex => Directive.Restart);
+        localOnlyDecider: ex => Directive.Stop);
 
     protected override SupervisorStrategy SupervisorStrategy() => Strategy;
 
