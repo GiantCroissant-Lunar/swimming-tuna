@@ -189,6 +189,22 @@ internal sealed record SubTaskFailed(
     string Error
 );
 
+// Dynamic topology: on-demand agent spawning (Phase 19)
+internal sealed record SpawnAgent(
+    SwarmRole[] Capabilities,
+    TimeSpan IdleTtl
+);
+
+internal sealed record AgentSpawned(
+    string AgentId,
+    IActorRef AgentRef
+);
+
+internal sealed record AgentRetired(
+    string AgentId,
+    string Reason
+);
+
 // Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
 // Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
 internal sealed record QualityConcern(
