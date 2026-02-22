@@ -44,27 +44,35 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 await EnsureSchemaAsync(client, cancellationToken);
             }
 
+            var parameters = new Dictionary<string, object?>
+            {
+                ["taskId"] = snapshot.TaskId,
+                ["title"] = snapshot.Title,
+                ["description"] = snapshot.Description,
+                ["status"] = snapshot.Status.ToString().ToLowerInvariant(),
+                ["createdAt"] = snapshot.CreatedAt.ToString("O"),
+                ["updatedAt"] = snapshot.UpdatedAt.ToString("O"),
+                ["planningOutput"] = snapshot.PlanningOutput,
+                ["buildOutput"] = snapshot.BuildOutput,
+                ["reviewOutput"] = snapshot.ReviewOutput,
+                ["summary"] = snapshot.Summary,
+                ["taskError"] = snapshot.Error
+            };
+
+            // Use deterministic delete+insert because ArcadeDB UPSERT index matching is strict with bound params.
             await ExecuteCommandAsync(
                 client,
-                "UPDATE SwarmTask SET " +
-                "title = :title, description = :description, status = :status, " +
+                "DELETE FROM SwarmTask WHERE taskId = :taskId",
+                new Dictionary<string, object?> { ["taskId"] = snapshot.TaskId },
+                cancellationToken);
+            await ExecuteCommandAsync(
+                client,
+                "INSERT INTO SwarmTask SET " +
+                "taskId = :taskId, title = :title, description = :description, status = :status, " +
                 "createdAt = :createdAt, updatedAt = :updatedAt, " +
                 "planningOutput = :planningOutput, buildOutput = :buildOutput, reviewOutput = :reviewOutput, " +
-                "summary = :summary, error = :error UPSERT WHERE taskId = :taskId",
-                new Dictionary<string, object?>
-                {
-                    ["taskId"] = snapshot.TaskId,
-                    ["title"] = snapshot.Title,
-                    ["description"] = snapshot.Description,
-                    ["status"] = snapshot.Status.ToString().ToLowerInvariant(),
-                    ["createdAt"] = snapshot.CreatedAt.UtcDateTime,
-                    ["updatedAt"] = snapshot.UpdatedAt.UtcDateTime,
-                    ["planningOutput"] = snapshot.PlanningOutput,
-                    ["buildOutput"] = snapshot.BuildOutput,
-                    ["reviewOutput"] = snapshot.ReviewOutput,
-                    ["summary"] = snapshot.Summary,
-                    ["error"] = snapshot.Error
-                },
+                "summary = :summary, taskError = :taskError",
+                parameters,
                 cancellationToken);
         }
         catch (Exception exception)
@@ -94,13 +102,13 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.title IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.description IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.status IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.createdAt IF NOT EXISTS DATETIME", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.updatedAt IF NOT EXISTS DATETIME", cancellationToken);
+            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.createdAt IF NOT EXISTS STRING", cancellationToken);
+            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.updatedAt IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.planningOutput IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.buildOutput IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.reviewOutput IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.summary IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.error IF NOT EXISTS STRING", cancellationToken);
+            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.taskError IF NOT EXISTS STRING", cancellationToken);
             await ExecuteCommandIgnoringFailureAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
 
             _schemaEnsured = true;

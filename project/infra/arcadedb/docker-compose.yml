@@ -1,0 +1,16 @@
+services:
+  arcadedb:
+    image: docker.io/arcadedata/arcadedb:${ARCADEDB_IMAGE_TAG:-25.9.1}
+    restart: unless-stopped
+    ports:
+      - ${HOST_BIND_IP:-127.0.0.1}:${ARCADEDB_HTTP_PORT:-2480}:2480
+      - ${HOST_BIND_IP:-127.0.0.1}:${ARCADEDB_BINARY_PORT:-2424}:2424
+    environment:
+      JAVA_OPTS: >-
+        -Darcadedb.server.rootPassword=${ARCADEDB_ROOT_PASSWORD:-playwithdata}
+        -Darcadedb.server.defaultDatabases=${ARCADEDB_DATABASE:-swarm_assistant}[root]
+    volumes:
+      - arcadedb_data:/home/arcadedb/databases
+
+volumes:
+  arcadedb_data:

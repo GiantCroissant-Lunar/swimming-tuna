@@ -144,6 +144,20 @@ docker compose --env-file env/local.env up -d
 docker compose --env-file env/local.env down
 ```
 
+## ArcadeDB Stack Commands (Phase 7)
+
+```bash
+cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb
+docker compose --env-file env/local.env up -d
+docker compose --env-file env/local.env down
+```
+
+Run end-to-end persistence verification:
+
+```bash
+/Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb/scripts/smoke-e2e.sh
+```
+
 ## Adapter Notes
 
 Update `config/swarm.config.json` command templates to match your installed tools.

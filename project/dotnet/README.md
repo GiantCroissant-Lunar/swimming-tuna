@@ -87,7 +87,7 @@ curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 - `GET /a2a/tasks/{taskId}`
 - `GET /a2a/tasks`
 - `TaskRegistry` captures lifecycle transitions and role outputs for both actor-driven and API-submitted tasks.
-- `ArcadeDbTaskMemoryWriter` persists snapshots as `SwarmTask` records using ArcadeDB command API upserts.
+- `ArcadeDbTaskMemoryWriter` persists snapshots as `SwarmTask` records using ArcadeDB command API delete+insert writes.
 - ArcadeDB runtime configuration:
 - `Runtime__ArcadeDbEnabled`
 - `Runtime__ArcadeDbHttpUrl`
@@ -95,6 +95,13 @@ curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 - `Runtime__ArcadeDbUser`
 - `Runtime__ArcadeDbPassword`
 - `Runtime__ArcadeDbAutoCreateSchema`
+
+Start ArcadeDB local stack before enabling runtime persistence:
+
+```bash
+cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb
+docker compose --env-file env/local.env up -d
+```
 
 Example task flow:
 
