@@ -1,0 +1,74 @@
+{
+  "runtime": {
+    "timeoutMs": 120000,
+    "maxTasksPerRun": 1
+  },
+  "paths": {
+    "tasks": "data/tasks.json",
+    "events": "data/events.jsonl"
+  },
+  "roles": {
+    "planner": ["copilot", "cline", "kimi", "local-echo"],
+    "builder": ["copilot", "cline", "kimi", "local-echo"],
+    "reviewer": ["copilot", "cline", "kimi", "local-echo"],
+    "finalizer": ["copilot", "cline", "kimi", "local-echo"]
+  },
+  "adapters": [
+    {
+      "id": "copilot",
+      "type": "command",
+      "label": "GitHub Copilot CLI",
+      "probe": {
+        "command": "copilot",
+        "args": ["--help"]
+      },
+      "execute": {
+        "command": "copilot",
+        "args": [
+          "--prompt",
+          "{{prompt}}",
+          "--allow-all-tools",
+          "--allow-all-paths",
+          "--stream",
+          "off",
+          "--no-color"
+        ],
+        "rejectOutputSubstrings": [
+          "deprecated in favor",
+          "No commands will be executed."
+        ]
+      }
+    },
+    {
+      "id": "cline",
+      "type": "command",
+      "label": "Cline CLI",
+      "probe": {
+        "command": "cline",
+        "args": ["--help"]
+      },
+      "execute": {
+        "command": "cline",
+        "args": ["{{prompt}}", "--oneshot", "--no-interactive", "--output-format", "plain"]
+      }
+    },
+    {
+      "id": "kimi",
+      "type": "command",
+      "label": "Kimi CLI",
+      "probe": {
+        "command": "kimi",
+        "args": ["--help"]
+      },
+      "execute": {
+        "command": "kimi",
+        "args": ["--prompt", "{{prompt}}"]
+      }
+    },
+    {
+      "id": "local-echo",
+      "type": "internal",
+      "label": "Local Echo Fallback"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "swimming-tuna-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI-first swarm assistant MVP (Copilot/Cline/Kimi priority)",
+  "scripts": {
+    "init": "node src/index.mjs init",
+    "run": "node src/index.mjs run",
+    "status": "node src/index.mjs status"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
