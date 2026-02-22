@@ -141,7 +141,17 @@ tasks:
           echo "Error: Invalid skill name '{{.SKILL}}'. Only alphanumeric characters, hyphens, underscores, and '/' are allowed." >&2
           exit 1
         fi
-        cat ".agent/skills/{{.SKILL}}/SKILL.md"
+        SKILL_BASE=".agent/skills/{{.SKILL}}"
+        if [ -d "$SKILL_BASE" ]; then
+          cat "$SKILL_BASE/SKILL.md"
+        elif [ -f "${SKILL_BASE}.md" ]; then
+          cat "${SKILL_BASE}.md"
+        elif [ -f "$SKILL_BASE" ]; then
+          cat "$SKILL_BASE"
+        else
+          echo "Error: Skill '{{.SKILL}}' not found." >&2
+          exit 1
+        fi
     requires:
       vars: [SKILL]
 

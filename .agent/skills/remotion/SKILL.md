@@ -37,36 +37,12 @@ Remotion is a framework for creating videos programmatically using React. It all
 
 Read individual rule files for detailed explanations and code examples:
 
-- [rules/3d.md](rules/3d.md) - 3D content using Three.js and React Three Fiber
 - [rules/animations.md](rules/animations.md) - Fundamental animation skills
-- [rules/assets.md](rules/assets.md) - Importing images, videos, audio, and fonts
-- [rules/audio.md](rules/audio.md) - Using audio and sound
-- [rules/calculate-metadata.md](rules/calculate-metadata.md) - Dynamically set composition duration, dimensions, props
-- [rules/can-decode.md](rules/can-decode.md) - Check if a video can be decoded
-- [rules/charts.md](rules/charts.md) - Chart and data visualization patterns
 - [rules/compositions.md](rules/compositions.md) - Defining compositions, stills, folders
-- [rules/extract-frames.md](rules/extract-frames.md) - Extract frames at specific timestamps
-- [rules/fonts.md](rules/fonts.md) - Loading Google Fonts and local fonts
-- [rules/get-audio-duration.md](rules/get-audio-duration.md) - Get audio duration
-- [rules/get-video-dimensions.md](rules/get-video-dimensions.md) - Get video dimensions
-- [rules/get-video-duration.md](rules/get-video-duration.md) - Get video duration
-- [rules/gifs.md](rules/gifs.md) - Displaying GIFs synchronized with timeline
-- [rules/images.md](rules/images.md) - Embedding images using Img component
-- [rules/light-leaks.md](rules/light-leaks.md) - Light leak overlay effects
-- [rules/lottie.md](rules/lottie.md) - Embedding Lottie animations
-- [rules/maps.md](rules/maps.md) - Add maps using Mapbox
-- [rules/measuring-dom-nodes.md](rules/measuring-dom-nodes.md) - Measure DOM element dimensions
-- [rules/measuring-text.md](rules/measuring-text.md) - Measure text dimensions, fitting text
-- [rules/parameters.md](rules/parameters.md) - Make videos parametrizable with Zod schema
 - [rules/sequencing.md](rules/sequencing.md) - Sequencing patterns
-- [rules/subtitles.md](rules/subtitles.md) - Captions and subtitles
-- [rules/tailwind.md](rules/tailwind.md) - Using TailwindCSS
-- [rules/text-animations.md](rules/text-animations.md) - Typography and text animations
 - [rules/timing.md](rules/timing.md) - Interpolation curves
-- [rules/transitions.md](rules/transitions.md) - Scene transition patterns
-- [rules/transparent-videos.md](rules/transparent-videos.md) - Rendering with transparency
-- [rules/trimming.md](rules/trimming.md) - Trimming patterns
-- [rules/videos.md](rules/videos.md) - Embedding videos
+
+Additional rules are available in the [Remotion Skills Repository](https://github.com/remotion-dev/skills/tree/main/skills/remotion/rules).
 
 ## Best Practices
 
