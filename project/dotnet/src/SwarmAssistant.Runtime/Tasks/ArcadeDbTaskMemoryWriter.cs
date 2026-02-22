@@ -181,6 +181,14 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             return;
         }
 
+        // RFC 7617: the username must not contain a colon.
+        if (_options.ArcadeDbUser.Contains(':', StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "ArcadeDbUser contains a colon which is invalid in an HTTP Basic Auth username (RFC 7617). " +
+                "Authentication may fail.");
+        }
+
         var credentials = $"{_options.ArcadeDbUser}:{_options.ArcadeDbPassword}";
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(credentials));
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encoded);

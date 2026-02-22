@@ -191,7 +191,7 @@ if (options.AgUiEnabled)
             source,
             items
         });
-    });
+    }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/memory/tasks/{taskId}", async (
         string taskId,
@@ -207,12 +207,12 @@ if (options.AgUiEnabled)
         }
 
         return Results.Ok(MapTaskSnapshot(snapshot));
-    });
+    }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/ag-ui/recent", (int? count, UiEventStream stream) =>
     {
         return Results.Ok(stream.GetRecent(count ?? 50));
-    });
+    }).AddEndpointFilter(requireApiKey);
 
     app.MapPost("/ag-ui/actions", async (
         UiActionRequest action,
@@ -363,7 +363,7 @@ if (options.AgUiEnabled)
             await context.Response.WriteAsync($"data: {payload}\n\n", cancellationToken);
             await context.Response.Body.FlushAsync(cancellationToken);
         }
-    });
+    }).AddEndpointFilter(requireApiKey);
 }
 
 if (options.A2AEnabled)
@@ -419,7 +419,7 @@ if (options.A2AEnabled)
         }
 
         return Results.Ok(MapTaskSnapshot(snapshot));
-    });
+    }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/a2a/tasks", (int? limit, TaskRegistry taskRegistry) =>
     {
@@ -433,7 +433,7 @@ if (options.A2AEnabled)
             error = snapshot.Error
         });
         return Results.Ok(items);
-    });
+    }).AddEndpointFilter(requireApiKey);
 }
 
 app.Run();

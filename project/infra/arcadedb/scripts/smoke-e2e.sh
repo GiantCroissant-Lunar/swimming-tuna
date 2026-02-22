@@ -23,13 +23,21 @@ trap cleanup EXIT
 docker compose --env-file "${ARCADEDB_DIR}/env/local.env" -f "${ARCADEDB_DIR}/docker-compose.yml" down -v >/dev/null 2>&1 || true
 docker compose --env-file "${ARCADEDB_DIR}/env/local.env" -f "${ARCADEDB_DIR}/docker-compose.yml" up -d
 
+arcadedb_ready="false"
 for _ in {1..60}; do
-  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${ARCADEDB_HTTP_PORT}/api/v1/ready" || true)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${ARCADEDB_HTTP_PORT}/api/v1/ready" 2>/dev/null)" || true
   if [[ "${code}" == "204" || "${code}" == "200" ]]; then
+    arcadedb_ready="true"
     break
   fi
   sleep 1
 done
+
+if [[ "${arcadedb_ready}" != "true" ]]; then
+  echo "ArcadeDB did not become healthy in time (last http_code=${code:-none})"
+  docker compose --env-file "${ARCADEDB_DIR}/env/local.env" -f "${ARCADEDB_DIR}/docker-compose.yml" logs --tail=40 || true
+  exit 1
+fi
 
 DOTNET_ENVIRONMENT=Local \
 Runtime__A2AEnabled=true \
@@ -42,13 +50,21 @@ Runtime__ArcadeDbPassword="${ARCADEDB_ROOT_PASSWORD}" \
 dotnet run --project "${RUNTIME_PROJECT}" --no-launch-profile >"${RUNTIME_LOG}" 2>&1 &
 RUNTIME_PID=$!
 
+runtime_ready="false"
 for _ in {1..60}; do
-  code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5080/healthz || true)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5080/healthz 2>/dev/null)" || true
   if [[ "${code}" == "200" ]]; then
+    runtime_ready="true"
     break
   fi
   sleep 1
 done
+
+if [[ "${runtime_ready}" != "true" ]]; then
+  echo "Runtime did not become healthy in time (last http_code=${code:-none})"
+  tail -n 40 "${RUNTIME_LOG}" || true
+  exit 1
+fi
 
 submit_code="$(curl -s -o /tmp/swarm_arcadedb_submit.json -w '%{http_code}' \
   -X POST http://127.0.0.1:5080/a2a/tasks \

@@ -21,7 +21,11 @@ public sealed class RuntimeOptions
     public bool ArcadeDbEnabled { get; init; } = false;
     public string ArcadeDbHttpUrl { get; init; } = "http://127.0.0.1:2480";
     public string ArcadeDbDatabase { get; init; } = "swarm_assistant";
-    public string ArcadeDbUser { get; init; } = "root";
+    /// <summary>
+    /// ArcadeDB username. Leave empty for anonymous access or set to a restricted
+    /// application-scoped account. Avoid using the root admin account in production.
+    /// </summary>
+    public string ArcadeDbUser { get; init; } = string.Empty;
     public string ArcadeDbPassword { get; init; } = string.Empty;
     public bool ArcadeDbAutoCreateSchema { get; init; } = true;
     public bool MemoryBootstrapEnabled { get; init; } = true;
@@ -34,7 +38,12 @@ public sealed class RuntimeOptions
     public string? LangfuseSecretKey { get; init; }
     public string? LangfuseOtlpEndpoint { get; init; }
 
-    public bool AutoSubmitDemoTask { get; init; } = true;
+    /// <summary>
+    /// When true, submits a demo task at startup. This is a development convenience
+    /// flag and must be explicitly opted in; it defaults to false to avoid
+    /// unintentional task submission in staging and production environments.
+    /// </summary>
+    public bool AutoSubmitDemoTask { get; init; } = false;
     public string DemoTaskTitle { get; init; } = "Phase 3 agent framework execution";
     public string DemoTaskDescription { get; init; } = "Validate coordinator-worker-reviewer lifecycle through Microsoft Agent Framework workflows.";
 
