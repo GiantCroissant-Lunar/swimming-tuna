@@ -20,6 +20,8 @@ tasks:
       - echo "Installing pre-commit hooks..."
       - pre-commit install
       - echo "Installing tools..."
+      - dotnet tool install --global GitVersion.Tool
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
       - go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
       - go install github.com/goreleaser/goreleaser/v2@latest
 
@@ -37,7 +39,7 @@ tasks:
     desc: Build the project
     cmds:
       - mkdir -p {{.BUILD_DIR}}
-      - go build -ldflags "-s -w -X main.version=$(git describe --tags --always)" -o {{.BUILD_DIR}}/{{.PROJECT_NAME}} .
+      - go build -ldflags "-s -w -X main.version=$(gitversion /showvariable SemVer)" -o {{.BUILD_DIR}}/{{.PROJECT_NAME}} .
 
   clean:
     desc: Clean build artifacts
@@ -54,8 +56,8 @@ tasks:
     cmds:
       - goreleaser release --clean
     preconditions:
-      - sh: git diff-index --quiet HEAD
-        msg: "Working directory is not clean. Please commit your changes first."
+      - sh: "[ -z \"$(git status --porcelain)\" ]"
+        msg: "Working directory is not clean (staged, unstaged, or untracked changes). Please commit or stash your changes first."
 
   changelog:
     desc: Generate changelog

@@ -14,12 +14,11 @@ branches:
     is-release-branch: false
     is-main-branch: true
   feature:
-    regex: ^feat(ure)?[/-]|^feature[/-]
+    regex: ^feat(ure)?[/-]
     tag: alpha
     increment: Inherit
     source-branches:
       - main
-      - develop
     prevent-increment-of-merged-branch-version: false
     track-merge-target: false
     tracks-release-branches: false
@@ -31,7 +30,6 @@ branches:
     increment: Inherit
     source-branches:
       - main
-      - develop
     prevent-increment-of-merged-branch-version: false
     track-merge-target: false
     tracks-release-branches: false
@@ -43,7 +41,6 @@ branches:
     increment: Patch
     source-branches:
       - main
-      - support
     prevent-increment-of-merged-branch-version: false
     track-merge-target: false
     tracks-release-branches: false
