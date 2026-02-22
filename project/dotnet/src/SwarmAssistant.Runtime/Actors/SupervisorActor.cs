@@ -19,6 +19,7 @@ public sealed class SupervisorActor : ReceiveActor
 
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
+    private readonly IReadOnlyList<string> _trackedAdapterIds;
 
     // Counters for snapshot
     private int _started;
@@ -32,10 +33,11 @@ public sealed class SupervisorActor : ReceiveActor
     private readonly Dictionary<string, int> _adapterFailureCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _openCircuits = new(StringComparer.OrdinalIgnoreCase);
 
-    public SupervisorActor(ILoggerFactory loggerFactory, RuntimeTelemetry telemetry)
+    public SupervisorActor(ILoggerFactory loggerFactory, RuntimeTelemetry telemetry, IReadOnlyList<string>? trackedAdapterIds = null)
     {
         _telemetry = telemetry;
         _logger = loggerFactory.CreateLogger<SupervisorActor>();
+        _trackedAdapterIds = trackedAdapterIds ?? ["copilot", "cline", "kimi"];
 
         Receive<TaskStarted>(OnTaskStarted);
         Receive<TaskResult>(OnTaskResult);
@@ -108,6 +110,9 @@ public sealed class SupervisorActor : ReceiveActor
         activity?.SetStatus(ActivityStatusCode.Error, message.Error);
 
         _failed += 1;
+        // Clean up tracking state for permanently failed tasks
+        _taskCoordinators.Remove(message.TaskId);
+        _taskRetryCounts.Remove(message.TaskId);
         _logger.LogWarning(
             "Task failed taskId={TaskId} status={Status} actor={ActorName} error={Error}",
             message.TaskId,
@@ -181,6 +186,8 @@ public sealed class SupervisorActor : ReceiveActor
         }
 
         activity?.SetTag("supervisor.decision", "accept_failure");
+        _taskCoordinators.Remove(report.TaskId);
+        _taskRetryCounts.Remove(report.TaskId);
         _logger.LogWarning(
             "Supervisor accepted failure taskId={TaskId} role={Role} totalRetries={TotalRetries}",
             report.TaskId,
@@ -197,11 +204,22 @@ public sealed class SupervisorActor : ReceiveActor
     {
         // Extract adapter names mentioned in failure messages.
         // SubscriptionCliRoleExecutor errors follow the pattern: "adapterId: reason"
-        foreach (var adapterId in new[] { "copilot", "cline", "kimi" })
+        foreach (var adapterId in _trackedAdapterIds)
         {
             if (!error.Contains(adapterId, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
+            }
+
+            // Check if an existing circuit has expired and reset it
+            if (_openCircuits.TryGetValue(adapterId, out var existingExpiry)
+                && DateTimeOffset.UtcNow >= existingExpiry)
+            {
+                _openCircuits.Remove(adapterId);
+                _adapterFailureCounts.Remove(adapterId);
+                _logger.LogInformation(
+                    "Adapter circuit closed (expired) adapterId={AdapterId}", adapterId);
+                Context.System.EventStream.Publish(new AdapterCircuitClosed(adapterId));
             }
 
             _adapterFailureCounts.TryGetValue(adapterId, out var count);

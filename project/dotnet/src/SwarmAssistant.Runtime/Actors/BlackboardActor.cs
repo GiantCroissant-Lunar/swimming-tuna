@@ -14,6 +14,7 @@ public sealed class BlackboardActor : ReceiveActor
 
         Receive<UpdateBlackboard>(Handle);
         Receive<GetBlackboardContext>(Handle);
+        Receive<RemoveBlackboard>(Handle);
     }
 
     private void Handle(UpdateBlackboard message)
@@ -36,13 +37,22 @@ public sealed class BlackboardActor : ReceiveActor
     {
         if (_boards.TryGetValue(message.TaskId, out var board))
         {
-            Sender.Tell(new BlackboardContext(message.TaskId, board.AsReadOnly()));
+            // Return a copy to avoid data races: AsReadOnly() shares the live instance
+            Sender.Tell(new BlackboardContext(
+                message.TaskId,
+                new Dictionary<string, string>(board, StringComparer.Ordinal)));
         }
         else
         {
             Sender.Tell(new BlackboardContext(
                 message.TaskId,
-                new Dictionary<string, string>().AsReadOnly()));
+                new Dictionary<string, string>()));
         }
+    }
+
+    private void Handle(RemoveBlackboard message)
+    {
+        _boards.Remove(message.TaskId);
+        _logger.LogDebug("Blackboard removed taskId={TaskId}", message.TaskId);
     }
 }

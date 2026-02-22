@@ -6,6 +6,7 @@ namespace SwarmAssistant.Runtime.Planning;
 public sealed class WorldState : IWorldState, IEquatable<WorldState>
 {
     private readonly FrozenDictionary<WorldKey, bool> _state;
+    private readonly int _hashCode;
 
     public WorldState()
         : this(FrozenDictionary<WorldKey, bool>.Empty)
@@ -15,6 +16,19 @@ public sealed class WorldState : IWorldState, IEquatable<WorldState>
     private WorldState(FrozenDictionary<WorldKey, bool> state)
     {
         _state = state;
+        _hashCode = ComputeHashCode(state);
+    }
+
+    private static int ComputeHashCode(FrozenDictionary<WorldKey, bool> state)
+    {
+        var hash = new HashCode();
+        foreach (var (key, value) in state.OrderBy(kv => kv.Key))
+        {
+            hash.Add(key);
+            hash.Add(value);
+        }
+
+        return hash.ToHashCode();
     }
 
     public bool Get(WorldKey key) => _state.TryGetValue(key, out var value) && value;
@@ -85,17 +99,7 @@ public sealed class WorldState : IWorldState, IEquatable<WorldState>
 
     public override bool Equals(object? obj) => Equals(obj as WorldState);
 
-    public override int GetHashCode()
-    {
-        var hash = new HashCode();
-        foreach (var (key, value) in _state.OrderBy(kv => kv.Key))
-        {
-            hash.Add(key);
-            hash.Add(value);
-        }
-
-        return hash.ToHashCode();
-    }
+    public override int GetHashCode() => _hashCode;
 
     public override string ToString()
     {

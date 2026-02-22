@@ -106,7 +106,7 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
-    public async Task ConcurrencySemaphore_ReleasesOnCancellation()
+    public async Task ConcurrencySemaphore_ReleasesAfterCompletion()
     {
         var options = new RuntimeOptions
         {
