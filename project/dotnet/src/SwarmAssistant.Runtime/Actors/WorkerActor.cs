@@ -8,21 +8,25 @@ namespace SwarmAssistant.Runtime.Actors;
 public sealed class WorkerActor : ReceiveActor
 {
     private readonly RuntimeOptions _options;
+    private readonly AgentFrameworkRoleEngine _agentFrameworkRoleEngine;
     private readonly ILogger _logger;
 
-    public WorkerActor(RuntimeOptions options, ILoggerFactory loggerFactory)
+    public WorkerActor(RuntimeOptions options, ILoggerFactory loggerFactory, AgentFrameworkRoleEngine agentFrameworkRoleEngine)
     {
         _options = options;
+        _agentFrameworkRoleEngine = agentFrameworkRoleEngine;
         _logger = loggerFactory.CreateLogger<WorkerActor>();
 
-        Receive<ExecuteRoleTask>(Handle);
+        ReceiveAsync<ExecuteRoleTask>(HandleAsync);
     }
 
-    private void Handle(ExecuteRoleTask command)
+    private async Task HandleAsync(ExecuteRoleTask command)
     {
+        var replyTo = Sender;
+
         if (command.Role is not SwarmRole.Planner and not SwarmRole.Builder)
         {
-            Sender.Tell(new RoleTaskFailed(
+            replyTo.Tell(new RoleTaskFailed(
                 command.TaskId,
                 command.Role,
                 $"WorkerActor does not process role {command.Role}",
@@ -32,7 +36,7 @@ public sealed class WorkerActor : ReceiveActor
 
         if (_options.SimulateBuilderFailure && command.Role == SwarmRole.Builder)
         {
-            Sender.Tell(new RoleTaskFailed(
+            replyTo.Tell(new RoleTaskFailed(
                 command.TaskId,
                 command.Role,
                 "Simulated builder failure for phase testing.",
@@ -40,20 +44,30 @@ public sealed class WorkerActor : ReceiveActor
             return;
         }
 
-        var output = command.Role switch
+        try
         {
-            SwarmRole.Planner =>
-                $"Plan generated for '{command.Title}': define scope, implement minimum slice, validate, and report risks.",
-            SwarmRole.Builder =>
-                $"Build output for '{command.Title}': implemented from plan '{command.PlanningOutput ?? "(none)"}'.",
-            _ => "Unsupported role"
-        };
+            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
 
-        _logger.LogInformation(
-            "Worker role={Role} completed taskId={TaskId}",
-            command.Role,
-            command.TaskId);
+            _logger.LogInformation(
+                "Worker role={Role} completed taskId={TaskId} viaAgentFramework=true",
+                command.Role,
+                command.TaskId);
 
-        Sender.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow));
+            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow));
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Worker role={Role} failed taskId={TaskId} viaAgentFramework=true",
+                command.Role,
+                command.TaskId);
+
+            replyTo.Tell(new RoleTaskFailed(
+                command.TaskId,
+                command.Role,
+                $"Agent Framework execution failed: {exception.Message}",
+                DateTimeOffset.UtcNow));
+        }
     }
 }

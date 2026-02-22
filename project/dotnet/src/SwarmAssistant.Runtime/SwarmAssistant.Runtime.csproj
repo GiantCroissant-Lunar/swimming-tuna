@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Akka" Version="1.5.32" />
+    <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.0.0-preview.251219.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
   </ItemGroup>
 

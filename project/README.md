@@ -11,7 +11,7 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology (Phase 2).
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution (Phase 3).
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 
 ## JavaScript MVP Commands
@@ -24,7 +24,7 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 2)
+## .NET Runtime Commands (Phase 3)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
@@ -45,6 +45,7 @@ Runtime config includes:
 - `DemoTaskDescription`
 - `SimulateBuilderFailure`
 - `SimulateReviewerFailure`
+- `AgentFrameworkExecutionMode`
 
 ## Langfuse Stack Commands (Phase 1)
 

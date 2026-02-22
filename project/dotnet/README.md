@@ -1,9 +1,9 @@
-# SwarmAssistant .NET Runtime (Phase 2)
+# SwarmAssistant .NET Runtime (Phase 3)
 
 ## Projects
 
 - `src/SwarmAssistant.Contracts`: shared task and messaging contracts.
-- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology.
+- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology and Agent Framework role execution.
 - `tests/SwarmAssistant.Runtime.Tests`: lifecycle/state-machine tests.
 
 ## Actor Topology (Phase 2)
@@ -14,6 +14,12 @@
 - `SupervisorActor`: receives task events, failures, and escalations.
 
 Lifecycle: `queued -> planning -> building -> reviewing -> done|blocked`.
+
+## Agent Framework Integration (Phase 3)
+
+- Role execution path is implemented with `Microsoft.Agents.AI.Workflows`.
+- `AgentFrameworkRoleEngine` runs each role via `InProcessExecution.StreamAsync(...)`.
+- No provider API key is required for this phase; workflow executors are deterministic and local.
 
 ## Build
 
@@ -42,4 +48,4 @@ From `Runtime` config:
 
 ## Remaining Scope
 
-Agent Framework execution integration and Langfuse tracing hooks are planned for later phases.
+Langfuse tracing hooks and provider-backed model execution adapters are planned for later phases.

@@ -31,6 +31,12 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `TaskFailed`
 - `EscalationRaised`
 
+## Agent Framework Runtime (Phase 3)
+
+- `dotnet/src/SwarmAssistant.Runtime/Actors/AgentFrameworkRoleEngine.cs` executes role tasks through `Microsoft.Agents.AI.Workflows`.
+- `WorkerActor` and `ReviewerActor` call the Agent Framework engine instead of generating role text inline.
+- Execution mode is configured through `Runtime.AgentFrameworkExecutionMode` (`in-process-workflow` for current MVP).
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:

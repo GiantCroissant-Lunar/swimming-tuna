@@ -7,6 +7,7 @@ public sealed class RuntimeOptions
     public string Profile { get; init; } = "local";
     public string RoleSystem { get; init; } = "akka";
     public string AgentExecution { get; init; } = "microsoft-agent-framework";
+    public string AgentFrameworkExecutionMode { get; init; } = "in-process-workflow";
     public string SandboxMode { get; init; } = "docker";
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;

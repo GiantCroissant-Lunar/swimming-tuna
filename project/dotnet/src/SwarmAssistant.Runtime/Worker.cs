@@ -35,9 +35,14 @@ public sealed class Worker : BackgroundService
 
         _actorSystem = ActorSystem.Create("swarm-assistant-system", config);
 
+        var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_loggerFactory);
         var supervisor = _actorSystem.ActorOf(Props.Create(() => new SupervisorActor(_loggerFactory)), "supervisor");
-        var workerActor = _actorSystem.ActorOf(Props.Create(() => new WorkerActor(_options, _loggerFactory)), "worker");
-        var reviewerActor = _actorSystem.ActorOf(Props.Create(() => new ReviewerActor(_options, _loggerFactory)), "reviewer");
+        var workerActor = _actorSystem.ActorOf(
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine)),
+            "worker");
+        var reviewerActor = _actorSystem.ActorOf(
+            Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine)),
+            "reviewer");
         var coordinator = _actorSystem.ActorOf(
             Props.Create(() => new CoordinatorActor(workerActor, reviewerActor, supervisor, _loggerFactory)),
             "coordinator");
