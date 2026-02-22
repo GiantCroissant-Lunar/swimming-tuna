@@ -32,4 +32,40 @@ internal static class RolePromptFactory
             _ => $"Unsupported role {command.Role}"
         };
     }
+
+    public static string BuildOrchestratorPrompt(
+        string taskId,
+        string title,
+        string description,
+        string goapContext,
+        IReadOnlyDictionary<string, string>? blackboardEntries)
+    {
+        var lines = new List<string>
+        {
+            $"You are the orchestrator agent for task '{title}'.",
+            $"Task ID: {taskId}",
+            $"Task description: {description}",
+            string.Empty,
+            goapContext,
+            string.Empty,
+        };
+
+        if (blackboardEntries is { Count: > 0 })
+        {
+            lines.Add("Task history:");
+            foreach (var (key, value) in blackboardEntries)
+            {
+                lines.Add($"  {key}: {value}");
+            }
+
+            lines.Add(string.Empty);
+        }
+
+        lines.Add("What should happen next? Choose ONE action from the GOAP plan and explain why.");
+        lines.Add("Respond in this format:");
+        lines.Add("ACTION: <action name>");
+        lines.Add("REASON: <brief explanation>");
+
+        return string.Join(Environment.NewLine, lines);
+    }
 }

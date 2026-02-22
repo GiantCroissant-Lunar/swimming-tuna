@@ -6,7 +6,8 @@ public enum SwarmRole
 {
     Planner,
     Builder,
-    Reviewer
+    Reviewer,
+    Orchestrator
 }
 
 public sealed record TaskAssigned(

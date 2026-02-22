@@ -89,17 +89,22 @@ public sealed class Worker : BackgroundService
         var reviewerActor = _actorSystem.ActorOf(
             Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
             "reviewer");
-        var coordinator = _actorSystem.ActorOf(
-            Props.Create(() => new CoordinatorActor(
+        var blackboardActor = _actorSystem.ActorOf(
+            Props.Create(() => new BlackboardActor(_loggerFactory)),
+            "blackboard");
+        var dispatcher = _actorSystem.ActorOf(
+            Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisor,
+                blackboardActor,
+                agentFrameworkRoleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry)),
-            "coordinator");
-        _actorRegistry.SetCoordinator(coordinator);
+            "dispatcher");
+        _actorRegistry.SetDispatcher(dispatcher);
 
         _supervisor = supervisor;
         await RestoreTaskMemorySnapshots(stoppingToken);
@@ -111,17 +116,7 @@ public sealed class Worker : BackgroundService
                 _options.DemoTaskTitle,
                 _options.DemoTaskDescription,
                 DateTimeOffset.UtcNow);
-            coordinator.Tell(task);
-
-            _uiEvents.Publish(
-                type: "agui.task.submitted",
-                taskId: task.TaskId,
-                payload: new
-                {
-                    task.TaskId,
-                    task.Title,
-                    task.Description
-                });
+            dispatcher.Tell(task);
 
             _logger.LogInformation("Demo task submitted taskId={TaskId}", task.TaskId);
         }
@@ -142,7 +137,7 @@ public sealed class Worker : BackgroundService
         }
         finally
         {
-            _actorRegistry.ClearCoordinator();
+            _actorRegistry.ClearDispatcher();
 
             if (_actorSystem is not null)
             {
