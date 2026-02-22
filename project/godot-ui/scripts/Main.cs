@@ -24,11 +24,14 @@ public partial class Main : Control
     private Label? _statusLabel;
     private LineEdit? _taskTitleInput;
     private LineEdit? _taskDescriptionInput;
+    private ItemList? _taskList;
     private VBoxContainer? _componentContainer;
     private RichTextLabel? _logOutput;
 
+    private readonly List<string> _taskListTaskIds = [];
     private long _lastSequence;
     private string? _activeTaskId;
+    private string? _pendingSelectionRefreshTaskId;
 
     public override void _Ready()
     {
@@ -103,10 +106,44 @@ public partial class Main : Control
         loadMemoryButton.Pressed += OnLoadMemoryPressed;
         actionRow.AddChild(loadMemoryButton);
 
+        var bodySplit = new HSplitContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        layout.AddChild(bodySplit);
+
+        var taskPane = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(320, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        bodySplit.AddChild(taskPane);
+
+        var taskPaneLabel = new Label { Text = "Tasks" };
+        taskPane.AddChild(taskPaneLabel);
+
+        _taskList = new ItemList
+        {
+            AllowReselect = true,
+            SelectMode = ItemList.SelectModeEnum.Single,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        _taskList.ItemSelected += OnTaskListItemSelected;
+        taskPane.AddChild(_taskList);
+
+        var detailsPane = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
+        };
+        bodySplit.AddChild(detailsPane);
+
         _componentContainer = new VBoxContainer();
         _componentContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _componentContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        layout.AddChild(_componentContainer);
+        detailsPane.AddChild(_componentContainer);
 
         _logOutput = new RichTextLabel
         {
@@ -115,7 +152,7 @@ public partial class Main : Control
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill
         };
-        layout.AddChild(_logOutput);
+        detailsPane.AddChild(_logOutput);
     }
 
     private void SetupNetworking()
@@ -254,6 +291,13 @@ public partial class Main : Control
                 {
                     _activeTaskId = submittedTaskId.GetString();
                     _statusLabel!.Text = $"Status: task submitted ({_activeTaskId})";
+
+                    var title = payload.TryGetProperty("title", out var titleElement) &&
+                                titleElement.ValueKind == JsonValueKind.String
+                        ? titleElement.GetString() ?? string.Empty
+                        : string.Empty;
+                    UpsertTaskListItem(_activeTaskId!, title, "queued", updatedAt: null);
+                    SelectTaskInList(_activeTaskId!);
                 }
                 break;
 
@@ -295,7 +339,22 @@ public partial class Main : Control
                     if (taskElement.TryGetProperty("status", out var statusElement) &&
                         statusElement.ValueKind == JsonValueKind.String)
                     {
-                        _statusLabel!.Text = $"Status: {statusElement.GetString() ?? "unknown"}";
+                        var status = statusElement.GetString() ?? "unknown";
+                        _statusLabel!.Text = $"Status: {status}";
+
+                        var title = taskElement.TryGetProperty("title", out var titleElement) &&
+                                    titleElement.ValueKind == JsonValueKind.String
+                            ? titleElement.GetString() ?? string.Empty
+                            : string.Empty;
+                        var updatedAt = taskElement.TryGetProperty("updatedAt", out var updatedAtElement)
+                            ? updatedAtElement.ToString()
+                            : null;
+
+                        if (!string.IsNullOrWhiteSpace(_activeTaskId))
+                        {
+                            UpsertTaskListItem(_activeTaskId!, title, status, updatedAt);
+                            SelectTaskInList(_activeTaskId!);
+                        }
                     }
                 }
                 break;
@@ -318,40 +377,7 @@ public partial class Main : Control
                 {
                     break;
                 }
-
-                var shown = 0;
-                foreach (var item in itemsElement.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.Object)
-                    {
-                        continue;
-                    }
-
-                    var taskId = item.TryGetProperty("taskId", out var idElement) &&
-                                 idElement.ValueKind == JsonValueKind.String
-                        ? idElement.GetString() ?? string.Empty
-                        : string.Empty;
-                    var status = item.TryGetProperty("status", out var statusElement) &&
-                                 statusElement.ValueKind == JsonValueKind.String
-                        ? statusElement.GetString() ?? "unknown"
-                        : "unknown";
-                    var title = item.TryGetProperty("title", out var titleElement) &&
-                                titleElement.ValueKind == JsonValueKind.String
-                        ? titleElement.GetString() ?? string.Empty
-                        : string.Empty;
-
-                    if (string.IsNullOrWhiteSpace(_activeTaskId) && !string.IsNullOrWhiteSpace(taskId))
-                    {
-                        _activeTaskId = taskId;
-                    }
-
-                    AppendLog($"[memory-task] {taskId} {status} {title}");
-                    shown++;
-                    if (shown >= 8)
-                    {
-                        break;
-                    }
-                }
+                ReplaceTaskListFromMemory(itemsElement);
                 break;
 
             case "agui.memory.bootstrap":
@@ -518,6 +544,26 @@ public partial class Main : Control
         });
     }
 
+    private void OnTaskListItemSelected(long index)
+    {
+        if (_taskList is null || index < 0 || index >= _taskListTaskIds.Count)
+        {
+            return;
+        }
+
+        var taskId = _taskListTaskIds[(int)index];
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            return;
+        }
+
+        _activeTaskId = taskId;
+        _pendingSelectionRefreshTaskId = taskId;
+        _statusLabel!.Text = $"Status: selected ({taskId})";
+
+        SendAction("request_snapshot", taskId: taskId);
+    }
+
     private void SendAction(
         string actionId,
         Dictionary<string, object?>? actionPayload = null,
@@ -582,6 +628,14 @@ public partial class Main : Control
             }
 
             AppendLog($"[action] Sent (http={responseCode}).");
+
+            if (!string.IsNullOrWhiteSpace(_pendingSelectionRefreshTaskId))
+            {
+                var taskId = _pendingSelectionRefreshTaskId;
+                _pendingSelectionRefreshTaskId = null;
+                SendAction("refresh_surface", taskId: taskId);
+            }
+
             return;
         }
 
@@ -596,5 +650,112 @@ public partial class Main : Control
         }
 
         _logOutput.AppendText($"{line}\n");
+    }
+
+    private void ReplaceTaskListFromMemory(JsonElement items)
+    {
+        if (_taskList is null)
+        {
+            return;
+        }
+
+        _taskList.Clear();
+        _taskListTaskIds.Clear();
+
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var taskId = item.TryGetProperty("taskId", out var idElement) &&
+                         idElement.ValueKind == JsonValueKind.String
+                ? idElement.GetString() ?? string.Empty
+                : string.Empty;
+            if (string.IsNullOrWhiteSpace(taskId))
+            {
+                continue;
+            }
+
+            var status = item.TryGetProperty("status", out var statusElement) &&
+                         statusElement.ValueKind == JsonValueKind.String
+                ? statusElement.GetString() ?? "unknown"
+                : "unknown";
+            var title = item.TryGetProperty("title", out var titleElement) &&
+                        titleElement.ValueKind == JsonValueKind.String
+                ? titleElement.GetString() ?? string.Empty
+                : string.Empty;
+            var updatedAt = item.TryGetProperty("updatedAt", out var updatedAtElement)
+                ? updatedAtElement.ToString()
+                : null;
+
+            _taskListTaskIds.Add(taskId);
+            _taskList.AddItem(FormatTaskListItem(taskId, title, status, updatedAt));
+
+            if (string.IsNullOrWhiteSpace(_activeTaskId))
+            {
+                _activeTaskId = taskId;
+            }
+
+            AppendLog($"[memory-task] {taskId} {status} {title}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_activeTaskId))
+        {
+            SelectTaskInList(_activeTaskId);
+        }
+    }
+
+    private void UpsertTaskListItem(string taskId, string title, string status, string? updatedAt)
+    {
+        if (_taskList is null || string.IsNullOrWhiteSpace(taskId))
+        {
+            return;
+        }
+
+        var displayText = FormatTaskListItem(taskId, title, status, updatedAt);
+        var index = _taskListTaskIds.IndexOf(taskId);
+        if (index >= 0)
+        {
+            _taskList.SetItemText(index, displayText);
+            return;
+        }
+
+        _taskListTaskIds.Add(taskId);
+        _taskList.AddItem(displayText);
+    }
+
+    private void SelectTaskInList(string taskId)
+    {
+        if (_taskList is null || string.IsNullOrWhiteSpace(taskId))
+        {
+            return;
+        }
+
+        var index = _taskListTaskIds.IndexOf(taskId);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _taskList.Select(index);
+    }
+
+    private static string FormatTaskListItem(string taskId, string title, string status, string? updatedAt)
+    {
+        var shortId = taskId.Length <= 8 ? taskId : taskId[..8];
+        var normalizedStatus = string.IsNullOrWhiteSpace(status) ? "unknown" : status;
+        var normalizedTitle = string.IsNullOrWhiteSpace(title) ? "(untitled)" : title;
+        if (normalizedTitle.Length > 44)
+        {
+            normalizedTitle = normalizedTitle[..41] + "...";
+        }
+
+        var updatedSuffix = string.IsNullOrWhiteSpace(updatedAt)
+            ? string.Empty
+            : $" @ {updatedAt}";
+
+        return $"[{normalizedStatus}] {shortId}  {normalizedTitle}{updatedSuffix}";
     }
 }
