@@ -12,26 +12,7 @@
   "include": [],
   "ignore": {
     "useGitignore": true,
-    "useDefaultPatterns": true,
-    "customPatterns": [
-      "*.lock",
-      "*.lock.yml",
-      "*.lock.json",
-      "repomix-output.*",
-      ".secrets.baseline",
-      "build/",
-      "bin/",
-      "obj/",
-      "node_modules/",
-      "*.min.js",
-      "*.min.css",
-      "dist/",
-      "coverage/",
-      ".vs/",
-      ".vscode/",
-      "*.user",
-      "*.suo"
-    ]
+    "useDefaultPatterns": true
   },
   "security": {
     "enableSecurityCheck": true

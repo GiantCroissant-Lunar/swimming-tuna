@@ -24,7 +24,7 @@ tasks:
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
       - go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
       - go install github.com/goreleaser/goreleaser/v2@latest
-      - npm install -g repomix
+      - task: repomix:install
       - pip install ruff
 
   lint:
@@ -104,23 +104,18 @@ tasks:
     cmds:
       - repomix
 
-  repomix:pack:xml:
-    desc: Pack repository with XML output format
-    cmds:
-      - repomix --style xml
-
   repomix:pack:markdown:
     desc: Pack repository with Markdown output format
     cmds:
-      - repomix --style markdown
+      - repomix --style markdown --output repomix-output.md
 
   repomix:pack:plain:
     desc: Pack repository with plain text output format
     cmds:
-      - repomix --style plain
+      - repomix --style plain --output repomix-output.txt
 
   repomix:pack:remote:
-    desc: Pack a remote repository (usage: task repomix:pack:remote REPO=https://github.com/user/repo)
+    desc: "Pack a remote repository (usage: task repomix:pack:remote REPO=https://github.com/user/repo)"
     cmds:
       - repomix --remote {{.REPO}}
     requires:
@@ -129,4 +124,4 @@ tasks:
   repomix:clean:
     desc: Clean repomix output files
     cmds:
-      - rm -f repomix-output.txt repomix-output.xml repomix-output.md
+      - rm -f repomix-output.*
