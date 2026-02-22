@@ -18,7 +18,8 @@ internal sealed record RoleTaskSucceeded(
     string TaskId,
     SwarmRole Role,
     string Output,
-    DateTimeOffset CompletedAt
+    DateTimeOffset CompletedAt,
+    string ActorName
 );
 
 internal sealed record RoleTaskFailed(

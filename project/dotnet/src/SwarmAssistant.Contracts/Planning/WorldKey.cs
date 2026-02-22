@@ -15,6 +15,8 @@ public enum WorldKey
     SubTasksSpawned,
     SubTasksCompleted,
     AdapterAvailable,
+    ConsensusReached,
+    ConsensusDisputed,
 
     // Stigmergy WorldKeys for swarm coordination
     HighFailureRateDetected,

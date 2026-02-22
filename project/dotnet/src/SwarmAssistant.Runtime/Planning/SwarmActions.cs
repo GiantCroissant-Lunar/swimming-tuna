@@ -41,6 +41,20 @@ public static class SwarmActions
         },
         cost: 2);
 
+    public static readonly IGoapAction SecondOpinion = new GoapAction(
+        name: "SecondOpinion",
+        preconditions: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.ReviewRejected] = true,
+            [WorldKey.ConsensusDisputed] = true,
+        },
+        effects: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.ConsensusReached] = true,
+            [WorldKey.ReviewRejected] = false,
+        },
+        cost: 3);
+
     public static readonly IGoapAction Rework = new GoapAction(
         name: "Rework",
         preconditions: new Dictionary<WorldKey, bool>
@@ -94,7 +108,7 @@ public static class SwarmActions
         },
         cost: 2);
 
-    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, Rework, Escalate, Finalize, WaitForSubTasks];
+    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, SecondOpinion, Rework, Escalate, Finalize, WaitForSubTasks];
 
     public static IGoal CompleteTask { get; } = new Goal(
         "CompleteTask",

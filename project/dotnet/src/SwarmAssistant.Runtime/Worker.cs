@@ -139,17 +139,23 @@ public sealed class Worker : BackgroundService
                 _telemetry,
                 monitorTickSeconds)),
             "monitor");
+        var consensusActor = _actorSystem.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            "consensus");
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
                 capabilityRegistry,
                 supervisor,
                 blackboardActor,
+                consensusActor,
                 agentFrameworkRoleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
 

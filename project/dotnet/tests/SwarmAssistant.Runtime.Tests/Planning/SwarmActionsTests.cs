@@ -15,6 +15,7 @@ public sealed class SwarmActionsTests
     [InlineData("Plan")]
     [InlineData("Build")]
     [InlineData("Review")]
+    [InlineData("SecondOpinion")]
     [InlineData("Rework")]
     [InlineData("Escalate")]
     [InlineData("Finalize")]

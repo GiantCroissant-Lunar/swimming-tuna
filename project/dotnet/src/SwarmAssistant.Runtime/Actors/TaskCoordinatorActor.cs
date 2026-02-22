@@ -10,6 +10,7 @@ using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
+using SwarmAssistant.Runtime.Configuration;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -42,11 +43,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
     private readonly IActorRef _blackboardActor;
+    private readonly IActorRef _consensusActor;
     private readonly AgentFrameworkRoleEngine _roleEngine;
     private readonly IGoapPlanner _goapPlanner;
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
+    private readonly RuntimeOptions _options;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -58,6 +61,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _planningOutput;
     private string? _buildOutput;
     private string? _reviewOutput;
+
     private int _retryCount;
     private readonly int _maxRetries;
     private GoapPlanResult? _lastGoapPlan;
@@ -76,12 +80,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         IActorRef reviewerActor,
         IActorRef supervisorActor,
         IActorRef blackboardActor,
+        IActorRef consensusActor,
         AgentFrameworkRoleEngine roleEngine,
         IGoapPlanner goapPlanner,
         ILoggerFactory loggerFactory,
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
+        RuntimeOptions options,
         int maxRetries = 2,
         int subTaskDepth = 0)
     {
@@ -89,11 +95,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
         _blackboardActor = blackboardActor;
+        _consensusActor = consensusActor;
         _roleEngine = roleEngine;
         _goapPlanner = goapPlanner;
         _telemetry = telemetry;
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
+        _options = options;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -113,6 +121,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<SubTaskFailed>(OnSubTaskFailed);
         Receive<RetryRole>(OnRetryRole);
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
+        Receive<ConsensusResult>(OnConsensusResult);
     }
 
     protected override void PreStart()
@@ -127,6 +136,54 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Context.System.EventStream.Unsubscribe(Self, typeof(GlobalBlackboardChanged));
         _blackboardActor.Tell(new RemoveBlackboard(_taskId));
         base.PostStop();
+    }
+
+    private void OnConsensusResult(ConsensusResult message)
+    {
+        _logger.LogInformation("Received consensus result for task {TaskId}: Approved={Approved}", message.TaskId, message.Approved);
+
+        if (message.Approved)
+        {
+            _worldState = (WorldState)_worldState
+                .With(WorldKey.ReviewPassed, true)
+                .With(WorldKey.ReviewRejected, false)
+                .With(WorldKey.ConsensusReached, true)
+                .With(WorldKey.ConsensusDisputed, false);
+        }
+        else
+        {
+            _worldState = (WorldState)_worldState
+                .With(WorldKey.ReviewPassed, false)
+                .With(WorldKey.ReviewRejected, true)
+                .With(WorldKey.ConsensusReached, false)
+                .With(WorldKey.ConsensusDisputed, true);
+
+            _retryCount++;
+            if (_retryCount >= _maxRetries)
+            {
+                _worldState = (WorldState)_worldState
+                    .With(WorldKey.RetryLimitReached, true);
+            }
+        }
+
+        var combinedFeedback = string.Join("\n\n---\n\n", message.Votes.Select(v => $"Vote from {v.VoterId} (Approved: {v.Approved}):\n{v.Feedback}"));
+        _reviewOutput = combinedFeedback;
+
+        _taskRegistry.SetRoleOutput(_taskId, SwarmRole.Reviewer, combinedFeedback);
+        StoreBlackboard("reviewer_output", combinedFeedback);
+        StoreBlackboard("review_passed", message.Approved.ToString());
+
+        _uiEvents.Publish(
+            type: "agui.task.transition",
+            taskId: _taskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                action = message.Approved ? "ConsensusReached" : "ConsensusDisputed",
+                decidedBy = "consensus",
+            });
+
+        DecideAndExecute();
     }
 
     private void OnGlobalBlackboardChanged(GlobalBlackboardChanged message)
@@ -199,28 +256,57 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             case SwarmRole.Reviewer:
                 _reviewOutput = message.Output;
                 var passed = !ContainsRejection(message.Output);
-                if (passed)
+
+                // Single reviewer backward compatibility
+                if (_options.ReviewConsensusCount == 1)
                 {
-                    _worldState = (WorldState)_worldState
-                        .With(WorldKey.ReviewPassed, true)
-                        .With(WorldKey.ReviewRejected, false);
+                    if (passed)
+                    {
+                        _worldState = (WorldState)_worldState
+                            .With(WorldKey.ReviewPassed, true)
+                            .With(WorldKey.ReviewRejected, false);
+                    }
+                    else
+                    {
+                        _worldState = (WorldState)_worldState
+                            .With(WorldKey.ReviewPassed, false)
+                            .With(WorldKey.ReviewRejected, true);
+                        _retryCount++;
+                        if (_retryCount >= _maxRetries)
+                        {
+                            _worldState = (WorldState)_worldState
+                                .With(WorldKey.RetryLimitReached, true);
+                        }
+                    }
+
+                    _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
+                    StoreBlackboard("reviewer_output", message.Output);
+                    StoreBlackboard("review_passed", passed.ToString());
+
+                    _uiEvents.Publish(
+                        type: "agui.task.transition",
+                        taskId: _taskId,
+                        payload: new
+                        {
+                            source = Self.Path.Name,
+                            action = passed ? "ReviewPassed" : "ReviewRejected",
+                            decidedBy = "reviewer",
+                        });
+
+                    DecideAndExecute();
                 }
                 else
                 {
-                    _worldState = (WorldState)_worldState
-                        .With(WorldKey.ReviewPassed, false)
-                        .With(WorldKey.ReviewRejected, true);
-                    _retryCount++;
-                    if (_retryCount >= _maxRetries)
-                    {
-                        _worldState = (WorldState)_worldState
-                            .With(WorldKey.RetryLimitReached, true);
-                    }
+                    // Forward vote to consensus actor
+                    _consensusActor.Tell(new ConsensusVote(
+                        TaskId: _taskId,
+                        VoterId: message.ActorName, // Assuming the message sender or name can be used as ID
+                        Approved: passed,
+                        Confidence: 1.0, // Default confidence
+                        Feedback: message.Output
+                    ));
+                    // Don't call DecideAndExecute() yet, wait for consensus
                 }
-
-                _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
-                StoreBlackboard("reviewer_output", message.Output);
-                StoreBlackboard("review_passed", passed.ToString());
                 break;
         }
 
@@ -249,7 +335,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             return;
         }
 
-        DecideAndExecute();
+        // For single reviewer, DecideAndExecute is called within the case. For others, call it here.
+        if (message.Role != SwarmRole.Reviewer || _options.ReviewConsensusCount == 1)
+        {
+            DecideAndExecute();
+        }
     }
 
     private void OnRoleFailed(RoleTaskFailed message)
@@ -447,8 +537,39 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             case "Review":
                 TransitionTo(TaskState.Reviewing);
-                _reviewerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                var reviewCount = _options.ReviewConsensusCount;
+                if (reviewCount == 1)
+                {
+                    _reviewerActor.Tell(new ExecuteRoleTask(
+                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                }
+                else
+                {
+                    _consensusActor.Tell(new ConsensusRequest(_taskId, _buildOutput ?? string.Empty, reviewCount));
+                    for (int i = 0; i < reviewCount; i++)
+                    {
+                        // We use the same _reviewerActor pool but let it handle multiple messages.
+                        _reviewerActor.Tell(new ExecuteRoleTask(
+                            _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                    }
+                }
+                break;
+
+            case "SecondOpinion":
+                TransitionTo(TaskState.Reviewing);
+                _logger.LogInformation("Requesting SecondOpinion for task {TaskId}", _taskId);
+
+                // In SecondOpinion, we ask one more reviewer for their opinion
+                // We'll increment the required votes for consensus by 1
+                var additionalReviewCount = 1;
+                var currentRequiredVotes = _options.ReviewConsensusCount;
+                _consensusActor.Tell(new ConsensusRequest(_taskId, _buildOutput ?? string.Empty, currentRequiredVotes + additionalReviewCount));
+
+                for (int i = 0; i < currentRequiredVotes + additionalReviewCount; i++)
+                {
+                    _reviewerActor.Tell(new ExecuteRoleTask(
+                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                }
                 break;
 
             case "Rework":

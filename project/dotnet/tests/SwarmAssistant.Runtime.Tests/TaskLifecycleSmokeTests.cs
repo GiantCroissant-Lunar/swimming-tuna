@@ -67,17 +67,23 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             "reviewer-pool");
 
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            "consensus-pool");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher");
 
         var taskId = $"smoke-{Guid.NewGuid():N}";
@@ -123,17 +129,23 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             "reviewer-pool-ui");
 
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            "consensus-pool-ui");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher-ui");
 
         var taskId = $"smoke-ui-{Guid.NewGuid():N}";
@@ -181,17 +193,23 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             "reviewer-pool-parallel");
 
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            "consensus-pool-parallel");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher-parallel");
 
         var taskIds = Enumerable.Range(1, 3)
@@ -243,17 +261,23 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             "reviewer-pool-tracking");
 
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            "consensus-pool-tracking");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher-tracking");
 
         var taskId = $"smoke-track-{Guid.NewGuid():N}";
