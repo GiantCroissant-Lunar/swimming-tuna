@@ -40,7 +40,7 @@ See the [skill-creator](.agent/skills/skill-creator/SKILL.md) skill for detailed
 
 ## Project Structure
 
-```
+```text
 .
 ├── .agent/skills/      # Agent skills for specialized tasks
 ├── docs/               # Documentation
