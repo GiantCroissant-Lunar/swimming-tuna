@@ -29,6 +29,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         @"\b(reject(ed)?|fail(ed|ure)?|blocked?)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Matches SUBTASK marker lines in planner output.
+    // Expected format: SUBTASK: <title>|<description>
+    // Example:         SUBTASK: Implement auth|Create login and logout endpoints
+    private static readonly Regex SubTaskRegex = new(
+        @"SUBTASK:\s*([^|\n\r]+)\|([^\n\r]+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    internal const int MaxSubTaskDepth = 3;
+
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
@@ -43,6 +52,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly string _taskId;
     private readonly string _title;
     private readonly string _description;
+    private readonly int _subTaskDepth;
 
     private WorldState _worldState;
     private string? _planningOutput;
@@ -51,6 +61,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private int _retryCount;
     private readonly int _maxRetries;
     private GoapPlanResult? _lastGoapPlan;
+    private readonly HashSet<string> _childTaskIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingChildTaskIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _blackboardEntries = new(StringComparer.Ordinal);
 
     // Stigmergy: local cache of global blackboard signals, kept in sync via EventStream subscription
@@ -70,7 +82,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
-        int maxRetries = 2)
+        int maxRetries = 2,
+        int subTaskDepth = 0)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -87,6 +100,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _title = title;
         _description = description;
         _maxRetries = maxRetries;
+        _subTaskDepth = subTaskDepth;
 
         _worldState = (WorldState)new WorldState()
             .With(WorldKey.TaskExists, true)
@@ -95,6 +109,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<StartCoordination>(_ => OnStart());
         Receive<RoleTaskSucceeded>(OnRoleSucceeded);
         Receive<RoleTaskFailed>(OnRoleFailed);
+        Receive<SubTaskCompleted>(OnSubTaskCompleted);
+        Receive<SubTaskFailed>(OnSubTaskFailed);
         Receive<RetryRole>(OnRetryRole);
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
     }
@@ -170,6 +186,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _worldState = (WorldState)_worldState.With(WorldKey.PlanExists, true);
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("planner_output", message.Output);
+                SpawnSubTasksIfPresent(message.Output);
                 break;
 
             case SwarmRole.Builder:
@@ -225,6 +242,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             message.Output,
             message.CompletedAt,
             Self.Path.Name));
+
+        // Don't advance to the next GOAP step while sub-tasks are still running
+        if (_pendingChildTaskIds.Count > 0)
+        {
+            return;
+        }
 
         DecideAndExecute();
     }
@@ -443,6 +466,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 HandleEscalation();
                 break;
 
+            case "WaitForSubTasks":
+                // Sub-task completions will drive the next DecideAndExecute call via OnSubTaskCompleted
+                _logger.LogInformation("Waiting for sub-tasks taskId={TaskId}", _taskId);
+                break;
+
             default:
                 _logger.LogWarning("Unknown GOAP action {Action} for taskId={TaskId}", actionName, _taskId);
                 HandleDeadEnd();
@@ -638,6 +666,93 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     {
         _blackboardEntries[key] = value;
         _blackboardActor.Tell(new UpdateBlackboard(_taskId, key, value));
+    }
+
+    private void SpawnSubTasksIfPresent(string planningOutput)
+    {
+        if (_subTaskDepth >= MaxSubTaskDepth)
+        {
+            _logger.LogWarning(
+                "Max sub-task depth {Depth} reached; skipping SUBTASK spawning taskId={TaskId}",
+                _subTaskDepth, _taskId);
+            return;
+        }
+
+        var matches = SubTaskRegex.Matches(planningOutput);
+        foreach (Match match in matches)
+        {
+            var title = match.Groups[1].Value.Trim();
+            var description = match.Groups[2].Value.Trim();
+            var childTaskId = $"subtask-{Guid.NewGuid():N}";
+
+            _childTaskIds.Add(childTaskId);
+            _pendingChildTaskIds.Add(childTaskId);
+
+            Context.Parent.Tell(new SpawnSubTask(
+                _taskId,
+                childTaskId,
+                title,
+                description,
+                _subTaskDepth + 1));
+
+            _logger.LogInformation(
+                "Spawning sub-task childTaskId={ChildTaskId} title={Title} taskId={TaskId}",
+                childTaskId, title, _taskId);
+        }
+
+        if (_childTaskIds.Count > 0)
+        {
+            _worldState = (WorldState)_worldState.With(WorldKey.SubTasksSpawned, true);
+        }
+    }
+
+    private void OnSubTaskCompleted(SubTaskCompleted message)
+    {
+        _pendingChildTaskIds.Remove(message.ChildTaskId);
+
+        _logger.LogInformation(
+            "Sub-task completed childTaskId={ChildTaskId} taskId={TaskId} remaining={Remaining}",
+            message.ChildTaskId, _taskId, _pendingChildTaskIds.Count);
+
+        if (_pendingChildTaskIds.Count == 0)
+        {
+            _worldState = (WorldState)_worldState.With(WorldKey.SubTasksCompleted, true);
+            DecideAndExecute();
+        }
+    }
+
+    private void OnSubTaskFailed(SubTaskFailed message)
+    {
+        var error = $"Sub-task '{message.ChildTaskId}' failed: {message.Error}";
+
+        _logger.LogError(
+            "Sub-task failed childTaskId={ChildTaskId} taskId={TaskId} error={Error}",
+            message.ChildTaskId, _taskId, message.Error);
+
+        _worldState = (WorldState)_worldState.With(WorldKey.TaskBlocked, true);
+
+        _supervisorActor.Tell(new TaskFailed(
+            _taskId, TaskState.Blocked, error, DateTimeOffset.UtcNow, Self.Path.Name));
+
+        _supervisorActor.Tell(new EscalationRaised(
+            _taskId, error, 1, DateTimeOffset.UtcNow, Self.Path.Name));
+
+        _taskRegistry.MarkFailed(_taskId, error);
+
+        // Stigmergy: write sub-task failure signal to global blackboard
+        ReportFailureToGlobalBlackboard(error);
+
+        _uiEvents.Publish(
+            type: "agui.task.failed",
+            taskId: _taskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                error,
+                a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, error)
+            });
+
+        Context.Stop(Self);
     }
 
     private string BuildSummary()

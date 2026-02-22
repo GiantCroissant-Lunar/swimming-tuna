@@ -135,6 +135,49 @@ public sealed class TaskRegistry : IAsyncDisposable
         return updated;
     }
 
+    public TaskSnapshot RegisterSubTask(string taskId, string title, string description, string parentTaskId)
+    {
+        var snapshot = new TaskSnapshot(
+            TaskId: taskId,
+            Title: title,
+            Description: description,
+            Status: TaskState.Queued,
+            CreatedAt: DateTimeOffset.UtcNow,
+            UpdatedAt: DateTimeOffset.UtcNow,
+            ParentTaskId: parentTaskId);
+
+        if (_tasks.TryAdd(taskId, snapshot))
+        {
+            if (_tasks.TryGetValue(parentTaskId, out var parent))
+            {
+                while (true)
+                {
+                    var newParent = parent with
+                    {
+                        ChildTaskIds = [..(parent.ChildTaskIds ?? []), taskId],
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    };
+
+                    if (_tasks.TryUpdate(parentTaskId, newParent, parent))
+                    {
+                        PersistBestEffort(newParent);
+                        break;
+                    }
+
+                    if (!_tasks.TryGetValue(parentTaskId, out parent))
+                    {
+                        break;
+                    }
+                }
+            }
+
+            PersistBestEffort(snapshot);
+            return snapshot;
+        }
+
+        return _tasks[taskId];
+    }
+
     public TaskSnapshot? GetTask(string taskId)
     {
         _tasks.TryGetValue(taskId, out var snapshot);

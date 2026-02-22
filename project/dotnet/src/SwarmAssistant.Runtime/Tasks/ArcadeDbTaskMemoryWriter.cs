@@ -9,6 +9,7 @@ namespace SwarmAssistant.Runtime.Tasks;
 public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
 {
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
+    internal const char ChildTaskIdDelimiter = ',';
 
     private readonly RuntimeOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -57,7 +58,11 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 ["buildOutput"] = snapshot.BuildOutput,
                 ["reviewOutput"] = snapshot.ReviewOutput,
                 ["summary"] = snapshot.Summary,
-                ["taskError"] = snapshot.Error
+                ["taskError"] = snapshot.Error,
+                ["parentTaskId"] = snapshot.ParentTaskId,
+                ["childTaskIds"] = snapshot.ChildTaskIds is { Count: > 0 }
+                    ? string.Join(ChildTaskIdDelimiter, snapshot.ChildTaskIds)
+                    : null
             };
 
             // Atomic UPSERT: updates the existing record or inserts a new one in a single statement.
@@ -67,7 +72,8 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 "taskId = :taskId, title = :title, description = :description, status = :status, " +
                 "createdAt = :createdAt, updatedAt = :updatedAt, " +
                 "planningOutput = :planningOutput, buildOutput = :buildOutput, reviewOutput = :reviewOutput, " +
-                "summary = :summary, taskError = :taskError " +
+                "summary = :summary, taskError = :taskError, " +
+                "parentTaskId = :parentTaskId, childTaskIds = :childTaskIds " +
                 "UPSERT WHERE taskId = :taskId",
                 parameters,
                 cancellationToken);
@@ -110,6 +116,8 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.reviewOutput IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.summary IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.taskError IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.parentTaskId IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.childTaskIds IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
 
             _schemaEnsured = allSucceeded;

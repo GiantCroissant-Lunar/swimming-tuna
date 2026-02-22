@@ -6,9 +6,9 @@ namespace SwarmAssistant.Runtime.Tests.Planning;
 public sealed class SwarmActionsTests
 {
     [Fact]
-    public void All_ContainsSixActions()
+    public void All_ContainsSevenActions()
     {
-        Assert.Equal(6, SwarmActions.All.Count);
+        Assert.Equal(7, SwarmActions.All.Count);
     }
 
     [Theory]
@@ -18,9 +18,19 @@ public sealed class SwarmActionsTests
     [InlineData("Rework")]
     [InlineData("Escalate")]
     [InlineData("Finalize")]
+    [InlineData("WaitForSubTasks")]
     public void All_ContainsAction(string actionName)
     {
         Assert.Contains(SwarmActions.All, a => a.Name == actionName);
+    }
+
+    [Fact]
+    public void WaitForSubTasks_HasCorrectPreconditionsAndEffects()
+    {
+        Assert.True(SwarmActions.WaitForSubTasks.Preconditions[WorldKey.SubTasksSpawned]);
+        Assert.False(SwarmActions.WaitForSubTasks.Preconditions[WorldKey.SubTasksCompleted]);
+        Assert.True(SwarmActions.WaitForSubTasks.Effects[WorldKey.SubTasksCompleted]);
+        Assert.Equal("WaitForSubTasks", SwarmActions.WaitForSubTasks.Name);
     }
 
     [Fact]

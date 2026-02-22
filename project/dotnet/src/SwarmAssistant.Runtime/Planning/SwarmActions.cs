@@ -81,7 +81,20 @@ public static class SwarmActions
         },
         cost: 1);
 
-    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, Rework, Escalate, Finalize];
+    public static readonly IGoapAction WaitForSubTasks = new GoapAction(
+        name: "WaitForSubTasks",
+        preconditions: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.SubTasksSpawned] = true,
+            [WorldKey.SubTasksCompleted] = false,
+        },
+        effects: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.SubTasksCompleted] = true,
+        },
+        cost: 2);
+
+    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, Rework, Escalate, Finalize, WaitForSubTasks];
 
     public static IGoal CompleteTask { get; } = new Goal(
         "CompleteTask",
