@@ -12,9 +12,14 @@ public sealed class RuntimeOptions
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;
 
+    public bool LangfuseTracingEnabled { get; init; } = false;
+    public string? LangfusePublicKey { get; init; }
+    public string? LangfuseSecretKey { get; init; }
+    public string? LangfuseOtlpEndpoint { get; init; }
+
     public bool AutoSubmitDemoTask { get; init; } = true;
-    public string DemoTaskTitle { get; init; } = "Phase 2 swarm orchestration bootstrap";
-    public string DemoTaskDescription { get; init; } = "Validate coordinator-worker-reviewer lifecycle and supervisor escalation path.";
+    public string DemoTaskTitle { get; init; } = "Phase 3 agent framework execution";
+    public string DemoTaskDescription { get; init; } = "Validate coordinator-worker-reviewer lifecycle through Microsoft Agent Framework workflows.";
 
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;

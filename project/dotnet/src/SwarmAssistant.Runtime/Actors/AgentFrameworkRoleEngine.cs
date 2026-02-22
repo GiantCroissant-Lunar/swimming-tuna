@@ -1,20 +1,33 @@
+using System.Diagnostics;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Telemetry;
 
 namespace SwarmAssistant.Runtime.Actors;
 
 public sealed class AgentFrameworkRoleEngine
 {
+    private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
-    public AgentFrameworkRoleEngine(ILoggerFactory loggerFactory)
+    public AgentFrameworkRoleEngine(ILoggerFactory loggerFactory, RuntimeTelemetry telemetry)
     {
+        _telemetry = telemetry;
         _logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
     }
 
     internal async Task<string> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken = default)
     {
+        using var activity = _telemetry.StartActivity(
+            "agent-framework.role.execute",
+            taskId: command.TaskId,
+            role: command.Role.ToString().ToLowerInvariant(),
+            tags: new Dictionary<string, object?>
+            {
+                ["agent.framework.mode"] = "in-process-workflow",
+            });
+
         _logger.LogInformation(
             "Executing role with Agent Framework workflow role={Role} taskId={TaskId}",
             command.Role,
@@ -31,17 +44,25 @@ public sealed class AgentFrameworkRoleEngine
             cancellationToken: cancellationToken);
 
         string? output = null;
+        var eventCount = 0;
 
         await foreach (WorkflowEvent evt in run.WatchStreamAsync(cancellationToken))
         {
+            eventCount += 1;
+
             if (evt is WorkflowOutputEvent outputEvent && outputEvent.As<string>() is { } value)
             {
                 output = value;
             }
         }
 
+        activity?.SetTag("agent.framework.workflow.event_count", eventCount);
+
         if (!string.IsNullOrWhiteSpace(output))
         {
+            activity?.SetTag("output.length", output.Length);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
             _logger.LogInformation(
                 "Agent Framework workflow completed role={Role} taskId={TaskId}",
                 command.Role,
@@ -49,7 +70,9 @@ public sealed class AgentFrameworkRoleEngine
             return output;
         }
 
-        throw new InvalidOperationException($"Agent Framework workflow returned no output for role {command.Role}.");
+        const string error = "Agent Framework workflow returned no output.";
+        activity?.SetStatus(ActivityStatusCode.Error, error);
+        throw new InvalidOperationException($"{error} role={command.Role}");
     }
 
     private sealed class RoleExecutionExecutor : Executor<ExecuteRoleTask>

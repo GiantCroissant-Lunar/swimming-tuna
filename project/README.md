@@ -11,7 +11,7 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution (Phase 3).
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks (Phase 4).
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 
 ## JavaScript MVP Commands
@@ -24,7 +24,7 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 3)
+## .NET Runtime Commands (Phase 4)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
@@ -46,6 +46,19 @@ Runtime config includes:
 - `SimulateBuilderFailure`
 - `SimulateReviewerFailure`
 - `AgentFrameworkExecutionMode`
+- `LangfuseTracingEnabled`
+- `LangfusePublicKey`
+- `LangfuseSecretKey`
+- `LangfuseOtlpEndpoint`
+
+Enable tracing with environment variables:
+
+```bash
+export Runtime__LangfuseTracingEnabled=true
+export Runtime__LangfusePublicKey=pk-lf-...
+export Runtime__LangfuseSecretKey=sk-lf-...
+export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/traces
+```
 
 ## Langfuse Stack Commands (Phase 1)
 

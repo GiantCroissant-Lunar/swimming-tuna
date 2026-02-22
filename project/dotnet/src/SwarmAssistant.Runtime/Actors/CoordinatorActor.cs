@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Akka.Actor;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Tasks;
+using SwarmAssistant.Runtime.Telemetry;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -11,6 +13,7 @@ public sealed class CoordinatorActor : ReceiveActor
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
+    private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, TaskContext> _tasks = new();
@@ -19,11 +22,13 @@ public sealed class CoordinatorActor : ReceiveActor
         IActorRef workerActor,
         IActorRef reviewerActor,
         IActorRef supervisorActor,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        RuntimeTelemetry telemetry)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
+        _telemetry = telemetry;
         _logger = loggerFactory.CreateLogger<CoordinatorActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -33,8 +38,18 @@ public sealed class CoordinatorActor : ReceiveActor
 
     private void HandleTaskAssigned(TaskAssigned message)
     {
+        using var activity = _telemetry.StartActivity(
+            "coordinator.task.assigned",
+            taskId: message.TaskId,
+            tags: new Dictionary<string, object?>
+            {
+                ["task.title"] = message.Title,
+                ["actor.name"] = Self.Path.Name,
+            });
+
         if (_tasks.ContainsKey(message.TaskId))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "duplicate task assignment");
             _logger.LogWarning("Duplicate task assignment ignored taskId={TaskId}", message.TaskId);
             return;
         }
@@ -62,8 +77,19 @@ public sealed class CoordinatorActor : ReceiveActor
 
     private void HandleRoleTaskSucceeded(RoleTaskSucceeded message)
     {
+        using var activity = _telemetry.StartActivity(
+            "coordinator.role.succeeded",
+            taskId: message.TaskId,
+            role: message.Role.ToString().ToLowerInvariant(),
+            tags: new Dictionary<string, object?>
+            {
+                ["actor.name"] = Self.Path.Name,
+                ["output.length"] = message.Output.Length,
+            });
+
         if (!_tasks.TryGetValue(message.TaskId, out var context))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "unknown task on success");
             _logger.LogWarning("Received completion for unknown task taskId={TaskId}", message.TaskId);
             return;
         }
@@ -138,6 +164,17 @@ public sealed class CoordinatorActor : ReceiveActor
 
     private void HandleRoleTaskFailed(RoleTaskFailed message)
     {
+        using var activity = _telemetry.StartActivity(
+            "coordinator.role.failed",
+            taskId: message.TaskId,
+            role: message.Role.ToString().ToLowerInvariant(),
+            tags: new Dictionary<string, object?>
+            {
+                ["error.message"] = message.Error,
+                ["actor.name"] = Self.Path.Name,
+            });
+        activity?.SetStatus(ActivityStatusCode.Error, message.Error);
+
         if (!_tasks.TryGetValue(message.TaskId, out var context))
         {
             _logger.LogWarning("Received failure for unknown task taskId={TaskId}", message.TaskId);
@@ -168,6 +205,15 @@ public sealed class CoordinatorActor : ReceiveActor
 
     private void TransitionTo(TaskContext context, TaskState target)
     {
+        using var activity = _telemetry.StartActivity(
+            "coordinator.task.transition",
+            taskId: context.Task.TaskId,
+            tags: new Dictionary<string, object?>
+            {
+                ["transition.to"] = target.ToString(),
+                ["actor.name"] = Self.Path.Name,
+            });
+
         var previous = context.Task.Status;
         context.Task = context.Task with
         {
@@ -175,6 +221,8 @@ public sealed class CoordinatorActor : ReceiveActor
             UpdatedAt = DateTimeOffset.UtcNow,
             Error = null
         };
+
+        activity?.SetTag("transition.from", previous.ToString());
 
         _logger.LogInformation(
             "Task transition taskId={TaskId} from={Previous} to={Current}",

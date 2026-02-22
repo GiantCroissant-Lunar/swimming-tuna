@@ -37,6 +37,22 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `WorkerActor` and `ReviewerActor` call the Agent Framework engine instead of generating role text inline.
 - Execution mode is configured through `Runtime.AgentFrameworkExecutionMode` (`in-process-workflow` for current MVP).
 
+## Observability Runtime (Phase 4)
+
+- `dotnet/src/SwarmAssistant.Runtime/Telemetry/RuntimeTelemetry.cs` configures OpenTelemetry tracing export to Langfuse OTLP (`/api/public/otel/v1/traces`).
+- Actor spans are emitted for:
+- `coordinator.task.assigned`
+- `coordinator.task.transition`
+- `coordinator.role.succeeded`
+- `coordinator.role.failed`
+- `worker.role.execute`
+- `reviewer.role.execute`
+- `supervisor.task.started`
+- `supervisor.task.result`
+- `supervisor.task.failed`
+- `supervisor.escalation.raised`
+- `agent-framework.role.execute`
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:

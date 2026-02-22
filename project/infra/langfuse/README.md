@@ -35,3 +35,5 @@ docker compose --env-file env/local.env down
 
 - Replace all `CHANGE_ME_*` values before using `secure-local.env`.
 - Keep env files out of source control if you add real secrets.
+- OTLP trace ingestion endpoint is `http://localhost:3000/api/public/otel/v1/traces` for local profile.
+- Runtime tracing auth uses Langfuse project keys (`pk-lf-*` and `sk-lf-*`) via basic auth.
