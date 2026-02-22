@@ -1,4 +1,4 @@
-# SwarmAssistant .NET Runtime (Phase 8)
+# SwarmAssistant .NET Runtime (Phase 9)
 
 ## Projects
 
@@ -79,11 +79,12 @@ curl -N http://127.0.0.1:5080/ag-ui/events
 curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 ```
 
-Supported AG-UI actions (Phase 8):
+Supported AG-UI actions (Phase 9):
 
 - `request_snapshot`
 - `refresh_surface`
 - `submit_task` (payload requires `title`; optional `description`)
+- `load_memory` (payload supports optional `limit`)
 
 ## A2A + ArcadeDB Integration (Phase 7)
 
@@ -114,9 +115,19 @@ Example task flow:
 ```bash
 curl -s -X POST http://127.0.0.1:5080/a2a/tasks \
   -H 'content-type: application/json' \
-  -d '{"title":"Phase 7 endpoint test","description":"validate task registry + ArcadeDB write"}'
+  -d '{"title":"Phase 9 endpoint test","description":"validate task registry + ArcadeDB write/read"}'
 curl -s http://127.0.0.1:5080/a2a/tasks
 curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
+```
+
+Memory-read APIs (Phase 9):
+
+```bash
+curl -s 'http://127.0.0.1:5080/memory/tasks?limit=20'
+curl -s http://127.0.0.1:5080/memory/tasks/<task-id>
+curl -s -X POST http://127.0.0.1:5080/ag-ui/actions \
+  -H 'content-type: application/json' \
+  -d '{"actionId":"load_memory","payload":{"limit":20}}'
 ```
 
 ## Build

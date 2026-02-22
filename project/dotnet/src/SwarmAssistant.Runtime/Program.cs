@@ -26,6 +26,7 @@ builder.Services.AddSingleton<UiEventStream>();
 builder.Services.AddSingleton<RuntimeActorRegistry>();
 builder.Services.AddHttpClient("arcadedb");
 builder.Services.AddSingleton<ITaskMemoryWriter, ArcadeDbTaskMemoryWriter>();
+builder.Services.AddSingleton<ITaskMemoryReader, ArcadeDbTaskMemoryReader>();
 builder.Services.AddSingleton<TaskRegistry>();
 builder.Services.AddHostedService<Worker>();
 
@@ -67,6 +68,18 @@ static object MapTaskSnapshot(TaskSnapshot snapshot)
         buildOutput = snapshot.BuildOutput,
         reviewOutput = snapshot.ReviewOutput,
         summary = snapshot.Summary,
+        error = snapshot.Error
+    };
+}
+
+static object MapTaskSummary(TaskSnapshot snapshot)
+{
+    return new
+    {
+        taskId = snapshot.TaskId,
+        title = snapshot.Title,
+        status = snapshot.Status.ToString().ToLowerInvariant(),
+        updatedAt = snapshot.UpdatedAt,
         error = snapshot.Error
     };
 }
@@ -124,16 +137,54 @@ static IResult SubmitTask(
 
 if (options.AgUiEnabled)
 {
+    app.MapGet("/memory/tasks", async (
+        int? limit,
+        ITaskMemoryReader memoryReader,
+        TaskRegistry taskRegistry,
+        CancellationToken cancellationToken) =>
+    {
+        var requestedLimit = Math.Clamp(limit ?? 50, 1, 500);
+        var memoryTasks = await memoryReader.ListAsync(requestedLimit, cancellationToken);
+        var source = memoryTasks.Count > 0 ? "arcadedb" : "registry";
+        var snapshots = memoryTasks.Count > 0
+            ? memoryTasks
+            : taskRegistry.GetTasks(requestedLimit);
+        var items = snapshots.Select(MapTaskSnapshot);
+        return Results.Ok(new
+        {
+            source,
+            items
+        });
+    });
+
+    app.MapGet("/memory/tasks/{taskId}", async (
+        string taskId,
+        ITaskMemoryReader memoryReader,
+        TaskRegistry taskRegistry,
+        CancellationToken cancellationToken) =>
+    {
+        var snapshot = await memoryReader.GetAsync(taskId, cancellationToken)
+            ?? taskRegistry.GetTask(taskId);
+        if (snapshot is null)
+        {
+            return Results.NotFound(new { error = "task not found", taskId });
+        }
+
+        return Results.Ok(MapTaskSnapshot(snapshot));
+    });
+
     app.MapGet("/ag-ui/recent", (int? count, UiEventStream stream) =>
     {
         return Results.Ok(stream.GetRecent(count ?? 50));
     });
 
-    app.MapPost("/ag-ui/actions", (
+    app.MapPost("/ag-ui/actions", async (
         UiActionRequest action,
         UiEventStream stream,
         TaskRegistry taskRegistry,
-        RuntimeActorRegistry actorRegistry) =>
+        RuntimeActorRegistry actorRegistry,
+        ITaskMemoryReader memoryReader,
+        CancellationToken cancellationToken) =>
     {
         if (string.IsNullOrWhiteSpace(action.ActionId))
         {
@@ -187,6 +238,32 @@ if (options.AgUiEnabled)
                     });
                 return Results.Accepted();
 
+            case "load_memory":
+                var requestedLimit = UiActionPayload.GetInt(action.Payload, "limit") ?? 50;
+                var limit = Math.Clamp(requestedLimit, 1, 500);
+                var memoryTasks = await memoryReader.ListAsync(limit, cancellationToken);
+                var source = memoryTasks.Count > 0 ? "arcadedb" : "registry";
+                var snapshots = memoryTasks.Count > 0
+                    ? memoryTasks
+                    : taskRegistry.GetTasks(limit);
+                var items = snapshots.Select(MapTaskSummary).ToList();
+
+                stream.Publish(
+                    type: "agui.memory.tasks",
+                    taskId: action.TaskId,
+                    payload: new
+                    {
+                        source,
+                        count = items.Count,
+                        items
+                    });
+
+                return Results.Ok(new
+                {
+                    source,
+                    count = items.Count
+                });
+
             case "refresh_surface":
                 if (string.IsNullOrWhiteSpace(action.TaskId))
                 {
@@ -229,7 +306,7 @@ if (options.AgUiEnabled)
                 {
                     error = "Unsupported actionId.",
                     actionId = action.ActionId,
-                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task" }
+                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory" }
                 });
         }
     });
@@ -264,13 +341,15 @@ if (options.A2AEnabled)
         return Results.Ok(new
         {
             name = "swarm-assistant",
-            version = "phase-8",
+            version = "phase-9",
             protocol = "a2a",
             capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "ag-ui-actions", "arcadedb-memory" },
             endpoints = new
             {
                 agUiEvents = "/ag-ui/events",
                 agUiActions = "/ag-ui/actions",
+                memoryTasks = "/memory/tasks",
+                getMemoryTask = "/memory/tasks/{taskId}",
                 submitTask = "/a2a/tasks",
                 getTask = "/a2a/tasks/{taskId}",
                 listTasks = "/a2a/tasks"

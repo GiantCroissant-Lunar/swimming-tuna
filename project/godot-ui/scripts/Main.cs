@@ -92,6 +92,10 @@ public partial class Main : Control
         refreshButton.Pressed += OnRefreshSurfacePressed;
         actionRow.AddChild(refreshButton);
 
+        var loadMemoryButton = new Button { Text = "Load Memory" };
+        loadMemoryButton.Pressed += OnLoadMemoryPressed;
+        actionRow.AddChild(loadMemoryButton);
+
         _componentContainer = new VBoxContainer();
         layout.AddChild(_componentContainer);
 
@@ -284,6 +288,60 @@ public partial class Main : Control
                     }
                 }
                 break;
+
+            case "agui.memory.tasks":
+                var source = payload.TryGetProperty("source", out var sourceElement) &&
+                             sourceElement.ValueKind == JsonValueKind.String
+                    ? sourceElement.GetString() ?? "unknown"
+                    : "unknown";
+                var count = payload.TryGetProperty("count", out var countElement) &&
+                            countElement.ValueKind == JsonValueKind.Number
+                    ? countElement.GetInt32()
+                    : 0;
+
+                _statusLabel!.Text = $"Status: memory loaded ({count})";
+                AppendLog($"[memory] source={source} count={count}");
+
+                if (!payload.TryGetProperty("items", out var itemsElement) ||
+                    itemsElement.ValueKind != JsonValueKind.Array)
+                {
+                    break;
+                }
+
+                var shown = 0;
+                foreach (var item in itemsElement.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    var taskId = item.TryGetProperty("taskId", out var idElement) &&
+                                 idElement.ValueKind == JsonValueKind.String
+                        ? idElement.GetString() ?? string.Empty
+                        : string.Empty;
+                    var status = item.TryGetProperty("status", out var statusElement) &&
+                                 statusElement.ValueKind == JsonValueKind.String
+                        ? statusElement.GetString() ?? "unknown"
+                        : "unknown";
+                    var title = item.TryGetProperty("title", out var titleElement) &&
+                                titleElement.ValueKind == JsonValueKind.String
+                        ? titleElement.GetString() ?? string.Empty
+                        : string.Empty;
+
+                    if (string.IsNullOrWhiteSpace(_activeTaskId) && !string.IsNullOrWhiteSpace(taskId))
+                    {
+                        _activeTaskId = taskId;
+                    }
+
+                    AppendLog($"[memory-task] {taskId} {status} {title}");
+                    shown++;
+                    if (shown >= 8)
+                    {
+                        break;
+                    }
+                }
+                break;
         }
     }
 
@@ -418,6 +476,14 @@ public partial class Main : Control
         }
 
         SendAction("refresh_surface");
+    }
+
+    private void OnLoadMemoryPressed()
+    {
+        SendAction("load_memory", new Dictionary<string, object?>
+        {
+            ["limit"] = 50
+        });
     }
 
     private void SendAction(

@@ -46,6 +46,12 @@ internal static class A2UiPayloadFactory
                         id = "refresh-surface",
                         type = "button",
                         props = new { label = "Refresh Surface", actionId = "refresh_surface" }
+                    },
+                    new
+                    {
+                        id = "load-memory",
+                        type = "button",
+                        props = new { label = "Load Memory", actionId = "load_memory" }
                     }
                 }
             }

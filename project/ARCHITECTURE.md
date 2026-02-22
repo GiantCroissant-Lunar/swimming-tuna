@@ -96,6 +96,15 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `godot-ui/scripts/Main.cs` includes submit/snapshot/refresh controls and maps button-driven A2UI actions to `/ag-ui/actions`.
 - Runtime emits `agui.action.task.submitted` and `agui.task.snapshot` events so the exported Godot app can confirm action round-trips.
 
+## Memory Read Runtime (Phase 9)
+
+- `ArcadeDbTaskMemoryReader` implements `ITaskMemoryReader` and reads `SwarmTask` snapshots from ArcadeDB command API.
+- Runtime exposes memory APIs:
+- `GET /memory/tasks?limit=<n>`
+- `GET /memory/tasks/{taskId}`
+- `POST /ag-ui/actions` now supports `load_memory` and publishes `agui.memory.tasks` with task summaries for UI consumption.
+- `godot-ui/scripts/Main.cs` includes a `Load Memory` action that fetches persisted tasks and updates active task selection/log output.
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:

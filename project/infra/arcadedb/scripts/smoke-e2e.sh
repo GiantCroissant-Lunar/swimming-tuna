@@ -95,5 +95,24 @@ if [[ "${found}" != "true" ]]; then
   exit 1
 fi
 
+memory_code="$(curl -s -o /tmp/swarm_arcadedb_memory.json -w '%{http_code}' \
+  'http://127.0.0.1:5080/memory/tasks?limit=10')"
+if [[ "${memory_code}" != "200" ]] || ! rg -q "${task_id}" /tmp/swarm_arcadedb_memory.json; then
+  echo "Runtime memory endpoint did not return submitted task taskId=${task_id} http=${memory_code}"
+  echo "--- memory ---"
+  cat /tmp/swarm_arcadedb_memory.json
+  exit 1
+fi
+
+action_code="$(curl -s -o /tmp/swarm_arcadedb_action_memory.json -w '%{http_code}' \
+  -X POST http://127.0.0.1:5080/ag-ui/actions \
+  -H 'content-type: application/json' \
+  -d '{"actionId":"load_memory","payload":{"source":"arcadedb-smoke","limit":10}}')"
+if [[ "${action_code}" != "200" ]]; then
+  echo "AG-UI load_memory action failed http=${action_code}"
+  cat /tmp/swarm_arcadedb_action_memory.json
+  exit 1
+fi
+
 echo "ArcadeDB smoke passed taskId=${task_id}"
 cat /tmp/swarm_arcadedb_query.json

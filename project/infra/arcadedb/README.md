@@ -1,6 +1,6 @@
 # ArcadeDB Stack + Runtime Integration (Phase 7)
 
-This folder provides a local ArcadeDB stack and validates runtime persistence through `ArcadeDbTaskMemoryWriter`.
+This folder provides a local ArcadeDB stack and validates runtime persistence/readback through `ArcadeDbTaskMemoryWriter` and `ArcadeDbTaskMemoryReader`.
 
 ## Files
 
@@ -82,6 +82,12 @@ Run the smoke test:
 ```bash
 /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb/scripts/smoke-e2e.sh
 ```
+
+The smoke test validates:
+
+1. A2A submit writes `SwarmTask` into ArcadeDB.
+2. Runtime `GET /memory/tasks` reads the same task back.
+3. AG-UI `load_memory` action succeeds.
 
 Manual query example:
 
