@@ -34,13 +34,53 @@ public partial class Main : Control
     private long _lastSequence;
     private string? _activeTaskId;
     private string? _pendingSelectionRefreshTaskId;
+    private bool _shuttingDown;
 
     public override void _Ready()
     {
+        GetTree().AutoAcceptQuit = false;
         DisplayServer.WindowSetMinSize(new Vector2I(960, 640));
         BuildLayout();
         SetupNetworking();
         TriggerPoll();
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest)
+        {
+            Shutdown();
+            GetTree().Quit();
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        Shutdown();
+    }
+
+    private void Shutdown()
+    {
+        if (_shuttingDown) return;
+        _shuttingDown = true;
+
+        if (_pollTimer is not null)
+        {
+            _pollTimer.Stop();
+            _pollTimer.Timeout -= TriggerPoll;
+        }
+
+        if (_recentRequest is not null)
+        {
+            _recentRequest.CancelRequest();
+            _recentRequest.RequestCompleted -= OnRecentRequestCompleted;
+        }
+
+        if (_actionRequest is not null)
+        {
+            _actionRequest.CancelRequest();
+            _actionRequest.RequestCompleted -= OnActionRequestCompleted;
+        }
     }
 
     private void BuildLayout()
@@ -179,7 +219,7 @@ public partial class Main : Control
 
     private void TriggerPoll()
     {
-        if (_recentInFlight || _recentRequest is null)
+        if (_shuttingDown || _recentInFlight || _recentRequest is null)
         {
             return;
         }
@@ -197,6 +237,7 @@ public partial class Main : Control
     private void OnRecentRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
     {
         _recentInFlight = false;
+        if (_shuttingDown) return;
         if (result != (long)HttpRequest.Result.Success || responseCode < 200 || responseCode > 299)
         {
             _statusLabel!.Text = "Status: disconnected";
@@ -530,7 +571,7 @@ public partial class Main : Control
         Dictionary<string, object?>? actionPayload = null,
         string? taskId = null)
     {
-        if (_actionInFlight || _actionRequest is null)
+        if (_shuttingDown || _actionInFlight || _actionRequest is null)
         {
             return;
         }
@@ -565,6 +606,7 @@ public partial class Main : Control
     private void OnActionRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
     {
         _actionInFlight = false;
+        if (_shuttingDown) return;
         var responseBody = Encoding.UTF8.GetString(body);
 
         if (result == (long)HttpRequest.Result.Success && responseCode >= 200 && responseCode <= 299)
