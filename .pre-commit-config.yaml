@@ -39,6 +39,16 @@ repos:
       - id: go-mod-tidy
       - id: go-unit-tests
 
+  # Python hooks (Ruff)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix]
+      # Run the formatter
+      - id: ruff-format
+
   # Commit message
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v3.28.0
