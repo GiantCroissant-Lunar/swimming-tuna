@@ -13,7 +13,7 @@ public sealed class SwarmAgentActor : ReceiveActor
     private readonly AgentFrameworkRoleEngine _agentFrameworkRoleEngine;
     private readonly RuntimeTelemetry _telemetry;
     private readonly IActorRef _capabilityRegistry;
-    private readonly SwarmRole[] _capabilities;
+    private readonly IReadOnlyList<SwarmRole> _capabilities;
     private readonly ILogger _logger;
 
     private int _currentLoad;
@@ -30,7 +30,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         _agentFrameworkRoleEngine = agentFrameworkRoleEngine;
         _telemetry = telemetry;
         _capabilityRegistry = capabilityRegistry;
-        _capabilities = capabilities;
+        _capabilities = Array.AsReadOnly((SwarmRole[])capabilities.Clone());
         _logger = loggerFactory.CreateLogger<SwarmAgentActor>();
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
@@ -66,46 +66,46 @@ public sealed class SwarmAgentActor : ReceiveActor
                 ["engine"] = "microsoft-agent-framework",
             });
 
-        if (!_capabilities.Contains(command.Role))
-        {
-            var error = $"SwarmAgentActor does not support role {command.Role}";
-            activity?.SetStatus(ActivityStatusCode.Error, error);
-            replyTo.Tell(new RoleTaskFailed(
-                command.TaskId,
-                command.Role,
-                error,
-                DateTimeOffset.UtcNow));
-            return;
-        }
-
-        if (_options.SimulateBuilderFailure && command.Role == SwarmRole.Builder)
-        {
-            const string error = "Simulated builder failure for phase testing.";
-            activity?.SetStatus(ActivityStatusCode.Error, error);
-            replyTo.Tell(new RoleTaskFailed(
-                command.TaskId,
-                command.Role,
-                error,
-                DateTimeOffset.UtcNow));
-            return;
-        }
-
-        if (_options.SimulateReviewerFailure && command.Role == SwarmRole.Reviewer)
-        {
-            const string error = "Simulated reviewer failure for escalation path testing.";
-            activity?.SetStatus(ActivityStatusCode.Error, error);
-            replyTo.Tell(new RoleTaskFailed(
-                command.TaskId,
-                command.Role,
-                error,
-                DateTimeOffset.UtcNow));
-            return;
-        }
-
         _currentLoad++;
         AdvertiseCapability();
         try
         {
+            if (!_capabilities.Contains(command.Role))
+            {
+                var error = $"SwarmAgentActor does not support role {command.Role}";
+                activity?.SetStatus(ActivityStatusCode.Error, error);
+                replyTo.Tell(new RoleTaskFailed(
+                    command.TaskId,
+                    command.Role,
+                    error,
+                    DateTimeOffset.UtcNow));
+                return;
+            }
+
+            if (_options.SimulateBuilderFailure && command.Role == SwarmRole.Builder)
+            {
+                const string error = "Simulated builder failure for phase testing.";
+                activity?.SetStatus(ActivityStatusCode.Error, error);
+                replyTo.Tell(new RoleTaskFailed(
+                    command.TaskId,
+                    command.Role,
+                    error,
+                    DateTimeOffset.UtcNow));
+                return;
+            }
+
+            if (_options.SimulateReviewerFailure && command.Role == SwarmRole.Reviewer)
+            {
+                const string error = "Simulated reviewer failure for escalation path testing.";
+                activity?.SetStatus(ActivityStatusCode.Error, error);
+                replyTo.Tell(new RoleTaskFailed(
+                    command.TaskId,
+                    command.Role,
+                    error,
+                    DateTimeOffset.UtcNow));
+                return;
+            }
+
             var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
             activity?.SetTag("output.length", output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);

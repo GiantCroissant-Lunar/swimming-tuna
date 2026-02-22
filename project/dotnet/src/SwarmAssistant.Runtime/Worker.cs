@@ -139,15 +139,15 @@ public sealed class Worker : BackgroundService
             "blackboard");
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
-                workerActor: capabilityRegistry,
-                reviewerActor: capabilityRegistry,
-                supervisorActor: supervisor,
-                blackboardActor: blackboardActor,
-                roleEngine: agentFrameworkRoleEngine,
-                loggerFactory: _loggerFactory,
-                telemetry: _telemetry,
-                uiEvents: _uiEvents,
-                taskRegistry: _taskRegistry)),
+                capabilityRegistry,
+                capabilityRegistry,
+                supervisor,
+                blackboardActor,
+                agentFrameworkRoleEngine,
+                _loggerFactory,
+                _telemetry,
+                _uiEvents,
+                _taskRegistry)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
 
