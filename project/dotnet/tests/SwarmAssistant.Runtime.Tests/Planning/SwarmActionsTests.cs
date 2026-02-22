@@ -6,7 +6,7 @@ namespace SwarmAssistant.Runtime.Tests.Planning;
 public sealed class SwarmActionsTests
 {
     [Fact]
-    public void All_ContainsSixActions()
+    public void All_ContainsSevenActions()
     {
         Assert.Equal(7, SwarmActions.All.Count);
     }

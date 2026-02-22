@@ -105,7 +105,9 @@ static object MapTaskSnapshot(TaskSnapshot snapshot)
         buildOutput = snapshot.BuildOutput,
         reviewOutput = snapshot.ReviewOutput,
         summary = snapshot.Summary,
-        error = snapshot.Error
+        error = snapshot.Error,
+        parentTaskId = snapshot.ParentTaskId,
+        childTaskIds = snapshot.ChildTaskIds
     };
 }
 

@@ -150,11 +150,25 @@ public sealed class TaskRegistry : IAsyncDisposable
         {
             if (_tasks.TryGetValue(parentTaskId, out var parent))
             {
-                _tasks[parentTaskId] = parent with
+                while (true)
                 {
-                    ChildTaskIds = [..(parent.ChildTaskIds ?? []), taskId],
-                    UpdatedAt = DateTimeOffset.UtcNow
-                };
+                    var newParent = parent with
+                    {
+                        ChildTaskIds = [..(parent.ChildTaskIds ?? []), taskId],
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    };
+
+                    if (_tasks.TryUpdate(parentTaskId, newParent, parent))
+                    {
+                        PersistBestEffort(newParent);
+                        break;
+                    }
+
+                    if (!_tasks.TryGetValue(parentTaskId, out parent))
+                    {
+                        break;
+                    }
+                }
             }
 
             PersistBestEffort(snapshot);

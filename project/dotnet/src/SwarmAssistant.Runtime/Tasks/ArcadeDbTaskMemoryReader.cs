@@ -175,6 +175,15 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
         var createdAt = ParseTimestamp(GetString(item, "createdAt"));
         var updatedAt = ParseTimestamp(GetString(item, "updatedAt"));
 
+        var parentTaskId = GetString(item, "parentTaskId");
+        var childTaskIdsRaw = GetString(item, "childTaskIds");
+        var childTaskIds = string.IsNullOrWhiteSpace(childTaskIdsRaw)
+            ? null
+            : (IReadOnlyList<string>)childTaskIdsRaw
+                .Split(ArcadeDbTaskMemoryWriter.ChildTaskIdDelimiter,
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
         return new TaskSnapshot(
             TaskId: taskId,
             Title: GetString(item, "title") ?? string.Empty,
@@ -186,7 +195,9 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
             BuildOutput: GetString(item, "buildOutput"),
             ReviewOutput: GetString(item, "reviewOutput"),
             Summary: GetString(item, "summary"),
-            Error: GetString(item, "taskError") ?? GetString(item, "error"));
+            Error: GetString(item, "taskError") ?? GetString(item, "error"),
+            ParentTaskId: parentTaskId,
+            ChildTaskIds: childTaskIds);
     }
 
     private static string? GetString(JsonElement item, string propertyName)

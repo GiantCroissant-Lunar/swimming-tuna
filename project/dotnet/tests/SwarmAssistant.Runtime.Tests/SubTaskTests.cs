@@ -214,6 +214,11 @@ public sealed class SubTaskTests : TestKit
         Assert.Equal("WaitForSubTasks", plan.RecommendedPlan![0].Name);
     }
 
+    // Timeout constants for actor-level tests
+    private static readonly TimeSpan ActorResponseTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PauseVerificationTimeout = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan PartialCompleteVerificationTimeout = TimeSpan.FromMilliseconds(200);
+
     // --- Circular dependency / depth limit test ---
 
     [Fact]
@@ -223,6 +228,159 @@ public sealed class SubTaskTests : TestKit
             "MaxSubTaskDepth should be positive to allow at least one level of sub-tasks");
         Assert.True(TaskCoordinatorActor.MaxSubTaskDepth <= 10,
             "MaxSubTaskDepth should have a reasonable upper bound to prevent runaway recursion");
+    }
+
+    // --- Actor-level SUBTASK parsing / GOAP gating tests ---
+
+    [Fact]
+    public void TaskCoordinatorActor_PlannerOutputWithSubTasks_SpawnsSubTasksAndPausesGoap()
+    {
+        // Arrange: all dependencies are probes so we can control each message
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(
+            _options, _loggerFactory, _telemetry);
+
+        var taskId = $"coord-subtask-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Parent Task", "desc", DateTimeOffset.UtcNow));
+
+        // Create coordinator as a child of parentProbe so Context.Parent == parentProbe
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Parent Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+
+        // Act: start the coordinator
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+
+        // Coordinator first requests an orchestrator decision
+        var orchestratorTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
+            m => m.Role == SwarmRole.Orchestrator,
+            ActorResponseTimeout,
+            "Coordinator should send orchestrator task on start");
+
+        // Reply: orchestrator says Plan
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow));
+
+        // Coordinator dispatches Plan action
+        var plannerTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
+            m => m.Role == SwarmRole.Planner,
+            ActorResponseTimeout,
+            "Coordinator should send planner task after orchestrator said Plan");
+
+        // Reply: planner output containing two SUBTASK markers
+        var plannerOutput =
+            "Here is the decomposed plan.\n" +
+            "SUBTASK: Auth Service|Implement login and logout endpoints\n" +
+            "SUBTASK: Data Layer|Set up database schema and repositories";
+
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow));
+
+        // Assert: two SpawnSubTask messages are forwarded to the parent (parentProbe)
+        var spawn1 = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
+        var spawn2 = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
+
+        Assert.Equal(taskId, spawn1.ParentTaskId);
+        Assert.Equal(taskId, spawn2.ParentTaskId);
+        Assert.Equal(1, spawn1.Depth);
+        Assert.Equal(1, spawn2.Depth);
+
+        var titles = new HashSet<string>(StringComparer.Ordinal) { spawn1.Title, spawn2.Title };
+        Assert.Contains("Auth Service", titles);
+        Assert.Contains("Data Layer", titles);
+
+        // Assert: coordinator is PAUSED — no more worker messages while sub-tasks are pending
+        workerProbe.ExpectNoMsg(PauseVerificationTimeout);
+
+        // Act: complete one sub-task — coordinator should still be paused
+        coordinator.Tell(new SubTaskCompleted(taskId, spawn1.ChildTaskId, "Auth done"));
+        workerProbe.ExpectNoMsg(PartialCompleteVerificationTimeout);
+
+        // Act: complete the second sub-task — coordinator should resume GOAP loop
+        coordinator.Tell(new SubTaskCompleted(taskId, spawn2.ChildTaskId, "Data done"));
+
+        // Assert: coordinator resumed and requests next orchestrator decision
+        workerProbe.ExpectMsg<ExecuteRoleTask>(
+            m => m.Role == SwarmRole.Orchestrator,
+            ActorResponseTimeout,
+            "Coordinator should resume GOAP loop after all sub-tasks complete");
+    }
+
+    [Fact]
+    public void TaskCoordinatorActor_SubTaskFailed_BlocksParentTask()
+    {
+        // Arrange
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+
+        var taskId = $"coord-fail-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Parent Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Parent Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+
+        // Drive through orchestrator and planner phases
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow));
+
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, ActorResponseTimeout);
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Planner,
+            "SUBTASK: Critical Step|This must succeed",
+            DateTimeOffset.UtcNow));
+
+        // Capture the spawned sub-task ID
+        var spawn = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
+        Assert.Equal(taskId, spawn.ParentTaskId);
+
+        // Coordinator should be paused
+        workerProbe.ExpectNoMsg(PauseVerificationTimeout);
+
+        // Act: sub-task fails
+        coordinator.Tell(new SubTaskFailed(taskId, spawn.ChildTaskId, "Critical step crashed"));
+
+        // Assert: supervisor receives TaskFailed AND EscalationRaised (may be preceded by TaskStarted/TaskResult)
+        var taskFailed = supervisorProbe.FishForMessage(
+            m => m is TaskFailed tf && tf.TaskId == taskId && tf.Status == TaskState.Blocked,
+            ActorResponseTimeout,
+            "Supervisor should be notified of parent task failure");
+        Assert.NotNull(taskFailed);
+
+        var escalation = supervisorProbe.FishForMessage(
+            m => m is EscalationRaised er && er.TaskId == taskId,
+            ActorResponseTimeout,
+            "Supervisor should receive escalation for sub-task failure");
+        Assert.NotNull(escalation);
+
+        // Task registry should reflect the blocked status
+        var snapshot = registry.GetTask(taskId);
+        Assert.NotNull(snapshot);
+        Assert.Equal(TaskState.Blocked, snapshot!.Status);
+
+        // Coordinator should not send any more worker messages after failure
+        workerProbe.ExpectNoMsg(PauseVerificationTimeout);
     }
 
     // --- Integration: DispatcherActor spawns child coordinator ---

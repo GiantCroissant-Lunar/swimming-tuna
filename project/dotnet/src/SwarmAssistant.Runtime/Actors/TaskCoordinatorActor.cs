@@ -679,6 +679,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _supervisorActor.Tell(new TaskFailed(
             _taskId, TaskState.Blocked, error, DateTimeOffset.UtcNow, Self.Path.Name));
 
+        _supervisorActor.Tell(new EscalationRaised(
+            _taskId, error, 1, DateTimeOffset.UtcNow, Self.Path.Name));
+
         _taskRegistry.MarkFailed(_taskId, error);
 
         _uiEvents.Publish(
