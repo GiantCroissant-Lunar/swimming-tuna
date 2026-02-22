@@ -1,3 +1,4 @@
+using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 
@@ -66,6 +67,23 @@ internal sealed record BlackboardContext(
     IReadOnlyDictionary<string, string> Entries
 );
 
+// Global blackboard messages for stigmergy (cross-task coordination)
+internal sealed record UpdateGlobalBlackboard(
+    string Key,
+    string Value
+);
+
+internal sealed record GetGlobalContext();
+
+internal sealed record GlobalBlackboardContext(
+    IReadOnlyDictionary<string, string> Entries
+);
+
+internal sealed record GlobalBlackboardChanged(
+    string Key,
+    string Value
+);
+
 // World state snapshot for telemetry/UI — reserved for future phases where world-state
 // changes are published as discrete events (e.g., to a replay log or the AG-UI stream).
 // Produced by TaskCoordinatorActor on each TransitionTo call.
@@ -115,6 +133,21 @@ internal sealed record HealthCheckResponse(
     string ActorName,
     int ActiveTasks,
     DateTimeOffset At
+);
+
+internal sealed record GetBestAgentForRole(
+    SwarmRole Role
+);
+
+internal sealed record BestAgentForRole(
+    SwarmRole Role,
+    IActorRef? Agent
+);
+
+internal sealed record GetCapabilitySnapshot;
+
+internal sealed record CapabilitySnapshot(
+    IReadOnlyList<AgentCapabilityAdvertisement> Agents
 );
 
 // Formal escalation record for supervisor tracking — reserved for future phases where
