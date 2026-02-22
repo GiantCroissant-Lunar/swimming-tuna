@@ -11,6 +11,8 @@ using SwarmAssistant.Runtime.Ui;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 var bootstrapOptions = builder.Configuration
     .GetSection(RuntimeOptions.SectionName)
     .Get<RuntimeOptions>() ?? new RuntimeOptions();
@@ -44,6 +46,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
 app.UseCors("DefaultCorsPolicy");
 
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
