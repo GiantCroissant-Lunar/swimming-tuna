@@ -32,6 +32,7 @@ public partial class Main : Control
 
     public override void _Ready()
     {
+        DisplayServer.WindowSetMinSize(new Vector2I(960, 640));
         BuildLayout();
         SetupNetworking();
         TriggerPoll();
@@ -48,6 +49,8 @@ public partial class Main : Control
         AddChild(root);
 
         var layout = new VBoxContainer();
+        layout.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        layout.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         root.AddChild(layout);
 
         _titleLabel = new Label
@@ -60,20 +63,23 @@ public partial class Main : Control
         _statusLabel = new Label { Text = "Connecting..." };
         layout.AddChild(_statusLabel);
 
-        var submitRow = new HBoxContainer();
+        var submitRow = new HFlowContainer();
+        submitRow.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         layout.AddChild(submitRow);
 
         _taskTitleInput = new LineEdit
         {
             PlaceholderText = "Task title",
-            CustomMinimumSize = new Vector2(300, 0)
+            CustomMinimumSize = new Vector2(240, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         submitRow.AddChild(_taskTitleInput);
 
         _taskDescriptionInput = new LineEdit
         {
             PlaceholderText = "Task description",
-            CustomMinimumSize = new Vector2(420, 0)
+            CustomMinimumSize = new Vector2(320, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         submitRow.AddChild(_taskDescriptionInput);
 
@@ -81,7 +87,8 @@ public partial class Main : Control
         submitButton.Pressed += OnSubmitTaskPressed;
         submitRow.AddChild(submitButton);
 
-        var actionRow = new HBoxContainer();
+        var actionRow = new HFlowContainer();
+        actionRow.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         layout.AddChild(actionRow);
 
         var snapshotButton = new Button { Text = "Request Snapshot" };
@@ -97,12 +104,16 @@ public partial class Main : Control
         actionRow.AddChild(loadMemoryButton);
 
         _componentContainer = new VBoxContainer();
+        _componentContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _componentContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         layout.AddChild(_componentContainer);
 
         _logOutput = new RichTextLabel
         {
             CustomMinimumSize = new Vector2(0, 280),
-            ScrollActive = true
+            ScrollActive = true,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill
         };
         layout.AddChild(_logOutput);
     }
