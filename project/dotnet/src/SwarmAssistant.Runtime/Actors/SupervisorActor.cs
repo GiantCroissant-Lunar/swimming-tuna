@@ -235,10 +235,10 @@ public sealed class SupervisorActor : ReceiveActor
                     "Adapter circuit closed (expired) adapterId={AdapterId}", adapterId);
                 Context.System.EventStream.Publish(new AdapterCircuitClosed(adapterId));
 
-                // Stigmergy: signal circuit recovery to global blackboard
+                // Stigmergy: signal circuit recovery to global blackboard (single key per adapter)
                 _blackboardActor?.Tell(new UpdateGlobalBlackboard(
-                    $"adapter_circuit_closed:{adapterId}",
-                    DateTimeOffset.UtcNow.ToString("O")));
+                    GlobalBlackboardKeys.AdapterCircuit(adapterId),
+                    $"{GlobalBlackboardKeys.CircuitStateClosed}|at={DateTimeOffset.UtcNow:O}"));
             }
 
             _adapterFailureCounts.TryGetValue(adapterId, out var count);
@@ -252,10 +252,10 @@ public sealed class SupervisorActor : ReceiveActor
                 // Publish circuit open event via Akka EventStream
                 Context.System.EventStream.Publish(new AdapterCircuitOpen(adapterId, until));
 
-                // Stigmergy: signal circuit breaker state to global blackboard
+                // Stigmergy: signal circuit breaker state to global blackboard (single key per adapter)
                 _blackboardActor?.Tell(new UpdateGlobalBlackboard(
-                    $"adapter_circuit_open:{adapterId}",
-                    $"failures={count + 1}|until={until:O}"));
+                    GlobalBlackboardKeys.AdapterCircuit(adapterId),
+                    $"{GlobalBlackboardKeys.CircuitStateOpen}|failures={count + 1}|until={until:O}"));
 
                 _logger.LogWarning(
                     "Adapter circuit opened adapterId={AdapterId} failureCount={FailureCount} until={Until}",
