@@ -60,19 +60,15 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 ["taskError"] = snapshot.Error
             };
 
-            // Use deterministic delete+insert because ArcadeDB UPSERT index matching is strict with bound params.
+            // Atomic UPSERT: updates the existing record or inserts a new one in a single statement.
             await ExecuteCommandAsync(
                 client,
-                "DELETE FROM SwarmTask WHERE taskId = :taskId",
-                new Dictionary<string, object?> { ["taskId"] = snapshot.TaskId },
-                cancellationToken);
-            await ExecuteCommandAsync(
-                client,
-                "INSERT INTO SwarmTask SET " +
+                "UPDATE SwarmTask SET " +
                 "taskId = :taskId, title = :title, description = :description, status = :status, " +
                 "createdAt = :createdAt, updatedAt = :updatedAt, " +
                 "planningOutput = :planningOutput, buildOutput = :buildOutput, reviewOutput = :reviewOutput, " +
-                "summary = :summary, taskError = :taskError",
+                "summary = :summary, taskError = :taskError " +
+                "UPSERT WHERE taskId = :taskId",
                 parameters,
                 cancellationToken);
 
@@ -99,22 +95,24 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 return;
             }
 
-            // Best-effort schema bootstrap; commands may fail if already present or restricted.
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE DOCUMENT TYPE SwarmTask IF NOT EXISTS", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.taskId IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.title IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.description IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.status IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.createdAt IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.updatedAt IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.planningOutput IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.buildOutput IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.reviewOutput IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.summary IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE PROPERTY SwarmTask.taskError IF NOT EXISTS STRING", cancellationToken);
-            await ExecuteCommandIgnoringFailureAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
+            // Schema bootstrap: all commands use IF NOT EXISTS so retrying is safe.
+            // Only mark as ensured when every command succeeds; transient failures allow retry on next write.
+            var allSucceeded = true;
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE DOCUMENT TYPE SwarmTask IF NOT EXISTS", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.taskId IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.title IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.description IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.status IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.createdAt IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.updatedAt IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.planningOutput IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.buildOutput IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.reviewOutput IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.summary IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.taskError IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
 
-            _schemaEnsured = true;
+            _schemaEnsured = allSucceeded;
         }
         finally
         {
@@ -122,7 +120,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
         }
     }
 
-    private async Task ExecuteCommandIgnoringFailureAsync(
+    private async Task<bool> TryExecuteSchemaCommandAsync(
         HttpClient client,
         string command,
         CancellationToken cancellationToken)
@@ -130,10 +128,12 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
         try
         {
             await ExecuteCommandAsync(client, command, parameters: null, cancellationToken);
+            return true;
         }
         catch (Exception exception)
         {
             _logger.LogDebug(exception, "ArcadeDB schema bootstrap command failed command={Command}", command);
+            return false;
         }
     }
 
