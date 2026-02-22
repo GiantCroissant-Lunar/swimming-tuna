@@ -14,7 +14,8 @@ This MVP borrows patterns from the reference set under `/ref-projects` while kee
 - `src/lib/orchestrator.mjs`: runs deterministic step machine per task.
 - `src/lib/store.mjs`: persists tasks/events.
 - `src/index.mjs`: CLI entrypoint for `init`, `status`, and `run`.
-- `dotnet/src/SwarmAssistant.Runtime`: Akka-based runtime with actor topology.
+- `dotnet/src/SwarmAssistant.Runtime`: Akka-based runtime with actor topology and AG-UI endpoints.
+- `godot-ui/`: Godot Mono surface renderer for AG-UI/A2UI events.
 - `infra/langfuse`: local Langfuse stack with `local`, `secure-local`, and `ci` env profiles.
 
 ## Akka Runtime (Phase 2)
@@ -59,6 +60,22 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `dotnet/src/SwarmAssistant.Runtime/Execution/RolePromptFactory.cs` produces deterministic role prompts for planner, builder, and reviewer roles.
 - `dotnet/src/SwarmAssistant.Runtime/Execution/SandboxCommandBuilder.cs` maps runtime commands into `host`, `docker`, or `apple-container` wrappers.
 - Runtime profiles now support `subscription-cli-fallback` mode for CLI-first execution without provider API keys.
+
+## UI Protocol Runtime (Phase 6)
+
+- `dotnet/src/SwarmAssistant.Runtime/Ui/UiEventStream.cs` provides in-memory pub/sub for AG-UI event streaming.
+- `dotnet/src/SwarmAssistant.Runtime/Ui/A2UiPayloadFactory.cs` builds A2UI payloads (`createSurface`, `updateDataModel`) from task lifecycle events.
+- `dotnet/src/SwarmAssistant.Runtime/Program.cs` exposes:
+- `GET /ag-ui/events` (SSE stream)
+- `GET /ag-ui/recent` (recent event buffer)
+- `POST /ag-ui/actions` (UI action ingress)
+- `CoordinatorActor` now emits AG-UI + A2UI events on assignment, transition, success, and failure.
+- `godot-ui/scripts/Main.cs` consumes the SSE stream and renders `text`/`button` components in a windowed Godot app.
+
+## A2A + ArcadeDB Scaffolding (Phase 6)
+
+- Runtime options include `A2AEnabled` and `A2AAgentCardPath`; when enabled, an agent card endpoint is exposed.
+- Runtime options include `ArcadeDbEnabled`, `ArcadeDbHttpUrl`, and `ArcadeDbDatabase` as the initial contract for memory-store integration in later phases.
 
 ## Provider Strategy
 

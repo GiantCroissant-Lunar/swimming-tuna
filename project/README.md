@@ -11,8 +11,10 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing (Phase 5).
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway (Phase 6).
+- `godot-ui/`: Godot Mono client that subscribes to AG-UI SSE and renders A2UI payloads.
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
+- `infra/arcadedb/`: integration notes and schema plan for graph/vector memory wiring.
 
 ## JavaScript MVP Commands
 
@@ -24,12 +26,12 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 5)
+## .NET Runtime Commands (Phase 6)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
 dotnet test /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
-DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime
+DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
 ```
 
 Available .NET runtime profiles:
@@ -48,6 +50,14 @@ Runtime config includes:
 - `AgentFrameworkExecutionMode`
 - `RoleExecutionTimeoutSeconds`
 - `CliAdapterOrder`
+- `AgUiEnabled`
+- `AgUiBindUrl`
+- `AgUiProtocolVersion`
+- `A2AEnabled`
+- `A2AAgentCardPath`
+- `ArcadeDbEnabled`
+- `ArcadeDbHttpUrl`
+- `ArcadeDbDatabase`
 - `LangfuseTracingEnabled`
 - `LangfusePublicKey`
 - `LangfuseSecretKey`
@@ -80,6 +90,20 @@ export Runtime__DockerSandboxWrapper__Args__2=my-tools-image
 export Runtime__DockerSandboxWrapper__Args__3=sh
 export Runtime__DockerSandboxWrapper__Args__4=-lc
 export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
+```
+
+AG-UI endpoints (when runtime is up):
+
+```bash
+curl -s http://127.0.0.1:5080/ag-ui/recent
+curl -N http://127.0.0.1:5080/ag-ui/events
+curl -s -X POST http://127.0.0.1:5080/ag-ui/actions -H 'content-type: application/json' -d '{"taskId":"manual-test","actionId":"request_snapshot","payload":{"source":"cli"}}'
+```
+
+Run Godot windowed client:
+
+```bash
+/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui --windowed --resolution 1280x720
 ```
 
 ## Langfuse Stack Commands (Phase 1)

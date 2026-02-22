@@ -1,9 +1,9 @@
-# SwarmAssistant .NET Runtime (Phase 5)
+# SwarmAssistant .NET Runtime (Phase 6)
 
 ## Projects
 
 - `src/SwarmAssistant.Contracts`: shared task and messaging contracts.
-- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology, Agent Framework role execution, Langfuse tracing, and CLI-first execution routing.
+- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology, Agent Framework role execution, Langfuse tracing, CLI-first execution routing, and AG-UI/A2UI streaming endpoints.
 - `tests/SwarmAssistant.Runtime.Tests`: lifecycle/state-machine tests.
 
 ## Actor Topology (Phase 2)
@@ -61,6 +61,33 @@ export Runtime__DockerSandboxWrapper__Args__4=-lc
 export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 ```
 
+## AG-UI + A2UI Gateway (Phase 6)
+
+- Runtime now hosts AG-UI-compatible endpoints:
+- `GET /ag-ui/events` (SSE stream)
+- `GET /ag-ui/recent` (latest buffered events)
+- `POST /ag-ui/actions` (UI action ingress)
+- `CoordinatorActor` emits A2UI payloads for:
+- `createSurface` on task assignment
+- `updateDataModel` on transitions/results/failures
+
+Run and inspect stream:
+
+```bash
+DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
+curl -N http://127.0.0.1:5080/ag-ui/events
+```
+
+## A2A + ArcadeDB Scaffolding (Phase 6)
+
+- Agent card endpoint can be toggled with `Runtime__A2AEnabled=true`.
+- ArcadeDB integration points are configured via:
+- `Runtime__ArcadeDbEnabled`
+- `Runtime__ArcadeDbHttpUrl`
+- `Runtime__ArcadeDbDatabase`
+
+Storage operations are not wired yet; this phase introduces runtime contracts only.
+
 ## Build
 
 ```bash
@@ -93,3 +120,11 @@ From `Runtime` config:
 - `CliAdapterOrder`
 - `DockerSandboxWrapper`
 - `AppleContainerSandboxWrapper`
+- `AgUiEnabled`
+- `AgUiBindUrl`
+- `AgUiProtocolVersion`
+- `A2AEnabled`
+- `A2AAgentCardPath`
+- `ArcadeDbEnabled`
+- `ArcadeDbHttpUrl`
+- `ArcadeDbDatabase`

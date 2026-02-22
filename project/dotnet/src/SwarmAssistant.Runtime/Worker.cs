@@ -6,6 +6,7 @@ using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Telemetry;
+using SwarmAssistant.Runtime.Ui;
 
 namespace SwarmAssistant.Runtime;
 
@@ -14,16 +15,22 @@ public sealed class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly RuntimeOptions _options;
+    private readonly UiEventStream _uiEvents;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
     private RuntimeTelemetry? _telemetry;
 
-    public Worker(ILogger<Worker> logger, ILoggerFactory loggerFactory, IOptions<RuntimeOptions> options)
+    public Worker(
+        ILogger<Worker> logger,
+        ILoggerFactory loggerFactory,
+        IOptions<RuntimeOptions> options,
+        UiEventStream uiEvents)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
         _options = options.Value;
+        _uiEvents = uiEvents;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -51,6 +58,17 @@ public sealed class Worker : BackgroundService
 
         _actorSystem = ActorSystem.Create("swarm-assistant-system", config);
 
+        _uiEvents.Publish(
+            type: "agui.runtime.started",
+            taskId: null,
+            payload: new
+            {
+                _options.Profile,
+                _options.AgentFrameworkExecutionMode,
+                _options.SandboxMode,
+                _options.AgUiProtocolVersion
+            });
+
         var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var supervisor = _actorSystem.ActorOf(
             Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry)),
@@ -62,7 +80,7 @@ public sealed class Worker : BackgroundService
             Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
             "reviewer");
         var coordinator = _actorSystem.ActorOf(
-            Props.Create(() => new CoordinatorActor(workerActor, reviewerActor, supervisor, _loggerFactory, _telemetry)),
+            Props.Create(() => new CoordinatorActor(workerActor, reviewerActor, supervisor, _loggerFactory, _telemetry, _uiEvents)),
             "coordinator");
 
         _supervisor = supervisor;
@@ -75,6 +93,16 @@ public sealed class Worker : BackgroundService
                 _options.DemoTaskDescription,
                 DateTimeOffset.UtcNow);
             coordinator.Tell(task);
+
+            _uiEvents.Publish(
+                type: "agui.task.submitted",
+                taskId: task.TaskId,
+                payload: new
+                {
+                    task.TaskId,
+                    task.Title,
+                    task.Description
+                });
 
             _logger.LogInformation("Demo task submitted taskId={TaskId}", task.TaskId);
         }
@@ -128,5 +156,16 @@ public sealed class Worker : BackgroundService
             snapshot.Completed,
             snapshot.Failed,
             snapshot.Escalations);
+
+        _uiEvents.Publish(
+            type: "agui.runtime.snapshot",
+            taskId: null,
+            payload: new
+            {
+                snapshot.Started,
+                snapshot.Completed,
+                snapshot.Failed,
+                snapshot.Escalations
+            });
     }
 }

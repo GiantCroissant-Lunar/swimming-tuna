@@ -8,6 +8,10 @@ ref-projects/
 # Node
 node_modules/
 
+# Godot
+.godot/
+*.import
+
 # Env/config secrets
 .env
 .env.*

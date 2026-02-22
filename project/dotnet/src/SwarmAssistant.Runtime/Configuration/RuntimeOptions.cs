@@ -13,6 +13,14 @@ public sealed class RuntimeOptions
     public string SandboxMode { get; init; } = "docker";
     public SandboxWrapperOptions DockerSandboxWrapper { get; init; } = new();
     public SandboxWrapperOptions AppleContainerSandboxWrapper { get; init; } = new();
+    public bool AgUiEnabled { get; init; } = true;
+    public string AgUiBindUrl { get; init; } = "http://127.0.0.1:5080";
+    public string AgUiProtocolVersion { get; init; } = "0.1";
+    public bool A2AEnabled { get; init; } = false;
+    public string A2AAgentCardPath { get; init; } = "/.well-known/agent-card.json";
+    public bool ArcadeDbEnabled { get; init; } = false;
+    public string ArcadeDbHttpUrl { get; init; } = "http://127.0.0.1:2480";
+    public string ArcadeDbDatabase { get; init; } = "swarm_assistant";
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;
 

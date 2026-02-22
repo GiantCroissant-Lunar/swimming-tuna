@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
+using SwarmAssistant.Runtime.Ui;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -14,6 +15,7 @@ public sealed class CoordinatorActor : ReceiveActor
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
     private readonly RuntimeTelemetry _telemetry;
+    private readonly UiEventStream _uiEvents;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, TaskContext> _tasks = new();
@@ -23,12 +25,14 @@ public sealed class CoordinatorActor : ReceiveActor
         IActorRef reviewerActor,
         IActorRef supervisorActor,
         ILoggerFactory loggerFactory,
-        RuntimeTelemetry telemetry)
+        RuntimeTelemetry telemetry,
+        UiEventStream uiEvents)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
         _telemetry = telemetry;
+        _uiEvents = uiEvents;
         _logger = loggerFactory.CreateLogger<CoordinatorActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -65,6 +69,19 @@ public sealed class CoordinatorActor : ReceiveActor
         var context = new TaskContext(task);
         _tasks[message.TaskId] = context;
 
+        _uiEvents.Publish(
+            type: "agui.ui.surface",
+            taskId: context.Task.TaskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                a2ui = A2UiPayloadFactory.CreateSurface(
+                    context.Task.TaskId,
+                    context.Task.Title,
+                    context.Task.Description,
+                    context.Task.Status)
+            });
+
         TransitionTo(context, TaskState.Planning);
         _workerActor.Tell(new ExecuteRoleTask(
             context.Task.TaskId,
@@ -98,6 +115,17 @@ public sealed class CoordinatorActor : ReceiveActor
         {
             case SwarmRole.Planner:
                 context.PlanningOutput = message.Output;
+                _uiEvents.Publish(
+                    type: "agui.ui.patch",
+                    taskId: context.Task.TaskId,
+                    payload: new
+                    {
+                        source = Self.Path.Name,
+                        a2ui = A2UiPayloadFactory.AppendMessage(
+                            context.Task.TaskId,
+                            "planner",
+                            message.Output)
+                    });
                 _supervisorActor.Tell(new TaskResult(
                     context.Task.TaskId,
                     TaskState.Planning,
@@ -117,6 +145,17 @@ public sealed class CoordinatorActor : ReceiveActor
 
             case SwarmRole.Builder:
                 context.BuildOutput = message.Output;
+                _uiEvents.Publish(
+                    type: "agui.ui.patch",
+                    taskId: context.Task.TaskId,
+                    payload: new
+                    {
+                        source = Self.Path.Name,
+                        a2ui = A2UiPayloadFactory.AppendMessage(
+                            context.Task.TaskId,
+                            "builder",
+                            message.Output)
+                    });
                 _supervisorActor.Tell(new TaskResult(
                     context.Task.TaskId,
                     TaskState.Building,
@@ -136,6 +175,17 @@ public sealed class CoordinatorActor : ReceiveActor
 
             case SwarmRole.Reviewer:
                 context.ReviewOutput = message.Output;
+                _uiEvents.Publish(
+                    type: "agui.ui.patch",
+                    taskId: context.Task.TaskId,
+                    payload: new
+                    {
+                        source = Self.Path.Name,
+                        a2ui = A2UiPayloadFactory.AppendMessage(
+                            context.Task.TaskId,
+                            "reviewer",
+                            message.Output)
+                    });
                 _supervisorActor.Tell(new TaskResult(
                     context.Task.TaskId,
                     TaskState.Reviewing,
@@ -150,6 +200,14 @@ public sealed class CoordinatorActor : ReceiveActor
                     BuildSummary(context),
                     DateTimeOffset.UtcNow,
                     Self.Path.Name));
+                _uiEvents.Publish(
+                    type: "agui.task.done",
+                    taskId: context.Task.TaskId,
+                    payload: new
+                    {
+                        summary = BuildSummary(context),
+                        source = Self.Path.Name
+                    });
                 break;
 
             default:
@@ -201,6 +259,16 @@ public sealed class CoordinatorActor : ReceiveActor
             1,
             DateTimeOffset.UtcNow,
             Self.Path.Name));
+
+        _uiEvents.Publish(
+            type: "agui.task.failed",
+            taskId: context.Task.TaskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                error = message.Error,
+                a2ui = A2UiPayloadFactory.UpdateStatus(context.Task.TaskId, context.Task.Status, message.Error)
+            });
     }
 
     private void TransitionTo(TaskContext context, TaskState target)
@@ -235,6 +303,17 @@ public sealed class CoordinatorActor : ReceiveActor
             target,
             context.Task.UpdatedAt,
             Self.Path.Name));
+
+        _uiEvents.Publish(
+            type: "agui.task.transition",
+            taskId: context.Task.TaskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                previous = previous.ToString(),
+                current = target.ToString(),
+                a2ui = A2UiPayloadFactory.UpdateStatus(context.Task.TaskId, target)
+            });
     }
 
     private static string BuildSummary(TaskContext context)
