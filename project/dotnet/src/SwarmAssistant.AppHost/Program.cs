@@ -12,7 +12,7 @@ var runtime = builder.AddProject<Projects.SwarmAssistant_Runtime>("swarm-runtime
     .WithEnvironment("Runtime__ArcadeDbHttpUrl", arcadedb.GetEndpoint("http"))
     .WithEnvironment("Runtime__ArcadeDbUser", "root")
     .WithEnvironment("Runtime__ArcadeDbPassword", "playwithdata")
-    .WithHttpEndpoint(port: 5080, targetPort: 5080, name: "ag-ui-http");
+    .WithHttpEndpoint(port: 5080, name: "ag-ui-http");
 
 var godotUi = builder.AddExecutable("godot-ui", "godot", ".", "../../../godot-ui")
     .WithEnvironment("AGUI_HTTP_URL", runtime.GetEndpoint("ag-ui-http"));
