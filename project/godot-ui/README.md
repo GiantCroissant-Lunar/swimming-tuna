@@ -1,6 +1,12 @@
 # SwarmAssistant Godot UI (Phase 6)
 
-This project is a Godot Mono (C#) client that renders A2UI payloads received from the AG-UI SSE stream exposed by `SwarmAssistant.Runtime`.
+This project is a Godot Mono (C#) client that renders A2UI payloads received from AG-UI events exposed by `SwarmAssistant.Runtime`.
+
+Rendering strategy:
+
+- A2UI `text` maps to `res://scenes/components/A2TextComponent.tscn`
+- A2UI `button` maps to `res://scenes/components/A2ButtonComponent.tscn`
+- `Main.cs` polls `/ag-ui/recent` and applies `createSurface` / `updateDataModel` operations.
 
 ## Prerequisites
 
@@ -19,10 +25,32 @@ DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-hor
 /Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui --windowed --resolution 1280x720
 ```
 
+## Export macOS App
+
+Install export template once:
+
+```bash
+mkdir -p "$HOME/Library/Application Support/Godot/export_templates/4.6.1.stable.mono"
+curl -L "https://github.com/godotengine/godot-builds/releases/download/4.6.1-stable/Godot_v4.6.1-stable_mono_export_templates.tpz" -o /tmp/Godot_v4.6.1-stable_mono_export_templates.tpz
+unzip -o /tmp/Godot_v4.6.1-stable_mono_export_templates.tpz templates/macos.zip -d /tmp/godot_templates_extract
+cp -f /tmp/godot_templates_extract/templates/macos.zip "$HOME/Library/Application Support/Godot/export_templates/4.6.1.stable.mono/macos.zip"
+```
+
+Export:
+
+```bash
+mkdir -p /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui
+/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot --headless --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui --export-debug "macOS" /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui/SwarmAssistantUI.app
+```
+
+Run exported app in windowed mode:
+
+```bash
+"/Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui/SwarmAssistantUI.app/Contents/MacOS/SwarmAssistant UI" --windowed --resolution 1280x720
+```
+
 ## Headless Smoke Check
 
 ```bash
 /Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot --headless --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui --quit-after 120
 ```
-
-By default, networking is disabled in headless mode to keep CI/smoke checks stable. Windowed mode keeps AG-UI networking enabled.

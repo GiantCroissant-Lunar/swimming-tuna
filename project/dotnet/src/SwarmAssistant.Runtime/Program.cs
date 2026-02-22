@@ -45,9 +45,9 @@ app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
 
 if (options.AgUiEnabled)
 {
-    app.MapGet("/ag-ui/recent", (UiEventStream stream) =>
+    app.MapGet("/ag-ui/recent", (int? count, UiEventStream stream) =>
     {
-        return Results.Ok(stream.GetRecent());
+        return Results.Ok(stream.GetRecent(count ?? 50));
     });
 
     app.MapPost("/ag-ui/actions", (UiActionRequest action, UiEventStream stream) =>

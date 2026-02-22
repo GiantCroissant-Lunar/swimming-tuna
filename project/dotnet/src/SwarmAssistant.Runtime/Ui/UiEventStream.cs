@@ -42,7 +42,13 @@ public sealed class UiEventStream
     {
         lock (_recentLock)
         {
-            return _recentEvents.Take(Math.Clamp(count, 1, 200)).ToList();
+            var bounded = Math.Clamp(count, 1, 200);
+            if (_recentEvents.Count <= bounded)
+            {
+                return _recentEvents.ToList();
+            }
+
+            return _recentEvents.Skip(_recentEvents.Count - bounded).ToList();
         }
     }
 

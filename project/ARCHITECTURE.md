@@ -70,7 +70,10 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `GET /ag-ui/recent` (recent event buffer)
 - `POST /ag-ui/actions` (UI action ingress)
 - `CoordinatorActor` now emits AG-UI + A2UI events on assignment, transition, success, and failure.
-- `godot-ui/scripts/Main.cs` consumes the SSE stream and renders `text`/`button` components in a windowed Godot app.
+- `godot-ui/scripts/Main.cs` consumes AG-UI updates via polling `GET /ag-ui/recent` and renders A2UI components in a windowed Godot app.
+- A2UI component-to-scene mapping:
+- `text` -> `godot-ui/scenes/components/A2TextComponent.tscn`
+- `button` -> `godot-ui/scenes/components/A2ButtonComponent.tscn`
 
 ## A2A + ArcadeDB Scaffolding (Phase 6)
 

@@ -16,3 +16,7 @@ config/features=PackedStringArray("4.6", "C#", "Forward Plus")
 [dotnet]
 
 project/assembly_name="SwarmAssistant.GodotUi"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

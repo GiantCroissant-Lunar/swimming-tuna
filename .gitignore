@@ -12,6 +12,9 @@ node_modules/
 .godot/
 *.import
 
+# Build outputs
+build/
+
 # Env/config secrets
 .env
 .env.*

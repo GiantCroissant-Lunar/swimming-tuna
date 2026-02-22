@@ -41,4 +41,19 @@ public sealed class UiEventStreamTests
         Assert.Equal("first", recent[0].Type);
         Assert.Equal("second", recent[1].Type);
     }
+
+    [Fact]
+    public void GetRecent_WhenCountIsSmaller_ReturnsLatestEntries()
+    {
+        var stream = new UiEventStream();
+        stream.Publish("one", "task-1", new { value = 1 });
+        stream.Publish("two", "task-2", new { value = 2 });
+        stream.Publish("three", "task-3", new { value = 3 });
+
+        var recent = stream.GetRecent(2);
+
+        Assert.Equal(2, recent.Count);
+        Assert.Equal("two", recent[0].Type);
+        Assert.Equal("three", recent[1].Type);
+    }
 }
