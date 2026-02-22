@@ -150,6 +150,25 @@ public sealed class BlackboardActorTests : TestKit
         Assert.Empty(taskContext.Entries);
     }
 
+    [Fact]
+    public void RemoveBlackboard_DoesNotAffectOtherTasks()
+    {
+        var blackboard = CreateBlackboardActor();
+
+        // Add entries for two tasks
+        blackboard.Tell(new UpdateBlackboard("task-1", "key", "value1"));
+        blackboard.Tell(new UpdateBlackboard("task-2", "key", "value2"));
+
+        // Remove task-1
+        blackboard.Tell(new RemoveBlackboard("task-1"));
+
+        // task-2 should still have its entry
+        blackboard.Tell(new GetBlackboardContext("task-2"));
+        var context = ExpectMsg<BlackboardContext>();
+        Assert.Single(context.Entries);
+        Assert.Equal("value2", context.Entries["key"]);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)

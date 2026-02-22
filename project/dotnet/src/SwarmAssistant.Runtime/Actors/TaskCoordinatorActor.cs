@@ -118,22 +118,27 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _globalBlackboardCache[message.Key] = message.Value;
 
         // React to stigmergy signals by updating GOAP world state
-        if (message.Key.StartsWith("adapter_circuit_open:", StringComparison.Ordinal))
+        if (message.Key.StartsWith(GlobalBlackboardKeys.AdapterCircuitPrefix, StringComparison.Ordinal))
         {
-            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, true);
+            // HighFailureRateDetected is true only while at least one adapter circuit is open
+            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, HasOpenCircuits());
         }
-        else if (message.Key.StartsWith("adapter_circuit_closed:", StringComparison.Ordinal))
-        {
-            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, false);
-        }
-        else if (message.Key.StartsWith("task_succeeded:", StringComparison.Ordinal))
+        else if (message.Key.StartsWith(GlobalBlackboardKeys.TaskSucceededPrefix, StringComparison.Ordinal))
         {
             _worldState = (WorldState)_worldState.With(WorldKey.SimilarTaskSucceeded, true);
         }
     }
 
+    private bool HasOpenCircuits() =>
+        _globalBlackboardCache.Any(kv =>
+            kv.Key.StartsWith(GlobalBlackboardKeys.AdapterCircuitPrefix, StringComparison.Ordinal)
+            && kv.Value.StartsWith(GlobalBlackboardKeys.CircuitStateOpen, StringComparison.Ordinal));
+
     private void OnStart()
     {
+        // Reset per-run flags so stale swarm signals don't carry over
+        _worldState = (WorldState)_worldState.With(WorldKey.SimilarTaskSucceeded, false);
+
         _uiEvents.Publish(
             type: "agui.ui.surface",
             taskId: _taskId,
@@ -486,7 +491,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         // Stigmergy: write task success signal to global blackboard for cross-task learning
         _blackboardActor.Tell(new UpdateGlobalBlackboard(
-            $"task_succeeded:{_taskId}",
+            GlobalBlackboardKeys.TaskSucceeded(_taskId),
             _title));
 
         _uiEvents.Publish(
@@ -511,9 +516,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _taskRegistry.MarkFailed(_taskId, error);
 
         // Stigmergy: write task failure signal to global blackboard
-        _blackboardActor.Tell(new UpdateGlobalBlackboard(
-            $"task_blocked:{_taskId}",
-            $"{_title}|{error}"));
+        ReportFailureToGlobalBlackboard(error);
 
         _uiEvents.Publish(
             type: "agui.task.failed",
@@ -542,9 +545,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _taskRegistry.MarkFailed(_taskId, reason);
 
         // Stigmergy: write escalation signal to global blackboard
-        _blackboardActor.Tell(new UpdateGlobalBlackboard(
-            $"task_blocked:{_taskId}",
-            $"{_title}|{reason}"));
+        ReportFailureToGlobalBlackboard(reason);
 
         _uiEvents.Publish(
             type: "agui.task.failed",
@@ -557,6 +558,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             });
 
         Context.Stop(Self);
+    }
+
+    private void ReportFailureToGlobalBlackboard(string failureReason)
+    {
+        _blackboardActor.Tell(new UpdateGlobalBlackboard(
+            GlobalBlackboardKeys.TaskBlocked(_taskId),
+            $"{_title}|{failureReason}"));
     }
 
     private void HandleOrchestratorResponse(string output)
