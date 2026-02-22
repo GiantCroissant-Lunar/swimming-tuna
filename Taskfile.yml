@@ -1,0 +1,74 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  PROJECT_NAME: swimming-tuna
+  BUILD_DIR: build
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  init:
+    desc: Initialize development environment
+    cmds:
+      - echo "Installing pre-commit hooks..."
+      - pre-commit install
+      - echo "Installing tools..."
+      - go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+      - go install github.com/goreleaser/goreleaser/v2@latest
+
+  lint:
+    desc: Run linters
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v -race ./...
+
+  build:
+    desc: Build the project
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -ldflags "-s -w -X main.version=$(git describe --tags --always)" -o {{.BUILD_DIR}}/{{.PROJECT_NAME}} .
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+
+  version:
+    desc: Show current version
+    cmds:
+      - gitversion /showvariable SemVer
+
+  release:
+    desc: Create a release
+    cmds:
+      - goreleaser release --clean
+    preconditions:
+      - sh: git diff-index --quiet HEAD
+        msg: "Working directory is not clean. Please commit your changes first."
+
+  changelog:
+    desc: Generate changelog
+    cmds:
+      - git-chglog -o CHANGELOG.md
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+      - goimports -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...

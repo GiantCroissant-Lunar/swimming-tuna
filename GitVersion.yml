@@ -1,0 +1,65 @@
+mode: ContinuousDelivery
+branches:
+  main:
+    regex: ^main$
+    tag: ""
+    increment: Patch
+    is-source-branch-for:
+      - feature
+      - bugfix
+      - hotfix
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    tracks-release-branches: false
+    is-release-branch: false
+    is-main-branch: true
+  feature:
+    regex: ^feat(ure)?[/-]|^feature[/-]
+    tag: alpha
+    increment: Inherit
+    source-branches:
+      - main
+      - develop
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    tracks-release-branches: false
+    is-release-branch: false
+    is-main-branch: false
+  bugfix:
+    regex: ^fix[/-]|^bugfix[/-]
+    tag: alpha
+    increment: Inherit
+    source-branches:
+      - main
+      - develop
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    tracks-release-branches: false
+    is-release-branch: false
+    is-main-branch: false
+  hotfix:
+    regex: ^hotfix[/-]
+    tag: beta
+    increment: Patch
+    source-branches:
+      - main
+      - support
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    tracks-release-branches: false
+    is-release-branch: false
+    is-main-branch: false
+  setup:
+    regex: ^setup[/-]
+    tag: alpha
+    increment: Inherit
+    source-branches:
+      - main
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    tracks-release-branches: false
+    is-release-branch: false
+    is-main-branch: false
+ignore:
+  sha: []
+merge-message-formats: {}
