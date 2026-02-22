@@ -1,0 +1,42 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "swarm-runtime",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "project/dotnet/src/SwarmAssistant.Runtime",
+        "--no-launch-profile"
+      ],
+      "port": 5080
+    },
+    {
+      "name": "langfuse",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": [
+        "compose",
+        "--env-file",
+        "project/infra/langfuse/env/local.env",
+        "-f",
+        "project/infra/langfuse/docker-compose.yml",
+        "up"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "arcadedb",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": [
+        "compose",
+        "--env-file",
+        "project/infra/arcadedb/env/local.env",
+        "-f",
+        "project/infra/arcadedb/docker-compose.yml",
+        "up"
+      ],
+      "port": 2480
+    }
+  ]
+}
