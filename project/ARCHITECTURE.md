@@ -14,7 +14,7 @@ This MVP borrows patterns from the reference set under `/ref-projects` while kee
 - `src/lib/orchestrator.mjs`: runs deterministic step machine per task.
 - `src/lib/store.mjs`: persists tasks/events.
 - `src/index.mjs`: CLI entrypoint for `init`, `status`, and `run`.
-- `dotnet/src/SwarmAssistant.Runtime`: Akka-based runtime with actor topology and AG-UI endpoints.
+- `dotnet/src/SwarmAssistant.Runtime`: Akka-based runtime with actor topology, AG-UI/A2UI endpoints, A2A task APIs, and task-memory persistence adapters.
 - `godot-ui/`: Godot Mono surface renderer for AG-UI/A2UI events.
 - `infra/langfuse`: local Langfuse stack with `local`, `secure-local`, and `ci` env profiles.
 
@@ -75,10 +75,17 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `text` -> `godot-ui/scenes/components/A2TextComponent.tscn`
 - `button` -> `godot-ui/scenes/components/A2ButtonComponent.tscn`
 
-## A2A + ArcadeDB Scaffolding (Phase 6)
+## A2A + ArcadeDB Runtime (Phase 7)
 
-- Runtime options include `A2AEnabled` and `A2AAgentCardPath`; when enabled, an agent card endpoint is exposed.
-- Runtime options include `ArcadeDbEnabled`, `ArcadeDbHttpUrl`, and `ArcadeDbDatabase` as the initial contract for memory-store integration in later phases.
+- `Program.cs` exposes A2A-compatible endpoints when `A2AEnabled=true`:
+- `GET /.well-known/agent-card.json` (or custom `A2AAgentCardPath`)
+- `POST /a2a/tasks` (submit task to coordinator)
+- `GET /a2a/tasks/{taskId}` (task snapshot)
+- `GET /a2a/tasks` (recent tasks list)
+- `TaskRegistry` tracks in-memory task snapshots and role outputs (`planningOutput`, `buildOutput`, `reviewOutput`) plus summary/error state.
+- `RuntimeActorRegistry` bridges HTTP endpoint handlers to the live coordinator actor ref.
+- `ITaskMemoryWriter` abstraction is wired to `ArcadeDbTaskMemoryWriter` by default.
+- `ArcadeDbTaskMemoryWriter` writes `TaskRegistry` snapshots using ArcadeDB command API upserts and can bootstrap schema when `ArcadeDbAutoCreateSchema=true`.
 
 ## Provider Strategy
 

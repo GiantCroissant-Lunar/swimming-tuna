@@ -11,10 +11,10 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway (Phase 6).
-- `godot-ui/`: Godot Mono client that subscribes to AG-UI SSE and renders A2UI payloads.
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing + AG-UI/A2UI gateway + A2A task endpoints + ArcadeDB write path (Phase 7).
+- `godot-ui/`: Godot Mono client that polls AG-UI recent events and renders A2UI payloads.
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
-- `infra/arcadedb/`: integration notes and schema plan for graph/vector memory wiring.
+- `infra/arcadedb/`: Phase 7 task-persistence notes for ArcadeDB command API wiring.
 
 ## JavaScript MVP Commands
 
@@ -26,7 +26,7 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 6)
+## .NET Runtime Commands (Phase 7)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
@@ -58,6 +58,9 @@ Runtime config includes:
 - `ArcadeDbEnabled`
 - `ArcadeDbHttpUrl`
 - `ArcadeDbDatabase`
+- `ArcadeDbUser`
+- `ArcadeDbPassword`
+- `ArcadeDbAutoCreateSchema`
 - `LangfuseTracingEnabled`
 - `LangfusePublicKey`
 - `LangfuseSecretKey`
@@ -95,9 +98,29 @@ export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 AG-UI endpoints (when runtime is up):
 
 ```bash
-curl -s http://127.0.0.1:5080/ag-ui/recent
+curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 curl -N http://127.0.0.1:5080/ag-ui/events
 curl -s -X POST http://127.0.0.1:5080/ag-ui/actions -H 'content-type: application/json' -d '{"taskId":"manual-test","actionId":"request_snapshot","payload":{"source":"cli"}}'
+```
+
+A2A endpoints (when `Runtime__A2AEnabled=true`):
+
+```bash
+curl -s http://127.0.0.1:5080/.well-known/agent-card.json
+curl -s -X POST http://127.0.0.1:5080/a2a/tasks -H 'content-type: application/json' -d '{"title":"Phase 7 API test","description":"submit via A2A endpoint"}'
+curl -s http://127.0.0.1:5080/a2a/tasks
+curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
+```
+
+Enable ArcadeDB persistence:
+
+```bash
+export Runtime__ArcadeDbEnabled=true
+export Runtime__ArcadeDbHttpUrl=http://127.0.0.1:2480
+export Runtime__ArcadeDbDatabase=swarm_assistant
+export Runtime__ArcadeDbUser=root
+export Runtime__ArcadeDbPassword=<password>
+export Runtime__ArcadeDbAutoCreateSchema=true
 ```
 
 Run Godot windowed client:

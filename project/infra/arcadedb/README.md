@@ -1,14 +1,43 @@
-# ArcadeDB Integration Notes (Phase 6 Scaffold)
+# ArcadeDB Integration Notes (Phase 7)
 
-Phase 6 adds runtime configuration contracts for ArcadeDB integration:
+Phase 7 wires runtime task snapshots to ArcadeDB through `ArcadeDbTaskMemoryWriter`.
+
+## Runtime Flags
 
 - `Runtime__ArcadeDbEnabled`
 - `Runtime__ArcadeDbHttpUrl`
 - `Runtime__ArcadeDbDatabase`
+- `Runtime__ArcadeDbUser`
+- `Runtime__ArcadeDbPassword`
+- `Runtime__ArcadeDbAutoCreateSchema`
 
-No persistence adapter is wired in this phase. Planned follow-up scope:
+## Write Model
 
-1. Connect coordinator task lifecycle events to ArcadeDB write model.
-2. Store `Task`, `Artifact`, and `RoleExecution` vertices.
-3. Add edges for `(:Task)-[:HAS_ARTIFACT]->(:Artifact)` and `(:Task)-[:EXECUTED_BY]->(:RoleExecution)`.
-4. Add memory-query tool endpoints for graph lookup and vector retrieval.
+- Source: `TaskRegistry` snapshots emitted on task register, transition, role output update, done, and failed.
+- Transport: HTTP `POST /api/v1/command/{database}` using ArcadeDB SQL command API.
+- Auth: Basic auth when `Runtime__ArcadeDbUser` is set.
+- Upsert target: `SwarmTask` document keyed by `taskId`.
+
+Fields written:
+
+- `taskId`
+- `title`
+- `description`
+- `status`
+- `createdAt`
+- `updatedAt`
+- `planningOutput`
+- `buildOutput`
+- `reviewOutput`
+- `summary`
+- `error`
+
+## Schema Bootstrap
+
+When `Runtime__ArcadeDbAutoCreateSchema=true`, runtime attempts best-effort setup:
+
+1. `CREATE DOCUMENT TYPE SwarmTask IF NOT EXISTS`
+2. `CREATE PROPERTY SwarmTask.<field> IF NOT EXISTS ...`
+3. `CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS`
+
+Bootstrap and write failures are logged as warnings and do not stop task execution.

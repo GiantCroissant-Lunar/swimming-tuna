@@ -1,9 +1,9 @@
-# SwarmAssistant .NET Runtime (Phase 6)
+# SwarmAssistant .NET Runtime (Phase 7)
 
 ## Projects
 
 - `src/SwarmAssistant.Contracts`: shared task and messaging contracts.
-- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology, Agent Framework role execution, Langfuse tracing, CLI-first execution routing, and AG-UI/A2UI streaming endpoints.
+- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology, Agent Framework role execution, Langfuse tracing, CLI-first execution routing, AG-UI/A2UI streaming endpoints, A2A task APIs, and ArcadeDB persistence integration.
 - `tests/SwarmAssistant.Runtime.Tests`: lifecycle/state-machine tests.
 
 ## Actor Topology (Phase 2)
@@ -65,7 +65,7 @@ export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 
 - Runtime now hosts AG-UI-compatible endpoints:
 - `GET /ag-ui/events` (SSE stream)
-- `GET /ag-ui/recent` (latest buffered events)
+- `GET /ag-ui/recent` (latest buffered events, optional `count` query param)
 - `POST /ag-ui/actions` (UI action ingress)
 - `CoordinatorActor` emits A2UI payloads for:
 - `createSurface` on task assignment
@@ -76,17 +76,35 @@ Run and inspect stream:
 ```bash
 DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
 curl -N http://127.0.0.1:5080/ag-ui/events
+curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 ```
 
-## A2A + ArcadeDB Scaffolding (Phase 6)
+## A2A + ArcadeDB Integration (Phase 7)
 
-- Agent card endpoint can be toggled with `Runtime__A2AEnabled=true`.
-- ArcadeDB integration points are configured via:
+- A2A endpoints are enabled with `Runtime__A2AEnabled=true`:
+- `GET /.well-known/agent-card.json` (or custom `Runtime__A2AAgentCardPath`)
+- `POST /a2a/tasks`
+- `GET /a2a/tasks/{taskId}`
+- `GET /a2a/tasks`
+- `TaskRegistry` captures lifecycle transitions and role outputs for both actor-driven and API-submitted tasks.
+- `ArcadeDbTaskMemoryWriter` persists snapshots as `SwarmTask` records using ArcadeDB command API upserts.
+- ArcadeDB runtime configuration:
 - `Runtime__ArcadeDbEnabled`
 - `Runtime__ArcadeDbHttpUrl`
 - `Runtime__ArcadeDbDatabase`
+- `Runtime__ArcadeDbUser`
+- `Runtime__ArcadeDbPassword`
+- `Runtime__ArcadeDbAutoCreateSchema`
 
-Storage operations are not wired yet; this phase introduces runtime contracts only.
+Example task flow:
+
+```bash
+curl -s -X POST http://127.0.0.1:5080/a2a/tasks \
+  -H 'content-type: application/json' \
+  -d '{"title":"Phase 7 endpoint test","description":"validate task registry + ArcadeDB write"}'
+curl -s http://127.0.0.1:5080/a2a/tasks
+curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
+```
 
 ## Build
 
@@ -128,3 +146,6 @@ From `Runtime` config:
 - `ArcadeDbEnabled`
 - `ArcadeDbHttpUrl`
 - `ArcadeDbDatabase`
+- `ArcadeDbUser`
+- `ArcadeDbPassword`
+- `ArcadeDbAutoCreateSchema`

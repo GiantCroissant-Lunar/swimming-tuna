@@ -21,6 +21,9 @@ public sealed class RuntimeOptions
     public bool ArcadeDbEnabled { get; init; } = false;
     public string ArcadeDbHttpUrl { get; init; } = "http://127.0.0.1:2480";
     public string ArcadeDbDatabase { get; init; } = "swarm_assistant";
+    public string ArcadeDbUser { get; init; } = "root";
+    public string ArcadeDbPassword { get; init; } = string.Empty;
+    public bool ArcadeDbAutoCreateSchema { get; init; } = true;
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;
 

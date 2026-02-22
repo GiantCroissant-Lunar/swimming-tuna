@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
 
@@ -16,6 +17,8 @@ public sealed class Worker : BackgroundService
     private readonly ILoggerFactory _loggerFactory;
     private readonly RuntimeOptions _options;
     private readonly UiEventStream _uiEvents;
+    private readonly RuntimeActorRegistry _actorRegistry;
+    private readonly TaskRegistry _taskRegistry;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -25,12 +28,16 @@ public sealed class Worker : BackgroundService
         ILogger<Worker> logger,
         ILoggerFactory loggerFactory,
         IOptions<RuntimeOptions> options,
-        UiEventStream uiEvents)
+        UiEventStream uiEvents,
+        RuntimeActorRegistry actorRegistry,
+        TaskRegistry taskRegistry)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
         _options = options.Value;
         _uiEvents = uiEvents;
+        _actorRegistry = actorRegistry;
+        _taskRegistry = taskRegistry;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -80,8 +87,16 @@ public sealed class Worker : BackgroundService
             Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
             "reviewer");
         var coordinator = _actorSystem.ActorOf(
-            Props.Create(() => new CoordinatorActor(workerActor, reviewerActor, supervisor, _loggerFactory, _telemetry, _uiEvents)),
+            Props.Create(() => new CoordinatorActor(
+                workerActor,
+                reviewerActor,
+                supervisor,
+                _loggerFactory,
+                _telemetry,
+                _uiEvents,
+                _taskRegistry)),
             "coordinator");
+        _actorRegistry.SetCoordinator(coordinator);
 
         _supervisor = supervisor;
 
@@ -123,6 +138,8 @@ public sealed class Worker : BackgroundService
         }
         finally
         {
+            _actorRegistry.ClearCoordinator();
+
             if (_actorSystem is not null)
             {
                 await _actorSystem.Terminate();

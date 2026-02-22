@@ -3,6 +3,7 @@ using Akka.Actor;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Tasks;
+using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
@@ -16,6 +17,7 @@ public sealed class CoordinatorActor : ReceiveActor
     private readonly IActorRef _supervisorActor;
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
+    private readonly TaskRegistry _taskRegistry;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, TaskContext> _tasks = new();
@@ -26,13 +28,15 @@ public sealed class CoordinatorActor : ReceiveActor
         IActorRef supervisorActor,
         ILoggerFactory loggerFactory,
         RuntimeTelemetry telemetry,
-        UiEventStream uiEvents)
+        UiEventStream uiEvents,
+        TaskRegistry taskRegistry)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
         _telemetry = telemetry;
         _uiEvents = uiEvents;
+        _taskRegistry = taskRegistry;
         _logger = loggerFactory.CreateLogger<CoordinatorActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -68,6 +72,7 @@ public sealed class CoordinatorActor : ReceiveActor
 
         var context = new TaskContext(task);
         _tasks[message.TaskId] = context;
+        _taskRegistry.Register(message);
 
         _uiEvents.Publish(
             type: "agui.ui.surface",
@@ -115,6 +120,7 @@ public sealed class CoordinatorActor : ReceiveActor
         {
             case SwarmRole.Planner:
                 context.PlanningOutput = message.Output;
+                _taskRegistry.SetRoleOutput(context.Task.TaskId, message.Role, message.Output);
                 _uiEvents.Publish(
                     type: "agui.ui.patch",
                     taskId: context.Task.TaskId,
@@ -145,6 +151,7 @@ public sealed class CoordinatorActor : ReceiveActor
 
             case SwarmRole.Builder:
                 context.BuildOutput = message.Output;
+                _taskRegistry.SetRoleOutput(context.Task.TaskId, message.Role, message.Output);
                 _uiEvents.Publish(
                     type: "agui.ui.patch",
                     taskId: context.Task.TaskId,
@@ -175,6 +182,7 @@ public sealed class CoordinatorActor : ReceiveActor
 
             case SwarmRole.Reviewer:
                 context.ReviewOutput = message.Output;
+                _taskRegistry.SetRoleOutput(context.Task.TaskId, message.Role, message.Output);
                 _uiEvents.Publish(
                     type: "agui.ui.patch",
                     taskId: context.Task.TaskId,
@@ -200,6 +208,7 @@ public sealed class CoordinatorActor : ReceiveActor
                     BuildSummary(context),
                     DateTimeOffset.UtcNow,
                     Self.Path.Name));
+                _taskRegistry.MarkDone(context.Task.TaskId, BuildSummary(context));
                 _uiEvents.Publish(
                     type: "agui.task.done",
                     taskId: context.Task.TaskId,
@@ -259,6 +268,7 @@ public sealed class CoordinatorActor : ReceiveActor
             1,
             DateTimeOffset.UtcNow,
             Self.Path.Name));
+        _taskRegistry.MarkFailed(context.Task.TaskId, message.Error);
 
         _uiEvents.Publish(
             type: "agui.task.failed",
@@ -303,6 +313,7 @@ public sealed class CoordinatorActor : ReceiveActor
             target,
             context.Task.UpdatedAt,
             Self.Path.Name));
+        _taskRegistry.Transition(context.Task.TaskId, target);
 
         _uiEvents.Publish(
             type: "agui.task.transition",
