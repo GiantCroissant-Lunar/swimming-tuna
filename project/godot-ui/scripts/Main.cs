@@ -11,9 +11,6 @@ public partial class Main : Control
     [Export] public float PollIntervalSeconds { get; set; } = 0.75f;
     [Export] public int RecentEventCount { get; set; } = 100;
 
-    private readonly PackedScene _textComponentScene = GD.Load<PackedScene>("res://scenes/components/A2TextComponent.tscn");
-    private readonly PackedScene _buttonComponentScene = GD.Load<PackedScene>("res://scenes/components/A2ButtonComponent.tscn");
-
     private HttpRequest? _recentRequest;
     private HttpRequest? _actionRequest;
     private Timer? _pollTimer;
@@ -37,13 +34,59 @@ public partial class Main : Control
     private long _lastSequence;
     private string? _activeTaskId;
     private string? _pendingSelectionRefreshTaskId;
+    private bool _shuttingDown;
 
     public override void _Ready()
     {
+        GetTree().AutoAcceptQuit = false;
         DisplayServer.WindowSetMinSize(new Vector2I(960, 640));
         BuildLayout();
         SetupNetworking();
         TriggerPoll();
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest)
+        {
+            Shutdown();
+            GetTree().Quit();
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        Shutdown();
+    }
+
+    private void Shutdown()
+    {
+        if (_shuttingDown) return;
+        _shuttingDown = true;
+
+        if (_pollTimer is not null)
+        {
+            _pollTimer.Stop();
+            _pollTimer.Timeout -= TriggerPoll;
+            _pollTimer.QueueFree();
+            _pollTimer = null;
+        }
+
+        if (_recentRequest is not null)
+        {
+            _recentRequest.CancelRequest();
+            _recentRequest.RequestCompleted -= OnRecentRequestCompleted;
+            _recentRequest.QueueFree();
+            _recentRequest = null;
+        }
+
+        if (_actionRequest is not null)
+        {
+            _actionRequest.CancelRequest();
+            _actionRequest.RequestCompleted -= OnActionRequestCompleted;
+            _actionRequest.QueueFree();
+            _actionRequest = null;
+        }
     }
 
     private void BuildLayout()
@@ -182,7 +225,7 @@ public partial class Main : Control
 
     private void TriggerPoll()
     {
-        if (_recentInFlight || _recentRequest is null)
+        if (_shuttingDown || _recentInFlight || _recentRequest is null)
         {
             return;
         }
@@ -200,6 +243,7 @@ public partial class Main : Control
     private void OnRecentRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
     {
         _recentInFlight = false;
+        if (_shuttingDown) return;
         if (result != (long)HttpRequest.Result.Success || responseCode < 200 || responseCode > 299)
         {
             _statusLabel!.Text = "Status: disconnected";
@@ -437,49 +481,8 @@ public partial class Main : Control
 
         foreach (var component in components.EnumerateArray())
         {
-            if (!component.TryGetProperty("type", out var typeElement) ||
-                typeElement.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            var type = typeElement.GetString() ?? string.Empty;
-            if (!component.TryGetProperty("id", out var idElement))
-            {
-                continue;
-            }
-
-            var componentId = idElement.GetString() ?? string.Empty;
-            var props = component.TryGetProperty("props", out var propsElement)
-                ? propsElement
-                : default;
-
-            switch (type)
-            {
-                case "text":
-                    var textNode = _textComponentScene.Instantiate<A2TextComponent>();
-                    var text = props.ValueKind == JsonValueKind.Object &&
-                               props.TryGetProperty("text", out var textElement)
-                        ? textElement.GetString() ?? string.Empty
-                        : string.Empty;
-                    textNode.Configure(componentId, text);
-                    _componentContainer.AddChild(textNode);
-                    break;
-                case "button":
-                    var buttonNode = _buttonComponentScene.Instantiate<A2ButtonComponent>();
-                    var label = props.ValueKind == JsonValueKind.Object &&
-                                props.TryGetProperty("label", out var labelElement)
-                        ? labelElement.GetString() ?? "Action"
-                        : "Action";
-                    var actionId = props.ValueKind == JsonValueKind.Object &&
-                                   props.TryGetProperty("actionId", out var actionElement)
-                        ? actionElement.GetString() ?? "unknown_action"
-                        : "unknown_action";
-                    buttonNode.Configure(componentId, label, actionId);
-                    buttonNode.ActionRequested += OnActionRequested;
-                    _componentContainer.AddChild(buttonNode);
-                    break;
-            }
+            var node = GenUiNodeFactory.Build(component, OnActionRequested);
+            _componentContainer.AddChild(node);
         }
     }
 
@@ -574,7 +577,7 @@ public partial class Main : Control
         Dictionary<string, object?>? actionPayload = null,
         string? taskId = null)
     {
-        if (_actionInFlight || _actionRequest is null)
+        if (_shuttingDown || _actionInFlight || _actionRequest is null)
         {
             return;
         }
@@ -609,6 +612,7 @@ public partial class Main : Control
     private void OnActionRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
     {
         _actionInFlight = false;
+        if (_shuttingDown) return;
         var responseBody = Encoding.UTF8.GetString(body);
 
         if (result == (long)HttpRequest.Result.Success && responseCode >= 200 && responseCode <= 299)
