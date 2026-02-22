@@ -1,21 +1,20 @@
 # Swimming Tuna MVP
 
-CLI-first swarm assistant MVP implemented under `/project`.
+Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .NET runtime bootstrap.
 
 ## Goals
 
 - Prioritize subscription-backed CLIs before API keys.
-- Run a simple multi-role flow: `planner -> builder -> reviewer -> finalizer`.
+- Build toward `Akka.NET + Microsoft Agent Framework + Langfuse` with container isolation.
 - Keep durable local state for tasks and event logs.
 
-## What It Does
+## Current Layout
 
-- Loads role and adapter priorities from `config/swarm.config.json`.
-- Probes available CLIs (`copilot`, `cline`, `kimi`) and uses the first working one per role.
-- Falls back to a built-in `local-echo` adapter when CLIs are unavailable.
-- Persists tasks in `data/tasks.json` and events in `data/events.jsonl`.
+- `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
+- `dotnet/`: .NET runtime bootstrap for upcoming actor-based orchestration phases.
+- `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 
-## Commands
+## JavaScript MVP Commands
 
 From repository root:
 
@@ -25,18 +24,31 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-Or from `/Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project`:
+## .NET Bootstrap Commands (Phase 1)
 
 ```bash
-npm run init
-npm run status
-npm run run -- --task "Design MVP contracts"
+dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
+DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime
 ```
 
-## Config Notes
+Available .NET runtime profiles:
+
+- `Local`
+- `SecureLocal`
+- `CI`
+
+## Langfuse Stack Commands (Phase 1)
+
+```bash
+cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/langfuse
+docker compose --env-file env/local.env up -d
+docker compose --env-file env/local.env down
+```
+
+## Adapter Notes
 
 Update `config/swarm.config.json` command templates to match your installed tools.
 
-- `copilot` default uses `gh copilot suggest`.
-- `cline` and `kimi` are placeholders and should be edited to the actual CLI invocation you use.
+- `copilot` uses the modern `copilot --prompt ...` flow.
+- `cline` and `kimi` are configurable command adapters.
 - No provider API key integration is implemented in this MVP by design.

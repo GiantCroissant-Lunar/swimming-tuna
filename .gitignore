@@ -1,1 +1,14 @@
 ref-projects/
+
+# Dotnet
+**/bin/
+**/obj/
+.vs/
+
+# Node
+node_modules/
+
+# Env/config secrets
+.env
+.env.*
+!.env.example

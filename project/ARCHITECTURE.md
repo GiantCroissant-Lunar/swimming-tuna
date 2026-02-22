@@ -14,6 +14,8 @@ This MVP borrows patterns from the reference set under `/ref-projects` while kee
 - `src/lib/orchestrator.mjs`: runs deterministic step machine per task.
 - `src/lib/store.mjs`: persists tasks/events.
 - `src/index.mjs`: CLI entrypoint for `init`, `status`, and `run`.
+- `dotnet/src/SwarmAssistant.Runtime`: phase-1 bootstrap host for upcoming Akka-based runtime.
+- `infra/langfuse`: local Langfuse stack with `local`, `secure-local`, and `ci` env profiles.
 
 ## Provider Strategy
 
