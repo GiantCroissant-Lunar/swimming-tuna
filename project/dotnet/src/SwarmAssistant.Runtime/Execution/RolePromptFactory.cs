@@ -31,6 +31,27 @@ internal static class RolePromptFactory
                 "Find defects, risks, and missing tests. Keep it specific."),
             SwarmRole.Orchestrator => command.OrchestratorPrompt
                 ?? "You are the orchestrator agent. Decide the next action. Respond with ACTION: <action> and REASON: <reason>.",
+            SwarmRole.Researcher => string.Join(
+                Environment.NewLine,
+                "You are the researcher agent in a swarm runtime.",
+                $"Task title: {command.Title}",
+                $"Task description: {command.Description}",
+                "Collect relevant facts and references that de-risk implementation decisions."),
+            SwarmRole.Debugger => string.Join(
+                Environment.NewLine,
+                "You are the debugger agent in a swarm runtime.",
+                $"Task title: {command.Title}",
+                $"Task description: {command.Description}",
+                $"Builder output: {command.BuildOutput ?? "(none)"}",
+                "Identify likely failure points, root causes, and minimal fixes."),
+            SwarmRole.Tester => string.Join(
+                Environment.NewLine,
+                "You are the tester agent in a swarm runtime.",
+                $"Task title: {command.Title}",
+                $"Task description: {command.Description}",
+                $"Planner output: {command.PlanningOutput ?? "(none)"}",
+                $"Builder output: {command.BuildOutput ?? "(none)"}",
+                "Propose focused test cases that validate functionality and regressions."),
             _ => $"Unsupported role {command.Role}"
         };
     }

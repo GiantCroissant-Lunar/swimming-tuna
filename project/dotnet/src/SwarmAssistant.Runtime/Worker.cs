@@ -50,6 +50,7 @@ public sealed class Worker : BackgroundService
 
         var workerPoolSize = Math.Clamp(_options.WorkerPoolSize, 1, 16);
         var reviewerPoolSize = Math.Clamp(_options.ReviewerPoolSize, 1, 16);
+        var swarmAgentPoolSize = Math.Clamp(workerPoolSize + reviewerPoolSize, 1, 32);
         var maxCliConcurrency = Math.Clamp(_options.MaxCliConcurrency, 1, 32);
 
         using var startupActivity = _telemetry.StartActivity(
@@ -64,6 +65,7 @@ public sealed class Worker : BackgroundService
                 ["swarm.sandbox"] = _options.SandboxMode,
                 ["swarm.worker_pool_size"] = workerPoolSize,
                 ["swarm.reviewer_pool_size"] = reviewerPoolSize,
+                ["swarm.agent_pool_size"] = swarmAgentPoolSize,
                 ["swarm.max_cli_concurrency"] = maxCliConcurrency,
             });
 
@@ -98,19 +100,35 @@ public sealed class Worker : BackgroundService
             Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, _options.CliAdapterOrder, blackboardActor)),
             "supervisor");
 
-        var workerActor = _actorSystem.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))
-                .WithRouter(new SmallestMailboxPool(workerPoolSize)),
-            "worker");
-        var reviewerActor = _actorSystem.ActorOf(
-            Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))
-                .WithRouter(new SmallestMailboxPool(reviewerPoolSize)),
-            "reviewer");
+        var capabilityRegistry = _actorSystem.ActorOf(
+            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)),
+            "capability-registry");
+
+        var capabilities = new[]
+        {
+            SwarmRole.Planner,
+            SwarmRole.Builder,
+            SwarmRole.Reviewer,
+            SwarmRole.Orchestrator,
+            SwarmRole.Researcher,
+            SwarmRole.Debugger,
+            SwarmRole.Tester
+        };
+
+        _ = _actorSystem.ActorOf(
+            Props.Create(() => new SwarmAgentActor(
+                    _options,
+                    _loggerFactory,
+                    agentFrameworkRoleEngine,
+                    _telemetry,
+                    capabilityRegistry,
+                    capabilities))
+                .WithRouter(new SmallestMailboxPool(swarmAgentPoolSize)),
+            "swarm-agent");
 
         _logger.LogInformation(
-            "Actor pools created workerPoolSize={WorkerPoolSize} reviewerPoolSize={ReviewerPoolSize} maxCliConcurrency={MaxCliConcurrency}",
-            workerPoolSize,
-            reviewerPoolSize,
+            "Actor pools created swarmAgentPoolSize={SwarmAgentPoolSize} maxCliConcurrency={MaxCliConcurrency}",
+            swarmAgentPoolSize,
             maxCliConcurrency);
 
         var monitorTickSeconds = Math.Max(5, _options.HealthHeartbeatSeconds);
@@ -123,8 +141,8 @@ public sealed class Worker : BackgroundService
             "monitor");
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
-                workerActor,
-                reviewerActor,
+                capabilityRegistry,
+                capabilityRegistry,
                 supervisor,
                 blackboardActor,
                 agentFrameworkRoleEngine,

@@ -1,3 +1,4 @@
+using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 
@@ -132,6 +133,21 @@ internal sealed record HealthCheckResponse(
     string ActorName,
     int ActiveTasks,
     DateTimeOffset At
+);
+
+internal sealed record GetBestAgentForRole(
+    SwarmRole Role
+);
+
+internal sealed record BestAgentForRole(
+    SwarmRole Role,
+    IActorRef? Agent
+);
+
+internal sealed record GetCapabilitySnapshot;
+
+internal sealed record CapabilitySnapshot(
+    IReadOnlyList<AgentCapabilityAdvertisement> Agents
 );
 
 // Formal escalation record for supervisor tracking — reserved for future phases where
