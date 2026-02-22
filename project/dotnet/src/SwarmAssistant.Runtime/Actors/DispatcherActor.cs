@@ -69,6 +69,11 @@ public sealed class DispatcherActor : ReceiveActor
         Receive<Terminated>(OnCoordinatorTerminated);
     }
 
+    protected override SupervisorStrategy SupervisorStrategy()
+    {
+        return new OneForOneStrategy(ex => Directive.Stop);
+    }
+
     private void HandleTaskAssigned(TaskAssigned message)
     {
         using var activity = _telemetry.StartActivity(
@@ -156,12 +161,14 @@ public sealed class DispatcherActor : ReceiveActor
                 _reviewerActor,
                 _supervisorActor,
                 _blackboardActor,
+                _consensusActor,
                 _roleEngine,
                 goapPlanner,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
+                _options,
                 DefaultMaxRetries,
                 message.Depth)),
             $"task-{message.ChildTaskId}");

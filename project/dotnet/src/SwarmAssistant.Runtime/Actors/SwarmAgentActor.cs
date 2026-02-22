@@ -116,7 +116,7 @@ public sealed class SwarmAgentActor : ReceiveActor
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode);
 
-            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow));
+            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow, Self.Path.Name));
         }
         catch (Exception exception)
         {

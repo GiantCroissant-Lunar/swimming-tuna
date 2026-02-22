@@ -559,6 +559,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 TransitionTo(TaskState.Reviewing);
                 _logger.LogInformation("Requesting SecondOpinion for task {TaskId}", _taskId);
 
+                // Cancel any stale session before starting the new one
+                _consensusActor.Tell(new CancelConsensusSession(_taskId));
+
                 // In SecondOpinion, we ask one more reviewer for their opinion
                 // We'll increment the required votes for consensus by 1
                 var additionalReviewCount = 1;

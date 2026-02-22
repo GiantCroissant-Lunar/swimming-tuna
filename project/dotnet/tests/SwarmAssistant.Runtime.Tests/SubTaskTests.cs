@@ -3,6 +3,7 @@ using Akka.Routing;
 using Akka.TestKit.Xunit2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
@@ -255,12 +256,10 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
-
-        // Coordinator first requests an orchestrator decision
         var orchestratorTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
             m => m.Role == SwarmRole.Orchestrator,
             ActorResponseTimeout,
@@ -268,7 +267,7 @@ public sealed class SubTaskTests : TestKit
 
         // Reply: orchestrator says Plan
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow, "test-probe"));
 
         // Coordinator dispatches Plan action
         var plannerTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
@@ -283,7 +282,7 @@ public sealed class SubTaskTests : TestKit
             "SUBTASK: Data Layer|Set up database schema and repositories";
 
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow, "test-probe"));
 
         // Assert: two SpawnSubTask messages are forwarded to the parent (parentProbe)
         var spawn1 = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -336,20 +335,20 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
         // Drive through orchestrator and planner phases
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, "test-probe"));
 
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
             taskId, SwarmRole.Planner,
             "SUBTASK: Critical Step|This must succeed",
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow, "test-probe"));
 
         // Capture the spawned sub-task ID
         var spawn = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -489,11 +488,13 @@ public sealed class SubTaskTests : TestKit
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                ActorRefs.Nobody,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                Options.Create(_options))),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);

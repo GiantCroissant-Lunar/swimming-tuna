@@ -52,6 +52,7 @@ public static class SwarmActions
         {
             [WorldKey.ConsensusReached] = true,
             [WorldKey.ReviewRejected] = false,
+            [WorldKey.ConsensusDisputed] = false,
         },
         cost: 3);
 
