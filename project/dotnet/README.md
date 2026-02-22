@@ -74,7 +74,7 @@ export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 Run and inspect stream:
 
 ```bash
-DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
+DOTNET_ENVIRONMENT=Local dotnet run --project project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
 curl -N http://127.0.0.1:5080/ag-ui/events
 curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 ```
@@ -113,7 +113,7 @@ Startup memory bootstrap (Phase 10):
 Start ArcadeDB local stack before enabling runtime persistence:
 
 ```bash
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb
+cd project/infra/arcadedb
 docker compose --env-file env/local.env up -d
 ```
 
@@ -140,16 +140,16 @@ curl -s -X POST http://127.0.0.1:5080/ag-ui/actions \
 ## Build
 
 ```bash
-dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
-dotnet test /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
+dotnet build project/dotnet/SwarmAssistant.sln
+dotnet test project/dotnet/SwarmAssistant.sln
 ```
 
 ## Run with Profile
 
 ```bash
-DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime
-DOTNET_ENVIRONMENT=SecureLocal dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime
-DOTNET_ENVIRONMENT=CI dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime
+DOTNET_ENVIRONMENT=Local dotnet run --project project/dotnet/src/SwarmAssistant.Runtime
+DOTNET_ENVIRONMENT=SecureLocal dotnet run --project project/dotnet/src/SwarmAssistant.Runtime
+DOTNET_ENVIRONMENT=CI dotnet run --project project/dotnet/src/SwarmAssistant.Runtime
 ```
 
 ## Runtime Flags
@@ -182,3 +182,25 @@ From `Runtime` config:
 - `ArcadeDbAutoCreateSchema`
 - `MemoryBootstrapEnabled`
 - `MemoryBootstrapLimit`
+- `ApiKey`
+
+## Security
+
+By default the runtime binds to `127.0.0.1` (`AgUiBindUrl = http://127.0.0.1:5080`) and is not
+reachable from outside the local machine.
+
+If you expose the runtime beyond localhost (e.g. in a team or staging environment), set
+`Runtime__ApiKey` to a strong random secret. Callers must then supply the key via the
+`X-API-Key` header on the `POST /ag-ui/actions` and `POST /a2a/tasks` endpoints:
+
+```bash
+export Runtime__ApiKey=my-secret-key
+# then call:
+curl -X POST http://<host>:5080/a2a/tasks \
+  -H 'X-API-Key: my-secret-key' \
+  -H 'content-type: application/json' \
+  -d '{"title":"task title"}'
+```
+
+Do not commit `Runtime__ApiKey` to source control; supply it via environment variable or a
+secrets manager.

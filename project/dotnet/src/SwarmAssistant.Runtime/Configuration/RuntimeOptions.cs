@@ -40,6 +40,13 @@ public sealed class RuntimeOptions
 
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
+
+    /// <summary>
+    /// Optional API key for protecting A2A and AG-UI action endpoints.
+    /// When set, callers must supply the key via the <c>X-API-Key</c> header.
+    /// Leave empty to disable (localhost-only deployments do not require a key).
+    /// </summary>
+    public string? ApiKey { get; init; }
 }
 
 public sealed class SandboxWrapperOptions
