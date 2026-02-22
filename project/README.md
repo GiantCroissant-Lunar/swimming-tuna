@@ -11,7 +11,7 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime bootstrap for upcoming actor-based orchestration phases.
+- `dotnet/`: .NET runtime with Akka actor topology (Phase 2).
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 
 ## JavaScript MVP Commands
@@ -24,10 +24,11 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Bootstrap Commands (Phase 1)
+## .NET Runtime Commands (Phase 2)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
+dotnet test /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
 DOTNET_ENVIRONMENT=Local dotnet run --project /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/src/SwarmAssistant.Runtime
 ```
 
@@ -36,6 +37,14 @@ Available .NET runtime profiles:
 - `Local`
 - `SecureLocal`
 - `CI`
+
+Runtime config includes:
+
+- `AutoSubmitDemoTask`
+- `DemoTaskTitle`
+- `DemoTaskDescription`
+- `SimulateBuilderFailure`
+- `SimulateReviewerFailure`
 
 ## Langfuse Stack Commands (Phase 1)
 

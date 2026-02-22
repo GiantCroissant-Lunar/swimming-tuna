@@ -14,8 +14,22 @@ This MVP borrows patterns from the reference set under `/ref-projects` while kee
 - `src/lib/orchestrator.mjs`: runs deterministic step machine per task.
 - `src/lib/store.mjs`: persists tasks/events.
 - `src/index.mjs`: CLI entrypoint for `init`, `status`, and `run`.
-- `dotnet/src/SwarmAssistant.Runtime`: phase-1 bootstrap host for upcoming Akka-based runtime.
+- `dotnet/src/SwarmAssistant.Runtime`: Akka-based runtime with actor topology.
 - `infra/langfuse`: local Langfuse stack with `local`, `secure-local`, and `ci` env profiles.
+
+## Akka Runtime (Phase 2)
+
+- Coordinator role: `CoordinatorActor`
+- Worker role: `WorkerActor` (`planner`, `builder`)
+- Reviewer role: `ReviewerActor`
+- Supervision/escalation: `SupervisorActor`
+
+Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.cs`:
+- `TaskAssigned`
+- `TaskStarted`
+- `TaskResult`
+- `TaskFailed`
+- `EscalationRaised`
 
 ## Provider Strategy
 
