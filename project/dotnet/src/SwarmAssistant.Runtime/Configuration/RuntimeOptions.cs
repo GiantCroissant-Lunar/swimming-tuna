@@ -101,6 +101,31 @@ public sealed class RuntimeOptions
     public bool SimulateReviewerFailure { get; init; } = false;
 
     /// <summary>
+    /// When true, enables dynamic agent spawning based on observed task load.
+    /// </summary>
+    public bool AutoScaleEnabled { get; init; } = false;
+
+    /// <summary>
+    /// Minimum number of swarm agent actors kept alive when auto-scaling is enabled.
+    /// </summary>
+    public int MinPoolSize { get; init; } = 1;
+
+    /// <summary>
+    /// Maximum total number of swarm agent actors (fixed pool + dynamic) when auto-scaling is enabled.
+    /// </summary>
+    public int MaxPoolSize { get; init; } = 16;
+
+    /// <summary>
+    /// Active task count above which a new dynamic agent is spawned.
+    /// </summary>
+    public int ScaleUpThreshold { get; init; } = 5;
+
+    /// <summary>
+    /// Active task count below which idle dynamic agents are allowed to retire.
+    /// </summary>
+    public int ScaleDownThreshold { get; init; } = 1;
+
+    /// <summary>
     /// Optional API key for protecting A2A and AG-UI action endpoints.
     /// When set, callers must supply the key via the <c>X-API-Key</c> header.
     /// Leave empty to disable (localhost-only deployments do not require a key).

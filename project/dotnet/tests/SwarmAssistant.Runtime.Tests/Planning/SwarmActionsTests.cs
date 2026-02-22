@@ -8,7 +8,7 @@ public sealed class SwarmActionsTests
     [Fact]
     public void All_ContainsSevenActions()
     {
-        Assert.Equal(7, SwarmActions.All.Count);
+        Assert.Equal(8, SwarmActions.All.Count);
     }
 
     [Theory]

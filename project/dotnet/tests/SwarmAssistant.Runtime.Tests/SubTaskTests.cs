@@ -251,11 +251,12 @@ public sealed class SubTaskTests : TestKit
         registry.Register(new TaskAssigned(taskId, "Parent Task", "desc", DateTimeOffset.UtcNow));
 
         // Create coordinator as a child of parentProbe so Context.Parent == parentProbe
+        var consensusProbe = CreateTestProbe();
         var coordinator = parentProbe.ChildActorOf(
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+                consensusProbe, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -268,7 +269,7 @@ public sealed class SubTaskTests : TestKit
 
         // Reply: orchestrator says Plan
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow, "test-probe"));
 
         // Coordinator dispatches Plan action
         var plannerTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
@@ -283,7 +284,7 @@ public sealed class SubTaskTests : TestKit
             "SUBTASK: Data Layer|Set up database schema and repositories";
 
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow, "test-probe"));
 
         // Assert: two SpawnSubTask messages are forwarded to the parent (parentProbe)
         var spawn1 = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -332,24 +333,25 @@ public sealed class SubTaskTests : TestKit
         var taskId = $"coord-fail-{Guid.NewGuid():N}";
         registry.Register(new TaskAssigned(taskId, "Parent Task", "desc", DateTimeOffset.UtcNow));
 
+        var consensusProbe = CreateTestProbe();
         var coordinator = parentProbe.ChildActorOf(
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+                consensusProbe, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
         // Drive through orchestrator and planner phases
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, "test-probe"));
 
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
             taskId, SwarmRole.Planner,
             "SUBTASK: Critical Step|This must succeed",
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow, "test-probe"));
 
         // Capture the spawned sub-task ID
         var spawn = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -483,17 +485,23 @@ public sealed class SubTaskTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             $"reviewer-{suffix}");
 
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            $"consensus-{suffix}");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                _options)),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);
