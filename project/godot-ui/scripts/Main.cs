@@ -56,15 +56,6 @@ public partial class Main : Control
     private string? _pendingSelectionRefreshTaskId;
     private bool _shuttingDown;
 
-    public override void _Ready()
-    {
-        GetTree().AutoAcceptQuit = false;
-        DisplayServer.WindowSetMinSize(new Vector2I(960, 640));
-        BuildLayout();
-        SetupNetworking();
-        TriggerPoll();
-    }
-
     public override void _Notification(int what)
     {
         if (what == NotificationWMCloseRequest)
@@ -251,7 +242,7 @@ public partial class Main : Control
         }
 
         _recentInFlight = true;
-        var url = $"{AgUiRecentUrl}?count={Math.Clamp(RecentEventCount, 10, 500)}";
+        var url = $"{_recentEventsUrl}?count={Math.Clamp(RecentEventCount, 10, 500)}";
         var error = _recentRequest.Request(url);
         if (error != Error.Ok)
         {
@@ -617,7 +608,7 @@ public partial class Main : Control
 
         _actionInFlight = true;
         var error = _actionRequest.Request(
-            AgUiActionsUrl,
+            _actionsUrl,
             ["Content-Type: application/json"],
             HttpClient.Method.Post,
             body);

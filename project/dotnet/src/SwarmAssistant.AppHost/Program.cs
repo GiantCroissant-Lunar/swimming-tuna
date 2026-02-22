@@ -1,7 +1,9 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
+var arcadeDbPassword = builder.Configuration["arcadedb-password"] ?? "playwithdata";
+
 var arcadedb = builder.AddContainer("arcadedb", "arcadedata/arcadedb", "25.9.1")
-    .WithEnvironment("JAVA_OPTS", "-Darcadedb.server.rootPassword=playwithdata -Darcadedb.server.defaultDatabases=swarm_assistant[root]")
+    .WithEnvironment("JAVA_OPTS", $"-Darcadedb.server.rootPassword={arcadeDbPassword} -Darcadedb.server.defaultDatabases=swarm_assistant[root]")
     .WithHttpEndpoint(targetPort: 2480, name: "http");
 
 var langfuseDb = builder.AddPostgres("postgres")
@@ -11,7 +13,7 @@ var langfuseDb = builder.AddPostgres("postgres")
 var runtime = builder.AddProject<Projects.SwarmAssistant_Runtime>("swarm-runtime")
     .WithEnvironment("Runtime__ArcadeDbHttpUrl", arcadedb.GetEndpoint("http"))
     .WithEnvironment("Runtime__ArcadeDbUser", "root")
-    .WithEnvironment("Runtime__ArcadeDbPassword", "playwithdata")
+    .WithEnvironment("Runtime__ArcadeDbPassword", arcadeDbPassword)
     .WithHttpEndpoint(port: 5080, name: "ag-ui-http");
 
 var godotUi = builder.AddExecutable("godot-ui", "godot", ".", "../../../godot-ui")
