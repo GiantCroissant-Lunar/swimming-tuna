@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/A2ButtonComponent.cs" id="1_ofqjx"]
+
+[node name="A2ButtonComponent" type="HBoxContainer"]
+script = ExtResource("1_ofqjx")
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 2
+text = "Action"

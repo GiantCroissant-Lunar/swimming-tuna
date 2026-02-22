@@ -1,0 +1,41 @@
+# Langfuse Stack (Phase 1)
+
+This folder provides a local Langfuse stack for the swarm runtime.
+
+## Files
+
+- `docker-compose.yml`: base service stack.
+- `env/local.env`: developer defaults.
+- `env/secure-local.env`: local-only with stricter secrets/telemetry.
+- `env/ci.env`: alternate ports for CI jobs.
+
+## Start Commands
+
+Run these from the repository root:
+
+```bash
+# Local
+cd project/infra/langfuse
+docker compose --env-file env/local.env up -d
+
+# Secure local
+cd project/infra/langfuse
+docker compose --env-file env/secure-local.env up -d
+
+# CI profile
+cd project/infra/langfuse
+docker compose --env-file env/ci.env up -d
+```
+
+## Stop
+
+```bash
+docker compose --env-file env/local.env down
+```
+
+## Notes
+
+- Replace all `CHANGE_ME_*` values before using `secure-local.env`.
+- Keep env files out of source control if you add real secrets.
+- OTLP trace ingestion endpoint is `http://localhost:3000/api/public/otel/v1/traces` for local profile.
+- Runtime tracing auth uses Langfuse project keys (`pk-lf-*` and `sk-lf-*`) via basic auth.
