@@ -260,8 +260,6 @@ public sealed class SubTaskTests : TestKit
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
-
-        // Coordinator first requests an orchestrator decision
         var orchestratorTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
             m => m.Role == SwarmRole.Orchestrator,
             ActorResponseTimeout,
