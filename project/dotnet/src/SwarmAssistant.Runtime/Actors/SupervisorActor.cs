@@ -20,6 +20,7 @@ public sealed class SupervisorActor : ReceiveActor
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
     private readonly IReadOnlyList<string> _trackedAdapterIds;
+    private readonly IActorRef? _blackboardActor;
 
     // Counters for snapshot
     private int _started;
@@ -34,11 +35,16 @@ public sealed class SupervisorActor : ReceiveActor
     private readonly Dictionary<string, int> _adapterFailureCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _openCircuits = new(StringComparer.OrdinalIgnoreCase);
 
-    public SupervisorActor(ILoggerFactory loggerFactory, RuntimeTelemetry telemetry, IReadOnlyList<string>? trackedAdapterIds = null)
+    public SupervisorActor(
+        ILoggerFactory loggerFactory,
+        RuntimeTelemetry telemetry,
+        IReadOnlyList<string>? trackedAdapterIds = null,
+        IActorRef? blackboardActor = null)
     {
         _telemetry = telemetry;
         _logger = loggerFactory.CreateLogger<SupervisorActor>();
         _trackedAdapterIds = trackedAdapterIds ?? ["copilot", "cline", "kimi"];
+        _blackboardActor = blackboardActor;
 
         Receive<TaskStarted>(OnTaskStarted);
         Receive<TaskResult>(OnTaskResult);
@@ -228,6 +234,11 @@ public sealed class SupervisorActor : ReceiveActor
                 _logger.LogInformation(
                     "Adapter circuit closed (expired) adapterId={AdapterId}", adapterId);
                 Context.System.EventStream.Publish(new AdapterCircuitClosed(adapterId));
+
+                // Stigmergy: signal circuit recovery to global blackboard (single key per adapter)
+                _blackboardActor?.Tell(new UpdateGlobalBlackboard(
+                    GlobalBlackboardKeys.AdapterCircuit(adapterId),
+                    $"{GlobalBlackboardKeys.CircuitStateClosed}|at={DateTimeOffset.UtcNow:O}"));
             }
 
             _adapterFailureCounts.TryGetValue(adapterId, out var count);
@@ -240,6 +251,11 @@ public sealed class SupervisorActor : ReceiveActor
 
                 // Publish circuit open event via Akka EventStream
                 Context.System.EventStream.Publish(new AdapterCircuitOpen(adapterId, until));
+
+                // Stigmergy: signal circuit breaker state to global blackboard (single key per adapter)
+                _blackboardActor?.Tell(new UpdateGlobalBlackboard(
+                    GlobalBlackboardKeys.AdapterCircuit(adapterId),
+                    $"{GlobalBlackboardKeys.CircuitStateOpen}|failures={count + 1}|until={until:O}"));
 
                 _logger.LogWarning(
                     "Adapter circuit opened adapterId={AdapterId} failureCount={FailureCount} until={Until}",
