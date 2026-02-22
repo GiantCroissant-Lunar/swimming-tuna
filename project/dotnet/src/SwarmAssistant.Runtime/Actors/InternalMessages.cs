@@ -51,6 +51,10 @@ internal sealed record UpdateBlackboard(
     string Value
 );
 
+internal sealed record RemoveBlackboard(
+    string TaskId
+);
+
 internal sealed record GetBlackboardContext(
     string TaskId
 );

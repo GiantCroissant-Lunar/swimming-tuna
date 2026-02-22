@@ -81,7 +81,6 @@ public sealed class MonitorActor : ReceiveActor
 
         if (_previousSnapshot is not null)
         {
-            var activePrevious = _previousSnapshot.Started - _previousSnapshot.Completed - _previousSnapshot.Failed;
             var activeCurrent = snapshot.Started - snapshot.Completed - snapshot.Failed;
 
             // Stall detection: active tasks exist but no progress (no new completions or failures)

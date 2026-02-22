@@ -185,7 +185,7 @@ public sealed class OrchestratorFlowTests
     }
 
     [Fact]
-    public void GoapPlanner_AfterBuildExists_RecommendsBuild()
+    public void GoapPlanner_AfterPlanExists_RecommendsBuild()
     {
         var worldState = (WorldState)new WorldState()
             .With(WorldKey.TaskExists, true)

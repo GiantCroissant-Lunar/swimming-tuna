@@ -35,6 +35,9 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
+    private readonly Dictionary<IActorRef, string> _coordinatorTaskIds = new();
+
+    private const int DefaultMaxRetries = 2;
 
     public DispatcherActor(
         IActorRef workerActor,
@@ -59,6 +62,7 @@ public sealed class DispatcherActor : ReceiveActor
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
+        Receive<Terminated>(OnCoordinatorTerminated);
     }
 
     private void HandleTaskAssigned(TaskAssigned message)
@@ -98,10 +102,12 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                2)),
+                DefaultMaxRetries)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
+        _coordinatorTaskIds[coordinator] = message.TaskId;
+        Context.Watch(coordinator);
 
         _logger.LogInformation(
             "Dispatched task taskId={TaskId} title={Title}",
@@ -118,5 +124,15 @@ public sealed class DispatcherActor : ReceiveActor
             });
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+    }
+
+    private void OnCoordinatorTerminated(Terminated message)
+    {
+        if (_coordinatorTaskIds.TryGetValue(message.ActorRef, out var taskId))
+        {
+            _coordinators.Remove(taskId);
+            _coordinatorTaskIds.Remove(message.ActorRef);
+            _logger.LogDebug("Coordinator removed taskId={TaskId}", taskId);
+        }
     }
 }

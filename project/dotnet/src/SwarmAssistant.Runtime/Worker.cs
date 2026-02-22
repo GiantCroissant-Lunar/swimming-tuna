@@ -48,6 +48,10 @@ public sealed class Worker : BackgroundService
     {
         _telemetry = new RuntimeTelemetry(_options, _loggerFactory);
 
+        var workerPoolSize = Math.Clamp(_options.WorkerPoolSize, 1, 16);
+        var reviewerPoolSize = Math.Clamp(_options.ReviewerPoolSize, 1, 16);
+        var maxCliConcurrency = Math.Clamp(_options.MaxCliConcurrency, 1, 32);
+
         using var startupActivity = _telemetry.StartActivity(
             "runtime.startup",
             taskId: null,
@@ -58,9 +62,9 @@ public sealed class Worker : BackgroundService
                 ["swarm.agent_execution"] = _options.AgentExecution,
                 ["swarm.agent_framework.mode"] = _options.AgentFrameworkExecutionMode,
                 ["swarm.sandbox"] = _options.SandboxMode,
-                ["swarm.worker_pool_size"] = _options.WorkerPoolSize,
-                ["swarm.reviewer_pool_size"] = _options.ReviewerPoolSize,
-                ["swarm.max_cli_concurrency"] = _options.MaxCliConcurrency,
+                ["swarm.worker_pool_size"] = workerPoolSize,
+                ["swarm.reviewer_pool_size"] = reviewerPoolSize,
+                ["swarm.max_cli_concurrency"] = maxCliConcurrency,
             });
 
         var config = ConfigurationFactory.ParseString(@"
@@ -85,11 +89,8 @@ public sealed class Worker : BackgroundService
 
         var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var supervisor = _actorSystem.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, _options.CliAdapterOrder)),
             "supervisor");
-
-        var workerPoolSize = Math.Clamp(_options.WorkerPoolSize, 1, 16);
-        var reviewerPoolSize = Math.Clamp(_options.ReviewerPoolSize, 1, 16);
 
         var workerActor = _actorSystem.ActorOf(
             Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))

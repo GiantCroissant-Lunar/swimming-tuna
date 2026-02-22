@@ -25,6 +25,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         @"ACTION:\s*(\w+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex RejectionRegex = new(
+        @"\b(reject(ed)?|fail(ed|ure)?|blocked?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
@@ -89,6 +93,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<RoleTaskSucceeded>(OnRoleSucceeded);
         Receive<RoleTaskFailed>(OnRoleFailed);
         Receive<RetryRole>(OnRetryRole);
+    }
+
+    protected override void PostStop()
+    {
+        _blackboardActor.Tell(new RemoveBlackboard(_taskId));
+        base.PostStop();
     }
 
     private void OnStart()
@@ -320,10 +330,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         var orchestratorPrompt = RolePromptFactory.BuildOrchestratorPrompt(
             _taskId, _title, _description, goapContext, _blackboardEntries);
 
+        if (planResult.RecommendedPlan is null or { Count: 0 })
+        {
+            _logger.LogWarning(
+                "GOAP returned no recommended plan despite non-dead-end state taskId={TaskId}, falling back to GOAP",
+                _taskId);
+            FallbackToGoap();
+            return;
+        }
+
         _logger.LogInformation(
             "Requesting orchestrator decision taskId={TaskId} goapAction={GoapAction}",
             _taskId,
-            planResult.RecommendedPlan![0].Name);
+            planResult.RecommendedPlan[0].Name);
 
         _uiEvents.Publish(
             type: "agui.task.transition",
@@ -427,6 +446,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             type: "agui.task.done",
             taskId: _taskId,
             payload: new { summary, source = Self.Path.Name });
+
+        Context.Stop(Self);
     }
 
     private void HandleDeadEnd()
@@ -451,6 +472,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 error,
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, error)
             });
+
+        Context.Stop(Self);
     }
 
     private void HandleEscalation()
@@ -475,6 +498,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 error = reason,
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, reason)
             });
+
+        Context.Stop(Self);
     }
 
     private void HandleOrchestratorResponse(string output)
@@ -562,10 +587,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private static bool ContainsRejection(string reviewOutput)
     {
-        // Simple heuristic: check for rejection keywords in review output.
-        // In production, the CLI orchestrator agent would make this judgment.
-        var lower = reviewOutput.ToLowerInvariant();
-        return lower.Contains("reject") || lower.Contains("fail") || lower.Contains("block");
+        // Use word-boundary matching to avoid false positives on phrases like
+        // "don't fail to add tests" or "code block".
+        return RejectionRegex.IsMatch(reviewOutput);
     }
 
     private static TaskState MapRoleToState(SwarmRole role) => role switch
