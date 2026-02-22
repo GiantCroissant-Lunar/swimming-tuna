@@ -17,5 +17,7 @@ public sealed record SwarmTask(
     TaskStatus Status,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    string? Error = null
+    string? Error = null,
+    string? ParentTaskId = null,
+    IReadOnlyList<string>? ChildTaskIds = null
 );

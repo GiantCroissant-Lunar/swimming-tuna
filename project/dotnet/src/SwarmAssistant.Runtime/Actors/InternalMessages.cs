@@ -129,3 +129,24 @@ internal sealed record TaskEscalated(
 
 // Monitor self-scheduling tick
 internal sealed record MonitorTick;
+
+// Sub-task spawning messages
+internal sealed record SpawnSubTask(
+    string ParentTaskId,
+    string ChildTaskId,
+    string Title,
+    string Description,
+    int Depth = 0
+);
+
+internal sealed record SubTaskCompleted(
+    string ParentTaskId,
+    string ChildTaskId,
+    string Output
+);
+
+internal sealed record SubTaskFailed(
+    string ParentTaskId,
+    string ChildTaskId,
+    string Error
+);

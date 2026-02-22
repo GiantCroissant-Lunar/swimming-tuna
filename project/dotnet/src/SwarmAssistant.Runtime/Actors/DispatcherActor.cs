@@ -6,6 +6,7 @@ using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
+using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
 
@@ -36,6 +37,7 @@ public sealed class DispatcherActor : ReceiveActor
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
     private readonly Dictionary<IActorRef, string> _coordinatorTaskIds = new();
+    private readonly Dictionary<string, IActorRef> _parentCoordinators = new(StringComparer.Ordinal);
 
     private const int DefaultMaxRetries = 2;
 
@@ -62,6 +64,7 @@ public sealed class DispatcherActor : ReceiveActor
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
+        Receive<SpawnSubTask>(HandleSpawnSubTask);
         Receive<Terminated>(OnCoordinatorTerminated);
     }
 
@@ -102,7 +105,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                DefaultMaxRetries)),
+                DefaultMaxRetries,
+                0)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -126,13 +130,83 @@ public sealed class DispatcherActor : ReceiveActor
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
 
+    private void HandleSpawnSubTask(SpawnSubTask message)
+    {
+        if (_coordinators.ContainsKey(message.ChildTaskId))
+        {
+            _logger.LogWarning(
+                "Duplicate sub-task spawn ignored childTaskId={ChildTaskId}", message.ChildTaskId);
+            return;
+        }
+
+        _taskRegistry.RegisterSubTask(
+            message.ChildTaskId, message.Title, message.Description, message.ParentTaskId);
+
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+
+        var coordinator = Context.ActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                message.ChildTaskId,
+                message.Title,
+                message.Description,
+                _workerActor,
+                _reviewerActor,
+                _supervisorActor,
+                _blackboardActor,
+                _roleEngine,
+                goapPlanner,
+                _loggerFactory,
+                _telemetry,
+                _uiEvents,
+                _taskRegistry,
+                DefaultMaxRetries,
+                message.Depth)),
+            $"task-{message.ChildTaskId}");
+
+        _coordinators[message.ChildTaskId] = coordinator;
+        _coordinatorTaskIds[coordinator] = message.ChildTaskId;
+        _parentCoordinators[message.ChildTaskId] = Sender;
+        Context.Watch(coordinator);
+
+        _logger.LogInformation(
+            "Spawned sub-task childTaskId={ChildTaskId} parentTaskId={ParentTaskId} depth={Depth}",
+            message.ChildTaskId, message.ParentTaskId, message.Depth);
+
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+    }
+
     private void OnCoordinatorTerminated(Terminated message)
     {
-        if (_coordinatorTaskIds.TryGetValue(message.ActorRef, out var taskId))
+        if (!_coordinatorTaskIds.TryGetValue(message.ActorRef, out var taskId))
         {
-            _coordinators.Remove(taskId);
-            _coordinatorTaskIds.Remove(message.ActorRef);
-            _logger.LogDebug("Coordinator removed taskId={TaskId}", taskId);
+            return;
         }
+
+        _coordinators.Remove(taskId);
+        _coordinatorTaskIds.Remove(message.ActorRef);
+
+        if (_parentCoordinators.TryGetValue(taskId, out var parentCoordinatorRef))
+        {
+            _parentCoordinators.Remove(taskId);
+            var snapshot = _taskRegistry.GetTask(taskId);
+
+            if (snapshot?.Status == TaskState.Done)
+            {
+                parentCoordinatorRef.Tell(new SubTaskCompleted(
+                    snapshot.ParentTaskId ?? string.Empty,
+                    taskId,
+                    snapshot.Summary ?? string.Empty));
+            }
+            else
+            {
+                var error = snapshot?.Error ?? "Sub-task terminated without completing.";
+                parentCoordinatorRef.Tell(new SubTaskFailed(
+                    snapshot?.ParentTaskId ?? string.Empty,
+                    taskId,
+                    error));
+            }
+        }
+
+        _logger.LogDebug("Coordinator removed taskId={TaskId}", taskId);
     }
 }

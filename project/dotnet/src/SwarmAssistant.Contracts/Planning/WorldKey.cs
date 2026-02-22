@@ -13,4 +13,6 @@ public enum WorldKey
     TaskCompleted,
     TaskBlocked,
     AdapterAvailable,
+    SubTasksSpawned,
+    SubTasksCompleted,
 }

@@ -13,5 +13,7 @@ public sealed record TaskSnapshot(
     string? BuildOutput = null,
     string? ReviewOutput = null,
     string? Summary = null,
-    string? Error = null
+    string? Error = null,
+    string? ParentTaskId = null,
+    IReadOnlyList<string>? ChildTaskIds = null
 );
