@@ -46,6 +46,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
 app.UseCors("DefaultCorsPolicy");
 
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
