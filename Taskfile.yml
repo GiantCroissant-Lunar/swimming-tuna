@@ -125,3 +125,74 @@ tasks:
     desc: Clean repomix output files
     cmds:
       - rm -f repomix-output.*
+
+  # Agent skills tasks
+  skills:list:
+    desc: List available agent skills
+    cmds:
+      - echo "Available skills in .agent/skills/:"
+      - ls -1 .agent/skills/ 2>/dev/null || echo "No skills found"
+
+  skills:read:
+    desc: "Read a skill (usage: task skills:read SKILL=skill-name)"
+    cmds:
+      - |
+        if [[ ! "{{.SKILL}}" =~ ^[a-zA-Z0-9_/-]+$ ]]; then
+          echo "Error: Invalid skill name '{{.SKILL}}'. Only alphanumeric characters, hyphens, underscores, and '/' are allowed." >&2
+          exit 1
+        fi
+        SKILL_BASE=".agent/skills/{{.SKILL}}"
+        if [ -d "$SKILL_BASE" ]; then
+          cat "$SKILL_BASE/SKILL.md"
+        elif [ -f "${SKILL_BASE}.md" ]; then
+          cat "${SKILL_BASE}.md"
+        elif [ -f "$SKILL_BASE" ]; then
+          cat "$SKILL_BASE"
+        else
+          echo "Error: Skill '{{.SKILL}}' not found." >&2
+          exit 1
+        fi
+    requires:
+      vars: [SKILL]
+
+  skills:new:
+    desc: "Create a new skill directory (usage: task skills:new SKILL=skill-name)"
+    cmds:
+      - |
+        if [[ ! "{{.SKILL}}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+          echo "Error: Invalid skill name '{{.SKILL}}'. Only alphanumeric characters, hyphens, and underscores are allowed." >&2
+          exit 1
+        fi
+
+        SKILL_PATH=".agent/skills/{{.SKILL}}"
+
+        if [ -d "$SKILL_PATH" ]; then
+          echo "Error: Skill '{{.SKILL}}' already exists." >&2
+          exit 1
+        fi
+
+        mkdir -p "$SKILL_PATH"
+        {
+          echo '---'
+          echo 'name: {{.SKILL}}'
+          echo 'description: Description of what this skill provides and when to use it'
+          echo '---'
+          echo ''
+          echo '# {{.SKILL}}'
+          echo ''
+          echo '## Overview'
+          echo ''
+          echo 'Describe the purpose of this skill.'
+          echo ''
+          echo '## Usage'
+          echo ''
+          echo 'Instructions for using this skill.'
+          echo ''
+          echo '## Examples'
+          echo ''
+          echo 'Provide examples if applicable.'
+        } > "$SKILL_PATH/SKILL.md"
+        echo "Created skill: {{.SKILL}}"
+        echo "Edit $SKILL_PATH/SKILL.md to customize"
+    requires:
+      vars: [SKILL]

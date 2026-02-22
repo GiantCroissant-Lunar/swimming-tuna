@@ -23,3 +23,8 @@ repomix-output.*
 .env
 .env.*
 !.env.example
+
+# Agent local files
+.agent/local/
+.agent/secrets/
+.agent/cache/
