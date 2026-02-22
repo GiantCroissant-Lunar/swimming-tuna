@@ -5,30 +5,39 @@ namespace SwarmAssistant.Runtime.Actors;
 public sealed class RuntimeActorRegistry
 {
     private readonly object _lock = new();
-    private IActorRef? _coordinator;
+    private IActorRef? _dispatcher;
 
-    public void SetCoordinator(IActorRef coordinator)
+    [Obsolete("Use SetDispatcher instead. Kept for backward compatibility.")]
+    public void SetCoordinator(IActorRef coordinator) => SetDispatcher(coordinator);
+
+    [Obsolete("Use ClearDispatcher instead. Kept for backward compatibility.")]
+    public void ClearCoordinator() => ClearDispatcher();
+
+    [Obsolete("Use TryGetDispatcher instead. Kept for backward compatibility.")]
+    public bool TryGetCoordinator(out IActorRef? coordinator) => TryGetDispatcher(out coordinator);
+
+    public void SetDispatcher(IActorRef dispatcher)
     {
         lock (_lock)
         {
-            _coordinator = coordinator;
+            _dispatcher = dispatcher;
         }
     }
 
-    public void ClearCoordinator()
+    public void ClearDispatcher()
     {
         lock (_lock)
         {
-            _coordinator = null;
+            _dispatcher = null;
         }
     }
 
-    public bool TryGetCoordinator(out IActorRef? coordinator)
+    public bool TryGetDispatcher(out IActorRef? dispatcher)
     {
         lock (_lock)
         {
-            coordinator = _coordinator;
-            return coordinator is not null;
+            dispatcher = _dispatcher;
+            return dispatcher is not null;
         }
     }
 }

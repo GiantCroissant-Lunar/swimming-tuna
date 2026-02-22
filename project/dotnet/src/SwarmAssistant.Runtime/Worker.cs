@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Configuration;
 using Akka.Pattern;
+using Akka.Routing;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
@@ -47,6 +48,10 @@ public sealed class Worker : BackgroundService
     {
         _telemetry = new RuntimeTelemetry(_options, _loggerFactory);
 
+        var workerPoolSize = Math.Clamp(_options.WorkerPoolSize, 1, 16);
+        var reviewerPoolSize = Math.Clamp(_options.ReviewerPoolSize, 1, 16);
+        var maxCliConcurrency = Math.Clamp(_options.MaxCliConcurrency, 1, 32);
+
         using var startupActivity = _telemetry.StartActivity(
             "runtime.startup",
             taskId: null,
@@ -57,6 +62,9 @@ public sealed class Worker : BackgroundService
                 ["swarm.agent_execution"] = _options.AgentExecution,
                 ["swarm.agent_framework.mode"] = _options.AgentFrameworkExecutionMode,
                 ["swarm.sandbox"] = _options.SandboxMode,
+                ["swarm.worker_pool_size"] = workerPoolSize,
+                ["swarm.reviewer_pool_size"] = reviewerPoolSize,
+                ["swarm.max_cli_concurrency"] = maxCliConcurrency,
             });
 
         var config = ConfigurationFactory.ParseString(@"
@@ -81,25 +89,49 @@ public sealed class Worker : BackgroundService
 
         var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var supervisor = _actorSystem.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, _options.CliAdapterOrder)),
             "supervisor");
+
         var workerActor = _actorSystem.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))
+                .WithRouter(new SmallestMailboxPool(workerPoolSize)),
             "worker");
         var reviewerActor = _actorSystem.ActorOf(
-            Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
+            Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))
+                .WithRouter(new SmallestMailboxPool(reviewerPoolSize)),
             "reviewer");
-        var coordinator = _actorSystem.ActorOf(
-            Props.Create(() => new CoordinatorActor(
+
+        _logger.LogInformation(
+            "Actor pools created workerPoolSize={WorkerPoolSize} reviewerPoolSize={ReviewerPoolSize} maxCliConcurrency={MaxCliConcurrency}",
+            workerPoolSize,
+            reviewerPoolSize,
+            maxCliConcurrency);
+
+        var monitorTickSeconds = Math.Max(5, _options.HealthHeartbeatSeconds);
+        _actorSystem.ActorOf(
+            Props.Create(() => new MonitorActor(
+                supervisor,
+                _loggerFactory,
+                _telemetry,
+                monitorTickSeconds)),
+            "monitor");
+
+        var blackboardActor = _actorSystem.ActorOf(
+            Props.Create(() => new BlackboardActor(_loggerFactory)),
+            "blackboard");
+        var dispatcher = _actorSystem.ActorOf(
+            Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisor,
+                blackboardActor,
+                agentFrameworkRoleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry)),
-            "coordinator");
-        _actorRegistry.SetCoordinator(coordinator);
+            "dispatcher");
+        _actorRegistry.SetDispatcher(dispatcher);
 
         _supervisor = supervisor;
         await _startupMemoryBootstrapper.RestoreAsync(
@@ -114,17 +146,7 @@ public sealed class Worker : BackgroundService
                 _options.DemoTaskTitle,
                 _options.DemoTaskDescription,
                 DateTimeOffset.UtcNow);
-            coordinator.Tell(task);
-
-            _uiEvents.Publish(
-                type: "agui.task.submitted",
-                taskId: task.TaskId,
-                payload: new
-                {
-                    task.TaskId,
-                    task.Title,
-                    task.Description
-                });
+            dispatcher.Tell(task);
 
             _logger.LogInformation("Demo task submitted taskId={TaskId}", task.TaskId);
         }
@@ -145,7 +167,7 @@ public sealed class Worker : BackgroundService
         }
         finally
         {
-            _actorRegistry.ClearCoordinator();
+            _actorRegistry.ClearDispatcher();
 
             if (_actorSystem is not null)
             {

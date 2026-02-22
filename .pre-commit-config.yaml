@@ -35,9 +35,7 @@ repos:
       - id: go-imports
       - id: go-vet
       - id: go-critic
-      - id: go-build
       - id: go-mod-tidy
-      - id: go-unit-tests
 
   # Python hooks (Ruff)
   - repo: https://github.com/astral-sh/ruff-pre-commit

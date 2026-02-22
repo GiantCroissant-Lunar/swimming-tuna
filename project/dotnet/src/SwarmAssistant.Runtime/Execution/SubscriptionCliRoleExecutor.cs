@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
@@ -9,6 +10,10 @@ namespace SwarmAssistant.Runtime.Execution;
 internal sealed class SubscriptionCliRoleExecutor
 {
     private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "local-echo"];
+
+    private static readonly Regex RecommendedPlanRegex = new(
+        @"Recommended plan:\s*(\w+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly IReadOnlyDictionary<string, AdapterDefinition> AdapterDefinitions =
         new Dictionary<string, AdapterDefinition>(StringComparer.OrdinalIgnoreCase)
@@ -45,15 +50,30 @@ internal sealed class SubscriptionCliRoleExecutor
         };
 
     private readonly RuntimeOptions _options;
+    private readonly SemaphoreSlim _concurrencyGate;
     private readonly ILogger _logger;
 
     public SubscriptionCliRoleExecutor(RuntimeOptions options, ILoggerFactory loggerFactory)
     {
         _options = options;
+        _concurrencyGate = new SemaphoreSlim(Math.Clamp(options.MaxCliConcurrency, 1, 32));
         _logger = loggerFactory.CreateLogger<SubscriptionCliRoleExecutor>();
     }
 
     public async Task<CliRoleExecutionResult> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken)
+    {
+        await _concurrencyGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await ExecuteCoreAsync(command, cancellationToken);
+        }
+        finally
+        {
+            _concurrencyGate.Release();
+        }
+    }
+
+    private async Task<CliRoleExecutionResult> ExecuteCoreAsync(ExecuteRoleTask command, CancellationToken cancellationToken)
     {
         var timeout = TimeSpan.FromSeconds(Math.Clamp(_options.RoleExecutionTimeoutSeconds, 5, 900));
         var errors = new List<string>();
@@ -156,7 +176,7 @@ internal sealed class SubscriptionCliRoleExecutor
                 $"[LocalEcho/Planner] Task: {command.Title}",
                 "1. Clarify scope and constraints.",
                 "2. Deliver smallest testable slice.",
-                "3. Validate failure handling.",
+                "3. Validate edge-case handling.",
                 "4. Capture next actions."),
             Contracts.Messaging.SwarmRole.Builder => string.Join(
                 Environment.NewLine,
@@ -170,8 +190,31 @@ internal sealed class SubscriptionCliRoleExecutor
                 $"Build context: {command.BuildOutput ?? "(none)"}",
                 "- Checked lifecycle transitions and error propagation.",
                 "- Suggested coverage for success and escalation paths."),
+            Contracts.Messaging.SwarmRole.Orchestrator => BuildOrchestratorEcho(command),
             _ => $"[LocalEcho] Unsupported role {command.Role}"
         };
+    }
+
+    private static string BuildOrchestratorEcho(ExecuteRoleTask command)
+    {
+        var action = "Plan";
+        var reason = "Starting with planning phase as determined by local echo fallback.";
+
+        if (!string.IsNullOrWhiteSpace(command.OrchestratorPrompt))
+        {
+            var match = RecommendedPlanRegex.Match(command.OrchestratorPrompt);
+            if (match.Success)
+            {
+                action = match.Groups[1].Value;
+                reason = $"Following GOAP recommended action '{action}' via local echo.";
+            }
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            $"[LocalEcho/Orchestrator] Task: {command.Title}",
+            $"ACTION: {action}",
+            $"REASON: {reason}");
     }
 
     private static string[] RenderArgs(IReadOnlyList<string> args, IReadOnlyDictionary<string, string> vars)

@@ -59,11 +59,14 @@ public sealed class AgentFrameworkRoleEngine
         CancellationToken cancellationToken)
     {
         _logger.LogInformation(
-            "Executing role with Agent Framework workflow role={Role} taskId={TaskId}",
+            "Executing role with Agent Framework CLI workflow role={Role} taskId={TaskId}",
             command.Role,
             command.TaskId);
 
-        var executor = new RoleExecutionExecutor("agent-framework-role-executor");
+        var executor = new CliWorkflowExecutor(
+            "agent-framework-cli-executor",
+            _subscriptionCliRoleExecutor,
+            _logger);
         var workflow = new WorkflowBuilder(executor)
             .WithOutputFrom(executor)
             .Build();
@@ -97,7 +100,7 @@ public sealed class AgentFrameworkRoleEngine
         activity?.SetTag("output.length", output.Length);
         activity?.SetStatus(ActivityStatusCode.Ok);
         _logger.LogInformation(
-            "Agent Framework workflow completed role={Role} taskId={TaskId}",
+            "Agent Framework CLI workflow completed role={Role} taskId={TaskId}",
             command.Role,
             command.TaskId);
 
@@ -123,10 +126,24 @@ public sealed class AgentFrameworkRoleEngine
         return result.Output;
     }
 
-    private sealed class RoleExecutionExecutor : Executor<ExecuteRoleTask>
+    /// <summary>
+    /// CLI-backed workflow executor that delegates role execution to <see cref="SubscriptionCliRoleExecutor"/>.
+    /// Supports multi-turn retry: if the CLI returns empty or invalid output, retries up to <c>MaxAttempts</c>.
+    /// </summary>
+    private sealed class CliWorkflowExecutor : Executor<ExecuteRoleTask>
     {
-        public RoleExecutionExecutor(string id) : base(id)
+        private const int MaxAttempts = 2;
+
+        private readonly SubscriptionCliRoleExecutor _cliExecutor;
+        private readonly ILogger _logger;
+
+        public CliWorkflowExecutor(
+            string id,
+            SubscriptionCliRoleExecutor cliExecutor,
+            ILogger logger) : base(id)
         {
+            _cliExecutor = cliExecutor;
+            _logger = logger;
         }
 
         public override async ValueTask HandleAsync(
@@ -134,52 +151,42 @@ public sealed class AgentFrameworkRoleEngine
             IWorkflowContext context,
             CancellationToken cancellationToken = default)
         {
-            var output = message.Role switch
+            Exception? lastException = null;
+
+            for (var attempt = 1; attempt <= MaxAttempts; attempt++)
             {
-                SwarmRole.Planner => BuildPlannerOutput(message),
-                SwarmRole.Builder => BuildBuilderOutput(message),
-                SwarmRole.Reviewer => BuildReviewerOutput(message),
-                _ => $"Unsupported role {message.Role}"
-            };
+                try
+                {
+                    var result = await _cliExecutor.ExecuteAsync(message, cancellationToken);
 
-            await context.YieldOutputAsync(output, cancellationToken);
-        }
+                    if (!string.IsNullOrWhiteSpace(result.Output))
+                    {
+                        await context.YieldOutputAsync(result.Output, cancellationToken);
+                        return;
+                    }
 
-        private static string BuildPlannerOutput(ExecuteRoleTask message)
-        {
-            return string.Join(
-                Environment.NewLine,
-                $"[AgentFramework/Planner] Task: {message.Title}",
-                $"Goal: {message.Description}",
-                "Plan:",
-                "1. Capture explicit constraints and success criteria.",
-                "2. Build the smallest testable implementation slice.",
-                "3. Validate against failure paths and rollback options.",
-                "4. Produce concise delivery notes and next steps.");
-        }
+                    _logger.LogWarning(
+                        "CLI returned empty output, attempt {Attempt}/{Max} role={Role} taskId={TaskId}",
+                        attempt,
+                        MaxAttempts,
+                        message.Role,
+                        message.TaskId);
+                }
+                catch (Exception exception) when (attempt < MaxAttempts)
+                {
+                    lastException = exception;
+                    _logger.LogWarning(
+                        exception,
+                        "CLI execution failed, retrying attempt {Attempt}/{Max} role={Role} taskId={TaskId}",
+                        attempt,
+                        MaxAttempts,
+                        message.Role,
+                        message.TaskId);
+                }
+            }
 
-        private static string BuildBuilderOutput(ExecuteRoleTask message)
-        {
-            return string.Join(
-                Environment.NewLine,
-                $"[AgentFramework/Builder] Task: {message.Title}",
-                $"Using plan context: {message.PlanningOutput ?? "(none)"}",
-                "Execution:",
-                "- Implemented the core workflow step with durable state transitions.",
-                "- Preserved actor boundaries and typed message contracts.",
-                "- Prepared logs for supervisor visibility and escalation handling.");
-        }
-
-        private static string BuildReviewerOutput(ExecuteRoleTask message)
-        {
-            return string.Join(
-                Environment.NewLine,
-                $"[AgentFramework/Reviewer] Task: {message.Title}",
-                $"Build context: {message.BuildOutput ?? "(none)"}",
-                "Review:",
-                "- Verified lifecycle transitions and blocked-state handling.",
-                "- Checked role ownership boundaries and failure propagation.",
-                "- Recommended adding scenario tests for escalation paths.");
+            throw lastException ?? new InvalidOperationException(
+                $"CLI workflow returned no valid output after {MaxAttempts} attempts for role {message.Role}");
         }
     }
 }
