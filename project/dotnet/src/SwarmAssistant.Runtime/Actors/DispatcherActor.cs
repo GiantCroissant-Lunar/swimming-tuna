@@ -38,6 +38,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
     private readonly Dictionary<IActorRef, string> _coordinatorTaskIds = new();
     private readonly Dictionary<string, IActorRef> _parentCoordinators = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _childParentTaskIds = new(StringComparer.Ordinal);
 
     private const int DefaultMaxRetries = 2;
 
@@ -166,6 +167,7 @@ public sealed class DispatcherActor : ReceiveActor
         _coordinators[message.ChildTaskId] = coordinator;
         _coordinatorTaskIds[coordinator] = message.ChildTaskId;
         _parentCoordinators[message.ChildTaskId] = Sender;
+        _childParentTaskIds[message.ChildTaskId] = message.ParentTaskId;
         Context.Watch(coordinator);
 
         _logger.LogInformation(
@@ -188,12 +190,16 @@ public sealed class DispatcherActor : ReceiveActor
         if (_parentCoordinators.TryGetValue(taskId, out var parentCoordinatorRef))
         {
             _parentCoordinators.Remove(taskId);
+            _childParentTaskIds.TryGetValue(taskId, out var parentTaskId);
+            _childParentTaskIds.Remove(taskId);
+
             var snapshot = _taskRegistry.GetTask(taskId);
+            var resolvedParentTaskId = parentTaskId ?? snapshot?.ParentTaskId ?? string.Empty;
 
             if (snapshot?.Status == TaskState.Done)
             {
                 parentCoordinatorRef.Tell(new SubTaskCompleted(
-                    snapshot.ParentTaskId ?? string.Empty,
+                    resolvedParentTaskId,
                     taskId,
                     snapshot.Summary ?? string.Empty));
             }
@@ -201,7 +207,7 @@ public sealed class DispatcherActor : ReceiveActor
             {
                 var error = snapshot?.Error ?? "Sub-task terminated without completing.";
                 parentCoordinatorRef.Tell(new SubTaskFailed(
-                    snapshot?.ParentTaskId ?? string.Empty,
+                    resolvedParentTaskId,
                     taskId,
                     error));
             }

@@ -29,6 +29,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         @"\b(reject(ed)?|fail(ed|ure)?|blocked?)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // Matches SUBTASK marker lines in planner output.
+    // Expected format: SUBTASK: <title>|<description>
+    // Example:         SUBTASK: Implement auth|Create login and logout endpoints
     private static readonly Regex SubTaskRegex = new(
         @"SUBTASK:\s*([^|\n\r]+)\|([^\n\r]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
