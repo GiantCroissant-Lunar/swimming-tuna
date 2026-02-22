@@ -1,5 +1,3 @@
-using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
-
 namespace SwarmAssistant.Runtime.Ui;
 
 /// <summary>
@@ -44,6 +42,9 @@ public sealed record GenUiComponent(
             ["margin_right"] = right,
             ["margin_bottom"] = bottom
         }, Children: children);
+
+    public static GenUiComponent Margin(string id, int all, params GenUiComponent[] children)
+        => Margin(id, all, all, all, all, children);
 
     public static GenUiComponent Scroll(string id, params GenUiComponent[] children)
         => new(id, "scroll", Children: children);
