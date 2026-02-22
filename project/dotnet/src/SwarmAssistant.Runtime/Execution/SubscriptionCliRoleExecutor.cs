@@ -45,15 +45,30 @@ internal sealed class SubscriptionCliRoleExecutor
         };
 
     private readonly RuntimeOptions _options;
+    private readonly SemaphoreSlim _concurrencyGate;
     private readonly ILogger _logger;
 
     public SubscriptionCliRoleExecutor(RuntimeOptions options, ILoggerFactory loggerFactory)
     {
         _options = options;
+        _concurrencyGate = new SemaphoreSlim(Math.Clamp(options.MaxCliConcurrency, 1, 32));
         _logger = loggerFactory.CreateLogger<SubscriptionCliRoleExecutor>();
     }
 
     public async Task<CliRoleExecutionResult> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken)
+    {
+        await _concurrencyGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await ExecuteCoreAsync(command, cancellationToken);
+        }
+        finally
+        {
+            _concurrencyGate.Release();
+        }
+    }
+
+    private async Task<CliRoleExecutionResult> ExecuteCoreAsync(ExecuteRoleTask command, CancellationToken cancellationToken)
     {
         var timeout = TimeSpan.FromSeconds(Math.Clamp(_options.RoleExecutionTimeoutSeconds, 5, 900));
         var errors = new List<string>();

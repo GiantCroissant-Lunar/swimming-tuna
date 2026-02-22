@@ -47,6 +47,23 @@ public sealed class RuntimeOptions
     public string DemoTaskTitle { get; init; } = "Phase 3 agent framework execution";
     public string DemoTaskDescription { get; init; } = "Validate coordinator-worker-reviewer lifecycle through Microsoft Agent Framework workflows.";
 
+    /// <summary>
+    /// Number of worker actor instances in the SmallestMailbox pool.
+    /// Each instance can handle one role execution (Plan/Build) at a time.
+    /// </summary>
+    public int WorkerPoolSize { get; init; } = 3;
+
+    /// <summary>
+    /// Number of reviewer actor instances in the SmallestMailbox pool.
+    /// </summary>
+    public int ReviewerPoolSize { get; init; } = 2;
+
+    /// <summary>
+    /// Maximum number of concurrent CLI subprocess executions across all actors.
+    /// Prevents resource exhaustion when multiple pool instances run simultaneously.
+    /// </summary>
+    public int MaxCliConcurrency { get; init; } = 4;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 

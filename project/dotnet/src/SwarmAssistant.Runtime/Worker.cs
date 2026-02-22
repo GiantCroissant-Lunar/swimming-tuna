@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Configuration;
 using Akka.Pattern;
+using Akka.Routing;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
@@ -57,6 +58,9 @@ public sealed class Worker : BackgroundService
                 ["swarm.agent_execution"] = _options.AgentExecution,
                 ["swarm.agent_framework.mode"] = _options.AgentFrameworkExecutionMode,
                 ["swarm.sandbox"] = _options.SandboxMode,
+                ["swarm.worker_pool_size"] = _options.WorkerPoolSize,
+                ["swarm.reviewer_pool_size"] = _options.ReviewerPoolSize,
+                ["swarm.max_cli_concurrency"] = _options.MaxCliConcurrency,
             });
 
         var config = ConfigurationFactory.ParseString(@"
@@ -83,12 +87,24 @@ public sealed class Worker : BackgroundService
         var supervisor = _actorSystem.ActorOf(
             Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry)),
             "supervisor");
+
+        var workerPoolSize = Math.Clamp(_options.WorkerPoolSize, 1, 16);
+        var reviewerPoolSize = Math.Clamp(_options.ReviewerPoolSize, 1, 16);
+
         var workerActor = _actorSystem.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))
+                .WithRouter(new SmallestMailboxPool(workerPoolSize)),
             "worker");
         var reviewerActor = _actorSystem.ActorOf(
-            Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry)),
+            Props.Create(() => new ReviewerActor(_options, _loggerFactory, agentFrameworkRoleEngine, _telemetry))
+                .WithRouter(new SmallestMailboxPool(reviewerPoolSize)),
             "reviewer");
+
+        _logger.LogInformation(
+            "Actor pools created workerPoolSize={WorkerPoolSize} reviewerPoolSize={ReviewerPoolSize} maxCliConcurrency={MaxCliConcurrency}",
+            workerPoolSize,
+            reviewerPoolSize,
+            _options.MaxCliConcurrency);
         var blackboardActor = _actorSystem.ActorOf(
             Props.Create(() => new BlackboardActor(_loggerFactory)),
             "blackboard");
