@@ -35,6 +35,13 @@ public sealed class SwarmAgentActor : ReceiveActor
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
         Receive<HealthCheckRequest>(HandleHealthCheck);
+        Receive<NegotiationOffer>(HandleNegotiationOffer);
+        Receive<HelpRequest>(HandleHelpRequest);
+        Receive<NegotiationAccept>(_ => { });
+        Receive<NegotiationReject>(_ => { });
+        Receive<HelpResponse>(_ => { });
+        Receive<ContractNetBidRequest>(HandleContractNetBidRequest);
+        Receive<ContractNetAward>(_ => { });
     }
 
     protected override void PreStart()
@@ -139,6 +146,53 @@ public sealed class SwarmAgentActor : ReceiveActor
             _currentLoad = Math.Max(0, _currentLoad - 1);
             AdvertiseCapability();
         }
+    }
+
+    private void HandleNegotiationOffer(NegotiationOffer offer)
+    {
+        if (_currentLoad >= _options.WorkerPoolSize)
+        {
+            Sender.Tell(new NegotiationReject(
+                offer.TaskId,
+                "Agent overloaded",
+                Self.Path.ToStringWithoutAddress()));
+            return;
+        }
+
+        if (_capabilities.Contains(offer.Role))
+        {
+            Sender.Tell(new NegotiationAccept(offer.TaskId, Self.Path.ToStringWithoutAddress()));
+            return;
+        }
+
+        Sender.Tell(new NegotiationReject(
+            offer.TaskId,
+            $"Role {offer.Role} not supported",
+            Self.Path.ToStringWithoutAddress()));
+    }
+
+    private void HandleHelpRequest(HelpRequest request)
+    {
+        var output = $"Help acknowledged for '{request.TaskId}' by {Self.Path.Name}: {request.Description}";
+        Sender.Tell(new HelpResponse(request.TaskId, output, Self.Path.ToStringWithoutAddress()));
+    }
+
+    private void HandleContractNetBidRequest(ContractNetBidRequest request)
+    {
+        if (!_capabilities.Contains(request.Role) || DateTimeOffset.UtcNow > request.DeadlineUtc)
+        {
+            return;
+        }
+
+        var estimatedCost = _currentLoad + 1;
+        var estimatedTimeMs = estimatedCost * 1_000;
+        Sender.Tell(new ContractNetBid(
+            request.AuctionId,
+            request.TaskId,
+            request.Role,
+            Self.Path.ToStringWithoutAddress(),
+            estimatedCost,
+            estimatedTimeMs));
     }
 
     private void AdvertiseCapability()

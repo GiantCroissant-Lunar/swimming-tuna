@@ -106,6 +106,95 @@ public sealed class SwarmAgentActorTests : TestKit
         Assert.Equal(role, result.Role);
     }
 
+    [Fact]
+    public void AcceptsNegotiationOffer_WhenRoleIsSupported()
+    {
+        var options = CreateRuntimeOptions();
+        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var telemetry = new RuntimeTelemetry(options, _loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
+
+        var agent = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+            options,
+            _loggerFactory,
+            engine,
+            telemetry,
+            registry,
+            new[] { SwarmRole.Builder })));
+        AwaitAgentRegistration(registry);
+
+        agent.Tell(new NegotiationOffer("task-negotiation", SwarmRole.Builder, "peer-a"));
+        var accepted = ExpectMsg<NegotiationAccept>();
+        Assert.Equal("task-negotiation", accepted.TaskId);
+    }
+
+    [Fact]
+    public void RespondsToHelpRequest()
+    {
+        var options = CreateRuntimeOptions();
+        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var telemetry = new RuntimeTelemetry(options, _loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
+
+        var agent = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+            options,
+            _loggerFactory,
+            engine,
+            telemetry,
+            registry,
+            new[] { SwarmRole.Builder })));
+        AwaitAgentRegistration(registry);
+
+        agent.Tell(new HelpRequest("task-help", "Need additional implementation support", "peer-a"));
+        var response = ExpectMsg<HelpResponse>();
+        Assert.Equal("task-help", response.TaskId);
+        Assert.Contains("Need additional implementation support", response.Output);
+    }
+
+    [Fact]
+    public void ContractNet_AwardsBestBidder()
+    {
+        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var fastBidder = CreateTestProbe("fast-bidder");
+        var slowBidder = CreateTestProbe("slow-bidder");
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            fastBidder.Ref.Path.ToStringWithoutAddress(),
+            new[] { SwarmRole.Builder },
+            CurrentLoad: 0), fastBidder.Ref);
+        registry.Tell(new AgentCapabilityAdvertisement(
+            slowBidder.Ref.Path.ToStringWithoutAddress(),
+            new[] { SwarmRole.Builder },
+            CurrentLoad: 0), slowBidder.Ref);
+
+        registry.Tell(new ContractNetCallForProposals(
+            "task-cnp",
+            SwarmRole.Builder,
+            "Implement feature",
+            TimeSpan.FromSeconds(1)));
+
+        var fastRequest = fastBidder.ExpectMsg<ContractNetBidRequest>();
+        var slowRequest = slowBidder.ExpectMsg<ContractNetBidRequest>();
+
+        fastBidder.Reply(new ContractNetBid(
+            fastRequest.AuctionId,
+            fastRequest.TaskId,
+            fastRequest.Role,
+            fastBidder.Ref.Path.ToStringWithoutAddress(),
+            EstimatedCost: 1,
+            EstimatedTimeMs: 100));
+        slowBidder.Reply(new ContractNetBid(
+            slowRequest.AuctionId,
+            slowRequest.TaskId,
+            slowRequest.Role,
+            slowBidder.Ref.Path.ToStringWithoutAddress(),
+            EstimatedCost: 3,
+            EstimatedTimeMs: 500));
+
+        var award = ExpectMsg<ContractNetAward>(TimeSpan.FromSeconds(2));
+        Assert.Equal(fastBidder.Ref.Path.ToStringWithoutAddress(), award.AwardedAgent);
+    }
+
     private void AwaitAgentRegistration(IActorRef registry)
     {
         AwaitAssert(() =>
