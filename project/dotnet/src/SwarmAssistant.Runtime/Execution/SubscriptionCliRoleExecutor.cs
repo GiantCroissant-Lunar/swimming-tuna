@@ -96,11 +96,20 @@ internal sealed class SubscriptionCliRoleExecutor
 
         var adapterOrder = BuildAdapterOrder(command.PreferredAdapter);
 
-        // Log if preferred adapter is being honored
-        if (!string.IsNullOrWhiteSpace(command.PreferredAdapter))
+        // Log if preferred adapter is being honored (only when the adapter is actually available)
+        if (!string.IsNullOrWhiteSpace(command.PreferredAdapter) &&
+            AdapterDefinitions.ContainsKey(command.PreferredAdapter))
         {
             _logger.LogInformation(
                 "Using preferred adapter={PreferredAdapter} for role={Role} taskId={TaskId}",
+                command.PreferredAdapter,
+                command.Role,
+                command.TaskId);
+        }
+        else if (!string.IsNullOrWhiteSpace(command.PreferredAdapter))
+        {
+            _logger.LogWarning(
+                "Preferred adapter={PreferredAdapter} not found, using default order for role={Role} taskId={TaskId}",
                 command.PreferredAdapter,
                 command.Role,
                 command.TaskId);

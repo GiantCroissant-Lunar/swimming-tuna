@@ -23,7 +23,7 @@ public sealed class AgentFrameworkRoleEngine
         _logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
     }
 
-    internal async Task<string> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken = default)
+    internal async Task<CliRoleExecutionResult> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken = default)
     {
         var mode = (_options.AgentFrameworkExecutionMode ?? "in-process-workflow").Trim().ToLowerInvariant();
 
@@ -53,7 +53,7 @@ public sealed class AgentFrameworkRoleEngine
         }
     }
 
-    private async Task<string> ExecuteInProcessWorkflowAsync(
+    private async Task<CliRoleExecutionResult> ExecuteInProcessWorkflowAsync(
         ExecuteRoleTask command,
         Activity? activity,
         CancellationToken cancellationToken)
@@ -90,6 +90,7 @@ public sealed class AgentFrameworkRoleEngine
         }
 
         activity?.SetTag("agent.framework.workflow.event_count", eventCount);
+        activity?.SetTag("agent.framework.cli.adapter", executor.LastAdapterId);
 
         if (string.IsNullOrWhiteSpace(output))
         {
@@ -104,10 +105,10 @@ public sealed class AgentFrameworkRoleEngine
             command.Role,
             command.TaskId);
 
-        return output;
+        return new CliRoleExecutionResult(output, executor.LastAdapterId ?? string.Empty);
     }
 
-    private async Task<string> ExecuteSubscriptionCliAsync(
+    private async Task<CliRoleExecutionResult> ExecuteSubscriptionCliAsync(
         ExecuteRoleTask command,
         Activity? activity,
         CancellationToken cancellationToken)
@@ -123,7 +124,7 @@ public sealed class AgentFrameworkRoleEngine
             command.Role,
             command.TaskId);
 
-        return result.Output;
+        return result;
     }
 
     /// <summary>
@@ -136,6 +137,9 @@ public sealed class AgentFrameworkRoleEngine
 
         private readonly SubscriptionCliRoleExecutor _cliExecutor;
         private readonly ILogger _logger;
+
+        /// <summary>The adapter ID that produced the accepted output (set after a successful execution).</summary>
+        internal string? LastAdapterId { get; private set; }
 
         public CliWorkflowExecutor(
             string id,
@@ -161,6 +165,7 @@ public sealed class AgentFrameworkRoleEngine
 
                     if (!string.IsNullOrWhiteSpace(result.Output))
                     {
+                        LastAdapterId = result.AdapterId;
                         await context.YieldOutputAsync(result.Output, cancellationToken);
                         return;
                     }

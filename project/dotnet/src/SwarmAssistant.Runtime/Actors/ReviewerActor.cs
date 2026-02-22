@@ -19,10 +19,6 @@ public sealed class ReviewerActor : ReceiveActor
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
-    // Quality thresholds for autonomy
-    private const double QualityConcernThreshold = 0.5;
-    private const double SelfRetryThreshold = 0.3;
-
     public ReviewerActor(
         RuntimeOptions options,
         ILoggerFactory loggerFactory,
@@ -77,42 +73,26 @@ public sealed class ReviewerActor : ReceiveActor
 
         try
         {
-            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
-            var confidence = EvaluateQuality(output, command.PreferredAdapter);
+            var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            var output = result.Output;
+            var adapterId = result.AdapterId;
+            var confidence = EvaluateQuality(output, adapterId);
 
             activity?.SetTag("output.length", output.Length);
             activity?.SetTag("quality.confidence", confidence);
+            activity?.SetTag("agent.framework.cli.adapter", adapterId);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
-                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode} confidence={Confidence}",
+                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode} adapter={AdapterId} confidence={Confidence}",
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode,
+                adapterId,
                 confidence);
 
-            // Raise QualityConcern for borderline cases
-            if (confidence < QualityConcernThreshold)
-            {
-                var concern = BuildQualityConcern(output, confidence);
-                _logger.LogWarning(
-                    "Reviewer quality concern taskId={TaskId} confidence={Confidence} concern={Concern}",
-                    command.TaskId,
-                    confidence,
-                    concern);
-
-                // Notify supervisor of quality concern
-                Context.System.EventStream.Publish(new QualityConcern(
-                    command.TaskId,
-                    command.Role,
-                    concern,
-                    confidence,
-                    DateTimeOffset.UtcNow));
-
-                activity?.SetTag("quality.concern", concern);
-            }
-
-            // Self-retry if confidence is very low (unless already retried)
-            if (confidence < SelfRetryThreshold && command.MaxConfidence is null)
+            // Self-retry if confidence is very low (unless already retried); publish concern after
+            // retry so the concern reflects the final confidence, not the pre-retry value.
+            if (confidence < QualityEvaluator.SelfRetryThreshold && command.MaxConfidence is null)
             {
                 _logger.LogInformation(
                     "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
@@ -121,22 +101,46 @@ public sealed class ReviewerActor : ReceiveActor
 
                 activity?.SetTag("quality.self_retry", true);
 
-                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
-                    PreferredAdapter = GetAlternativeAdapter(command.PreferredAdapter),
+                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId),
                     MaxConfidence = confidence
                 };
 
-                output = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
-                confidence = EvaluateQuality(output, adjustedCommand.PreferredAdapter);
+                var retryResult = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
+                output = retryResult.Output;
+                adapterId = retryResult.AdapterId;
+                confidence = EvaluateQuality(output, adapterId);
 
                 _logger.LogInformation(
-                    "Reviewer self-retry completed taskId={TaskId} newConfidence={Confidence}",
+                    "Reviewer self-retry completed taskId={TaskId} adapter={AdapterId} newConfidence={Confidence}",
                     command.TaskId,
+                    adapterId,
                     confidence);
 
                 activity?.SetTag("quality.confidence_after_retry", confidence);
+            }
+
+            // Raise QualityConcern for borderline cases (after any self-retry, so confidence is final)
+            if (confidence < QualityEvaluator.QualityConcernThreshold)
+            {
+                var concern = BuildQualityConcern(output, confidence);
+                _logger.LogWarning(
+                    "Reviewer quality concern taskId={TaskId} adapter={AdapterId} confidence={Confidence} concern={Concern}",
+                    command.TaskId,
+                    adapterId,
+                    confidence,
+                    concern);
+
+                Context.System.EventStream.Publish(new QualityConcern(
+                    command.TaskId,
+                    command.Role,
+                    concern,
+                    confidence,
+                    adapterId,
+                    DateTimeOffset.UtcNow));
+
+                activity?.SetTag("quality.concern", concern);
             }
 
             replyTo.Tell(new RoleTaskSucceeded(
@@ -144,7 +148,8 @@ public sealed class ReviewerActor : ReceiveActor
                 command.Role,
                 output,
                 DateTimeOffset.UtcNow,
-                confidence));
+                confidence,
+                adapterId));
         }
         catch (Exception exception)
         {
@@ -179,12 +184,12 @@ public sealed class ReviewerActor : ReceiveActor
         var keywordScore = EvaluateReviewerKeywords(output);
         scores.Add(keywordScore);
 
-        // Factor 3: Adapter reliability bonus
-        var adapterScore = GetAdapterReliabilityScore(adapterId);
+        // Factor 3: Adapter reliability bonus (uses actual adapter ID from execution)
+        var adapterScore = QualityEvaluator.GetAdapterReliabilityScore(adapterId);
         scores.Add(adapterScore);
 
         // Factor 4: Structural indicators (has code blocks, bullet points, etc.)
-        var structureScore = EvaluateStructure(output);
+        var structureScore = QualityEvaluator.EvaluateStructure(output, SwarmRole.Reviewer);
         scores.Add(structureScore);
 
         // Factor 5: Review comprehensiveness (pass/fail indicators)
@@ -210,45 +215,6 @@ public sealed class ReviewerActor : ReceiveActor
 
         var matches = keywords.Count(k => lowerOutput.Contains(k));
         return (double)matches / keywords.Length;
-    }
-
-    private static double GetAdapterReliabilityScore(string? adapterId)
-    {
-        if (string.IsNullOrWhiteSpace(adapterId)) return 0.5;
-
-        return adapterId.ToLowerInvariant() switch
-        {
-            "copilot" => 0.85,
-            "kimi" => 0.80,
-            "cline" => 0.75,
-            "local-echo" => 0.50,
-            _ => 0.60
-        };
-    }
-
-    private static double EvaluateStructure(string output)
-    {
-        var scores = new List<double>();
-
-        // Has code blocks
-        if (output.Contains("```"))
-            scores.Add(1.0);
-        else
-            scores.Add(0.5);
-
-        // Has bullet points or numbered lists
-        if (output.Contains("- ") || output.Contains("1. "))
-            scores.Add(1.0);
-        else
-            scores.Add(0.5);
-
-        // Has sections (headers)
-        if (output.Contains("# ") || output.Contains("## "))
-            scores.Add(1.0);
-        else
-            scores.Add(0.5);
-
-        return scores.Average();
     }
 
     private static double EvaluateReviewComprehensiveness(string output)
@@ -295,10 +261,5 @@ public sealed class ReviewerActor : ReceiveActor
 
         return $"Review quality concern ({confidence:F2}): {string.Join(", ", concerns)}";
     }
-
-    private static string? GetAlternativeAdapter(string? currentAdapter)
-    {
-        var adapters = new[] { "copilot", "kimi", "cline", "local-echo" };
-        return adapters.FirstOrDefault(a => !a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
-    }
 }
+
