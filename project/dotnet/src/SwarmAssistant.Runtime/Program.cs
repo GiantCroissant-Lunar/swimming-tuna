@@ -48,7 +48,7 @@ app.UseCors("DefaultCorsPolicy");
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
 var options = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
 logger.LogInformation(
-    "Starting SwarmAssistant.Runtime with profile={Profile}, orchestration={RoleSystem}, agentExecution={AgentExecution}, agentFrameworkMode={AgentFrameworkExecutionMode}, roleExecutionTimeoutSeconds={RoleExecutionTimeoutSeconds}, cliAdapterOrder={CliAdapterOrder}, sandbox={SandboxMode}, agUiEnabled={AgUiEnabled}, agUiBindUrl={AgUiBindUrl}, agUiProtocolVersion={AgUiProtocolVersion}, a2aEnabled={A2AEnabled}, arcadeDbEnabled={ArcadeDbEnabled}, arcadeDbDatabase={ArcadeDbDatabase}, memoryBootstrapEnabled={MemoryBootstrapEnabled}, memoryBootstrapLimit={MemoryBootstrapLimit}, langfuse={LangfuseBaseUrl}, langfuseTracingEnabled={LangfuseTracingEnabled}",
+    "Starting SwarmAssistant.Runtime with profile={Profile}, orchestration={RoleSystem}, agentExecution={AgentExecution}, agentFrameworkMode={AgentFrameworkExecutionMode}, roleExecutionTimeoutSeconds={RoleExecutionTimeoutSeconds}, cliAdapterOrder={CliAdapterOrder}, sandbox={SandboxMode}, agUiEnabled={AgUiEnabled}, agUiBindUrl={AgUiBindUrl}, agUiProtocolVersion={AgUiProtocolVersion}, a2aEnabled={A2AEnabled}, arcadeDbEnabled={ArcadeDbEnabled}, arcadeDbDatabase={ArcadeDbDatabase}, memoryBootstrapEnabled={MemoryBootstrapEnabled}, memoryBootstrapLimit={MemoryBootstrapLimit}, langfuse={LangfuseBaseUrl}, langfuseTracingEnabled={LangfuseTracingEnabled}, apiKeyProtected={ApiKeyProtected}",
     options.Profile,
     options.RoleSystem,
     options.AgentExecution,
@@ -65,7 +65,28 @@ logger.LogInformation(
     options.MemoryBootstrapEnabled,
     options.MemoryBootstrapLimit,
     options.LangfuseBaseUrl,
-    options.LangfuseTracingEnabled);
+    options.LangfuseTracingEnabled,
+    !string.IsNullOrWhiteSpace(options.ApiKey));
+
+// When Runtime__ApiKey is set, mutating endpoints require the X-API-Key header.
+Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>> requireApiKey =
+    (ctx, next) =>
+    {
+        if (string.IsNullOrWhiteSpace(options.ApiKey))
+        {
+            return next(ctx);
+        }
+
+        if (ctx.HttpContext.Request.Headers.TryGetValue("X-API-Key", out var provided) &&
+            System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(provided.ToString()),
+                System.Text.Encoding.UTF8.GetBytes(options.ApiKey)))
+        {
+            return next(ctx);
+        }
+
+        return ValueTask.FromResult<object?>(Results.Unauthorized());
+    };
 
 app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
 
@@ -324,7 +345,7 @@ if (options.AgUiEnabled)
                     supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory" }
                 });
         }
-    });
+    }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/ag-ui/events", async (HttpContext context, UiEventStream stream, CancellationToken cancellationToken) =>
     {
@@ -387,7 +408,7 @@ if (options.A2AEnabled)
             taskRegistry,
             uiEvents,
             eventType: "a2a.task.submitted");
-    });
+    }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/a2a/tasks/{taskId}", (string taskId, TaskRegistry taskRegistry) =>
     {
