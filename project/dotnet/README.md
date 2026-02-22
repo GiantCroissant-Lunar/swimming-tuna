@@ -45,6 +45,10 @@ export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/tr
 - `kimi`
 - `local-echo` (deterministic fallback)
 - Local profile defaults to `subscription-cli-fallback` with `SandboxMode=host`.
+  > **⚠️ Security note:** `SandboxMode=host` executes adapter CLI commands directly on your
+  > machine with no isolation. Adapter-generated commands have unrestricted access to your local
+  > resources. Use `docker` or `apple-container` sandbox modes whenever adapters receive
+  > externally influenced task inputs.
 - Secure sandbox modes (`docker`, `apple-container`) are supported through configurable wrapper commands.
 
 Example env overrides:
@@ -102,6 +106,10 @@ Startup memory bootstrap (Phase 10):
 - `GET /a2a/tasks`
 - `TaskRegistry` captures lifecycle transitions and role outputs for both actor-driven and API-submitted tasks.
 - `ArcadeDbTaskMemoryWriter` persists snapshots as `SwarmTask` records using ArcadeDB command API delete+insert writes.
+  > **Known limitation:** DELETE and INSERT are issued as separate `autoCommit=true` commands.
+  > A crash between them will result in a missing snapshot for that task ID until the next write.
+  > This is acceptable for best-effort telemetry; do not use as the primary source of truth
+  > for critical task state.
 - ArcadeDB runtime configuration:
 - `Runtime__ArcadeDbEnabled`
 - `Runtime__ArcadeDbHttpUrl`
@@ -191,7 +199,18 @@ reachable from outside the local machine.
 
 If you expose the runtime beyond localhost (e.g. in a team or staging environment), set
 `Runtime__ApiKey` to a strong random secret. Callers must then supply the key via the
-`X-API-Key` header on the `POST /ag-ui/actions` and `POST /a2a/tasks` endpoints:
+`X-API-Key` header on all non-public endpoints:
+
+- `POST /ag-ui/actions`
+- `POST /a2a/tasks`
+- `GET /a2a/tasks`
+- `GET /a2a/tasks/{taskId}`
+- `GET /memory/tasks`
+- `GET /memory/tasks/{taskId}`
+- `GET /ag-ui/events`
+- `GET /ag-ui/recent`
+
+The `GET /.well-known/agent-card.json` and `GET /healthz` endpoints are intentionally public.
 
 ```bash
 export Runtime__ApiKey=my-secret-key

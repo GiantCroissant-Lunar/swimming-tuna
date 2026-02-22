@@ -10,6 +10,7 @@ node_modules/
 
 # Godot
 .godot/
+# .godot/export_credentials.cfg holds per-machine notarization/codesign secrets and must never be committed.
 *.import
 
 # Build outputs

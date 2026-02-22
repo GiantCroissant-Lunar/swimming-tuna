@@ -85,10 +85,11 @@ services:
       start_period: 3s
 
   minio:
-    image: cgr.dev/chainguard/minio:latest
+    # Use the upstream MinIO image which includes mc; Chainguard's minimal image
+    # does not bundle the mc client so the "mc ready local" healthcheck fails.
+    image: docker.io/minio/minio:latest
     restart: unless-stopped
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    command: server --address ":9000" --console-address ":9001" /data
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-replace-with-minio-password}
