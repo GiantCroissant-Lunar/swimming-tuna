@@ -11,14 +11,17 @@ internal sealed record ExecuteRoleTask(
     string Description,
     string? PlanningOutput,
     string? BuildOutput,
-    string? OrchestratorPrompt = null
+    string? OrchestratorPrompt = null,
+    string? PreferredAdapter = null,
+    double? MaxConfidence = null
 );
 
 internal sealed record RoleTaskSucceeded(
     string TaskId,
     SwarmRole Role,
     string Output,
-    DateTimeOffset CompletedAt
+    DateTimeOffset CompletedAt,
+    double Confidence = 1.0
 );
 
 internal sealed record RoleTaskFailed(
@@ -163,7 +166,7 @@ internal sealed record TaskEscalated(
 // Monitor self-scheduling tick
 internal sealed record MonitorTick;
 
-// Sub-task spawning messages
+// Sub-task spawning messages (Phase 14)
 internal sealed record SpawnSubTask(
     string ParentTaskId,
     string ChildTaskId,
@@ -182,4 +185,14 @@ internal sealed record SubTaskFailed(
     string ParentTaskId,
     string ChildTaskId,
     string Error
+);
+
+// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
+// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
+internal sealed record QualityConcern(
+    string TaskId,
+    SwarmRole Role,
+    string Concern,
+    double Confidence,
+    DateTimeOffset At
 );

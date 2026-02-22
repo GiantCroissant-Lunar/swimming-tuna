@@ -35,6 +35,10 @@ public sealed class SupervisorActor : ReceiveActor
     private readonly Dictionary<string, int> _adapterFailureCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _openCircuits = new(StringComparer.OrdinalIgnoreCase);
 
+    // Quality concern tracking for agent autonomy (Phase 15)
+    private readonly Dictionary<string, List<QualityConcern>> _qualityConcerns = new(StringComparer.Ordinal);
+    private int _totalQualityConcerns;
+
     public SupervisorActor(
         ILoggerFactory loggerFactory,
         RuntimeTelemetry telemetry,
@@ -51,6 +55,7 @@ public sealed class SupervisorActor : ReceiveActor
         Receive<TaskFailed>(OnTaskFailed);
         Receive<EscalationRaised>(OnEscalationRaised);
         Receive<RoleFailureReport>(OnRoleFailureReport);
+        Receive<QualityConcern>(OnQualityConcern);
         Receive<GetSupervisorSnapshot>(OnGetSnapshot);
     }
 
@@ -207,6 +212,62 @@ public sealed class SupervisorActor : ReceiveActor
             report.TaskId,
             report.FailedRole,
             totalRetries);
+    }
+
+    private void OnQualityConcern(QualityConcern message)
+    {
+        using var activity = _telemetry.StartActivity(
+            "supervisor.quality.concern",
+            taskId: message.TaskId,
+            role: message.Role.ToString().ToLowerInvariant(),
+            tags: new Dictionary<string, object?>
+            {
+                ["quality.concern"] = message.Concern,
+                ["quality.confidence"] = message.Confidence,
+            });
+
+        // Track quality concern alongside failure reports
+        if (!_qualityConcerns.TryGetValue(message.TaskId, out var concerns))
+        {
+            concerns = new List<QualityConcern>();
+            _qualityConcerns[message.TaskId] = concerns;
+        }
+        concerns.Add(message);
+        _totalQualityConcerns++;
+
+        _logger.LogWarning(
+            "Quality concern received taskId={TaskId} role={Role} confidence={Confidence:F2} concern={Concern}",
+            message.TaskId,
+            message.Role,
+            message.Confidence,
+            message.Concern);
+
+        activity?.SetTag("quality.total_concerns_for_task", concerns.Count);
+
+        // If multiple quality concerns for the same task, consider escalating or retrying
+        if (concerns.Count >= 2 && _taskCoordinators.TryGetValue(message.TaskId, out var coordinator))
+        {
+            _logger.LogWarning(
+                "Multiple quality concerns detected taskId={TaskId} count={Count} - initiating retry",
+                message.TaskId,
+                concerns.Count);
+
+            // Increment retry count and send retry command with concern context
+            _taskRetryCounts.TryGetValue(message.TaskId, out var retryCount);
+            if (retryCount < MaxRetriesPerTask)
+            {
+                _taskRetryCounts[message.TaskId] = retryCount + 1;
+                var reason = $"Quality concern retry ({concerns.Count} concerns): {message.Concern}";
+                coordinator.Tell(new RetryRole(
+                    message.TaskId,
+                    message.Role,
+                    SkipAdapter: null,
+                    reason));
+
+                activity?.SetTag("supervisor.decision", "quality_retry");
+                activity?.SetTag("supervisor.retry_attempt", retryCount + 1);
+            }
+        }
     }
 
     private void OnGetSnapshot(GetSupervisorSnapshot _)
