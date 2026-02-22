@@ -6,8 +6,28 @@ using Godot;
 
 public partial class Main : Control
 {
-    [Export] public string AgUiRecentUrl { get; set; } = "http://127.0.0.1:5080/ag-ui/recent";
-    [Export] public string AgUiActionsUrl { get; set; } = "http://127.0.0.1:5080/ag-ui/actions";
+    private string _recentEventsUrl;
+    private string _actionsUrl;
+
+    public override void _Ready()
+    {
+        var agUiUrl = System.Environment.GetEnvironmentVariable("AGUI_HTTP_URL");
+        if (string.IsNullOrEmpty(agUiUrl))
+        {
+            agUiUrl = "http://127.0.0.1:5080";
+        }
+        GD.Print($"Using AGUI HTTP URL: {agUiUrl}");
+
+        _recentEventsUrl = $"{agUiUrl}/ag-ui/recent";
+        _actionsUrl = $"{agUiUrl}/ag-ui/actions";
+
+        GetTree().AutoAcceptQuit = false;
+        DisplayServer.WindowSetMinSize(new Vector2I(960, 640));
+        BuildLayout();
+        SetupNetworking();
+        TriggerPoll();
+    }
+
     [Export] public float PollIntervalSeconds { get; set; } = 0.75f;
     [Export] public int RecentEventCount { get; set; } = 100;
 

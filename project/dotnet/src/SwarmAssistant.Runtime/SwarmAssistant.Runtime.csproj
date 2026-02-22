@@ -15,5 +15,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SwarmAssistant.Contracts\SwarmAssistant.Contracts.csproj" />
+    <ProjectReference Include="..\SwarmAssistant.ServiceDefaults\SwarmAssistant.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>

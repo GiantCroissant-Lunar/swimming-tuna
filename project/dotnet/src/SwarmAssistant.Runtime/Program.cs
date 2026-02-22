@@ -11,6 +11,8 @@ using SwarmAssistant.Runtime.Ui;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 var bootstrapOptions = builder.Configuration
     .GetSection(RuntimeOptions.SectionName)
     .Get<RuntimeOptions>() ?? new RuntimeOptions();
