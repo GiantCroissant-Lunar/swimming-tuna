@@ -50,7 +50,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
             "supervisor");
 
         var blackboardActor = Sys.ActorOf(
@@ -106,7 +106,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
             "supervisor-ui");
 
         var blackboardActor = Sys.ActorOf(
@@ -164,7 +164,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
             "supervisor-parallel");
 
         var blackboardActor = Sys.ActorOf(
@@ -226,7 +226,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
             "supervisor-tracking");
 
         var blackboardActor = Sys.ActorOf(

@@ -88,8 +88,14 @@ public sealed class Worker : BackgroundService
             });
 
         var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+
+        // Create blackboard actor first so supervisor can write stigmergy signals to it
+        var blackboardActor = _actorSystem.ActorOf(
+            Props.Create(() => new BlackboardActor(_loggerFactory)),
+            "blackboard");
+
         var supervisor = _actorSystem.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, _options.CliAdapterOrder)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, _options.CliAdapterOrder, blackboardActor)),
             "supervisor");
 
         var workerActor = _actorSystem.ActorOf(
@@ -115,10 +121,6 @@ public sealed class Worker : BackgroundService
                 _telemetry,
                 monitorTickSeconds)),
             "monitor");
-
-        var blackboardActor = _actorSystem.ActorOf(
-            Props.Create(() => new BlackboardActor(_loggerFactory)),
-            "blackboard");
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,

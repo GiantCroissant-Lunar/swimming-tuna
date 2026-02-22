@@ -13,4 +13,8 @@ public enum WorldKey
     TaskCompleted,
     TaskBlocked,
     AdapterAvailable,
+
+    // Stigmergy WorldKeys for swarm coordination
+    HighFailureRateDetected,
+    SimilarTaskSucceeded,
 }

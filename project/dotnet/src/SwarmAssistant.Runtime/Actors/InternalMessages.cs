@@ -66,6 +66,23 @@ internal sealed record BlackboardContext(
     IReadOnlyDictionary<string, string> Entries
 );
 
+// Global blackboard messages for stigmergy (cross-task coordination)
+internal sealed record UpdateGlobalBlackboard(
+    string Key,
+    string Value
+);
+
+internal sealed record GetGlobalContext();
+
+internal sealed record GlobalBlackboardContext(
+    IReadOnlyDictionary<string, string> Entries
+);
+
+internal sealed record GlobalBlackboardChanged(
+    string Key,
+    string Value
+);
+
 // World state snapshot for telemetry/UI — reserved for future phases where world-state
 // changes are published as discrete events (e.g., to a replay log or the AG-UI stream).
 // Produced by TaskCoordinatorActor on each TransitionTo call.

@@ -40,7 +40,8 @@ internal static class RolePromptFactory
         string title,
         string description,
         string goapContext,
-        IReadOnlyDictionary<string, string>? blackboardEntries)
+        IReadOnlyDictionary<string, string>? blackboardEntries,
+        IReadOnlyDictionary<string, string>? globalBlackboardEntries = null)
     {
         var lines = new List<string>
         {
@@ -56,6 +57,18 @@ internal static class RolePromptFactory
         {
             lines.Add("Task history:");
             foreach (var (key, value) in blackboardEntries)
+            {
+                lines.Add($"  {key}: {value}");
+            }
+
+            lines.Add(string.Empty);
+        }
+
+        // Include global blackboard context for stigmergy (cross-task coordination)
+        if (globalBlackboardEntries is { Count: > 0 })
+        {
+            lines.Add("Swarm intelligence signals:");
+            foreach (var (key, value) in globalBlackboardEntries)
             {
                 lines.Add($"  {key}: {value}");
             }
