@@ -1,0 +1,44 @@
+# Additional patterns to ignore when packing with repomix
+# These are combined with .gitignore patterns
+
+# Lock files
+*.lock
+*.lock.yml
+*.lock.json
+
+# Repomix output
+repomix-output.txt
+repomix-output.xml
+repomix-output.md
+
+# Security
+.secrets.baseline
+
+# Build artifacts
+build/
+bin/
+obj/
+
+# Dependencies
+node_modules/
+
+# Minified files
+*.min.js
+*.min.css
+
+# Distribution
+dist/
+
+# Coverage reports
+coverage/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Temporary files
+*.tmp
+*.temp
+*.log

@@ -16,6 +16,11 @@ node_modules/
 # Build outputs
 build/
 
+# Repomix output
+repomix-output.txt
+repomix-output.xml
+repomix-output.md
+
 # Env/config secrets
 .env
 .env.*
