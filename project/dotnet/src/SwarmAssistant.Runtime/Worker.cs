@@ -38,6 +38,7 @@ public sealed class Worker : BackgroundService
             {
                 ["swarm.orchestration"] = _options.RoleSystem,
                 ["swarm.agent_execution"] = _options.AgentExecution,
+                ["swarm.agent_framework.mode"] = _options.AgentFrameworkExecutionMode,
                 ["swarm.sandbox"] = _options.SandboxMode,
             });
 
@@ -50,7 +51,7 @@ public sealed class Worker : BackgroundService
 
         _actorSystem = ActorSystem.Create("swarm-assistant-system", config);
 
-        var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_loggerFactory, _telemetry);
+        var agentFrameworkRoleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var supervisor = _actorSystem.ActorOf(
             Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry)),
             "supervisor");

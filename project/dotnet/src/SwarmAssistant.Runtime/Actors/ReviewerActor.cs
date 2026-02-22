@@ -72,15 +72,19 @@ public sealed class ReviewerActor : ReceiveActor
             activity?.SetTag("output.length", output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
-            _logger.LogInformation("Reviewer completed taskId={TaskId} viaAgentFramework=true", command.TaskId);
+            _logger.LogInformation(
+                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode}",
+                command.TaskId,
+                _options.AgentFrameworkExecutionMode);
             replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow));
         }
         catch (Exception exception)
         {
             _logger.LogError(
                 exception,
-                "Reviewer failed taskId={TaskId} viaAgentFramework=true",
-                command.TaskId);
+                "Reviewer failed taskId={TaskId} executionMode={ExecutionMode}",
+                command.TaskId,
+                _options.AgentFrameworkExecutionMode);
 
             activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
             replyTo.Tell(new RoleTaskFailed(

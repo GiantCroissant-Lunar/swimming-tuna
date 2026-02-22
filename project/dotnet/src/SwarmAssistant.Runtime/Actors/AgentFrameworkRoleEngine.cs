@@ -2,32 +2,62 @@ using System.Diagnostics;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Telemetry;
 
 namespace SwarmAssistant.Runtime.Actors;
 
 public sealed class AgentFrameworkRoleEngine
 {
+    private readonly RuntimeOptions _options;
+    private readonly SubscriptionCliRoleExecutor _subscriptionCliRoleExecutor;
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
-    public AgentFrameworkRoleEngine(ILoggerFactory loggerFactory, RuntimeTelemetry telemetry)
+    public AgentFrameworkRoleEngine(RuntimeOptions options, ILoggerFactory loggerFactory, RuntimeTelemetry telemetry)
     {
+        _options = options;
+        _subscriptionCliRoleExecutor = new SubscriptionCliRoleExecutor(options, loggerFactory);
         _telemetry = telemetry;
         _logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
     }
 
     internal async Task<string> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken = default)
     {
+        var mode = (_options.AgentFrameworkExecutionMode ?? "in-process-workflow").Trim().ToLowerInvariant();
+
         using var activity = _telemetry.StartActivity(
             "agent-framework.role.execute",
             taskId: command.TaskId,
             role: command.Role.ToString().ToLowerInvariant(),
             tags: new Dictionary<string, object?>
             {
-                ["agent.framework.mode"] = "in-process-workflow",
+                ["agent.framework.mode"] = mode,
             });
 
+        try
+        {
+            return mode switch
+            {
+                "in-process-workflow" => await ExecuteInProcessWorkflowAsync(command, activity, cancellationToken),
+                "subscription-cli-fallback" => await ExecuteSubscriptionCliAsync(command, activity, cancellationToken),
+                _ => throw new InvalidOperationException(
+                    $"Unsupported AgentFrameworkExecutionMode '{_options.AgentFrameworkExecutionMode}'.")
+            };
+        }
+        catch (Exception exception)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            throw;
+        }
+    }
+
+    private async Task<string> ExecuteInProcessWorkflowAsync(
+        ExecuteRoleTask command,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
         _logger.LogInformation(
             "Executing role with Agent Framework workflow role={Role} taskId={TaskId}",
             command.Role,
@@ -58,21 +88,39 @@ public sealed class AgentFrameworkRoleEngine
 
         activity?.SetTag("agent.framework.workflow.event_count", eventCount);
 
-        if (!string.IsNullOrWhiteSpace(output))
+        if (string.IsNullOrWhiteSpace(output))
         {
-            activity?.SetTag("output.length", output.Length);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-
-            _logger.LogInformation(
-                "Agent Framework workflow completed role={Role} taskId={TaskId}",
-                command.Role,
-                command.TaskId);
-            return output;
+            const string error = "Agent Framework workflow returned no output.";
+            throw new InvalidOperationException($"{error} role={command.Role}");
         }
 
-        const string error = "Agent Framework workflow returned no output.";
-        activity?.SetStatus(ActivityStatusCode.Error, error);
-        throw new InvalidOperationException($"{error} role={command.Role}");
+        activity?.SetTag("output.length", output.Length);
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        _logger.LogInformation(
+            "Agent Framework workflow completed role={Role} taskId={TaskId}",
+            command.Role,
+            command.TaskId);
+
+        return output;
+    }
+
+    private async Task<string> ExecuteSubscriptionCliAsync(
+        ExecuteRoleTask command,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var result = await _subscriptionCliRoleExecutor.ExecuteAsync(command, cancellationToken);
+        activity?.SetTag("agent.framework.cli.adapter", result.AdapterId);
+        activity?.SetTag("output.length", result.Output.Length);
+        activity?.SetStatus(ActivityStatusCode.Ok);
+
+        _logger.LogInformation(
+            "Role completed through subscription CLI adapter={AdapterId} role={Role} taskId={TaskId}",
+            result.AdapterId,
+            command.Role,
+            command.TaskId);
+
+        return result.Output;
     }
 
     private sealed class RoleExecutionExecutor : Executor<ExecuteRoleTask>

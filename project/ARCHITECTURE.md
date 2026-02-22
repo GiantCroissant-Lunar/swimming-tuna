@@ -35,7 +35,7 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 
 - `dotnet/src/SwarmAssistant.Runtime/Actors/AgentFrameworkRoleEngine.cs` executes role tasks through `Microsoft.Agents.AI.Workflows`.
 - `WorkerActor` and `ReviewerActor` call the Agent Framework engine instead of generating role text inline.
-- Execution mode is configured through `Runtime.AgentFrameworkExecutionMode` (`in-process-workflow` for current MVP).
+- Execution mode is configured through `Runtime.AgentFrameworkExecutionMode`.
 
 ## Observability Runtime (Phase 4)
 
@@ -52,6 +52,13 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `supervisor.task.failed`
 - `supervisor.escalation.raised`
 - `agent-framework.role.execute`
+
+## CLI-First Execution Runtime (Phase 5)
+
+- `dotnet/src/SwarmAssistant.Runtime/Execution/SubscriptionCliRoleExecutor.cs` adds subscription-backed CLI adapter fallback (`copilot -> cline -> kimi -> local-echo`).
+- `dotnet/src/SwarmAssistant.Runtime/Execution/RolePromptFactory.cs` produces deterministic role prompts for planner, builder, and reviewer roles.
+- `dotnet/src/SwarmAssistant.Runtime/Execution/SandboxCommandBuilder.cs` maps runtime commands into `host`, `docker`, or `apple-container` wrappers.
+- Runtime profiles now support `subscription-cli-fallback` mode for CLI-first execution without provider API keys.
 
 ## Provider Strategy
 

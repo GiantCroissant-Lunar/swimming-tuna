@@ -73,9 +73,10 @@ public sealed class WorkerActor : ReceiveActor
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
-                "Worker role={Role} completed taskId={TaskId} viaAgentFramework=true",
+                "Worker role={Role} completed taskId={TaskId} executionMode={ExecutionMode}",
                 command.Role,
-                command.TaskId);
+                command.TaskId,
+                _options.AgentFrameworkExecutionMode);
 
             replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow));
         }
@@ -83,9 +84,10 @@ public sealed class WorkerActor : ReceiveActor
         {
             _logger.LogError(
                 exception,
-                "Worker role={Role} failed taskId={TaskId} viaAgentFramework=true",
+                "Worker role={Role} failed taskId={TaskId} executionMode={ExecutionMode}",
                 command.Role,
-                command.TaskId);
+                command.TaskId,
+                _options.AgentFrameworkExecutionMode);
 
             activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
             replyTo.Tell(new RoleTaskFailed(

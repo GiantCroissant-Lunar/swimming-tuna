@@ -8,7 +8,11 @@ public sealed class RuntimeOptions
     public string RoleSystem { get; init; } = "akka";
     public string AgentExecution { get; init; } = "microsoft-agent-framework";
     public string AgentFrameworkExecutionMode { get; init; } = "in-process-workflow";
+    public int RoleExecutionTimeoutSeconds { get; init; } = 120;
+    public string[] CliAdapterOrder { get; init; } = [];
     public string SandboxMode { get; init; } = "docker";
+    public SandboxWrapperOptions DockerSandboxWrapper { get; init; } = new();
+    public SandboxWrapperOptions AppleContainerSandboxWrapper { get; init; } = new();
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;
 
@@ -23,4 +27,10 @@ public sealed class RuntimeOptions
 
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
+}
+
+public sealed class SandboxWrapperOptions
+{
+    public string Command { get; init; } = string.Empty;
+    public string[] Args { get; init; } = [];
 }

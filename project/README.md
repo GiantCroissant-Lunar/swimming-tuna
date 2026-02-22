@@ -11,7 +11,7 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 ## Current Layout
 
 - `src/`: JavaScript CLI-first MVP (`planner -> builder -> reviewer -> finalizer`).
-- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks (Phase 4).
+- `dotnet/`: .NET runtime with Akka actor topology + Agent Framework role execution + Langfuse tracing hooks + CLI-first adapter routing (Phase 5).
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 
 ## JavaScript MVP Commands
@@ -24,7 +24,7 @@ npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/p
 npm --prefix /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project run run -- --task "Design MVP contracts" --desc "Focus on role state machine and event schema"
 ```
 
-## .NET Runtime Commands (Phase 4)
+## .NET Runtime Commands (Phase 5)
 
 ```bash
 dotnet build /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/dotnet/SwarmAssistant.sln
@@ -46,6 +46,8 @@ Runtime config includes:
 - `SimulateBuilderFailure`
 - `SimulateReviewerFailure`
 - `AgentFrameworkExecutionMode`
+- `RoleExecutionTimeoutSeconds`
+- `CliAdapterOrder`
 - `LangfuseTracingEnabled`
 - `LangfusePublicKey`
 - `LangfuseSecretKey`
@@ -58,6 +60,26 @@ export Runtime__LangfuseTracingEnabled=true
 export Runtime__LangfusePublicKey=pk-lf-...
 export Runtime__LangfuseSecretKey=sk-lf-...
 export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/traces
+```
+
+Enable CLI-first role execution with subscription adapters:
+
+```bash
+export Runtime__AgentFrameworkExecutionMode=subscription-cli-fallback
+export Runtime__SandboxMode=host
+```
+
+For containerized execution, configure wrapper commands:
+
+```bash
+export Runtime__SandboxMode=docker
+export Runtime__DockerSandboxWrapper__Command=docker
+export Runtime__DockerSandboxWrapper__Args__0=run
+export Runtime__DockerSandboxWrapper__Args__1=--rm
+export Runtime__DockerSandboxWrapper__Args__2=my-tools-image
+export Runtime__DockerSandboxWrapper__Args__3=sh
+export Runtime__DockerSandboxWrapper__Args__4=-lc
+export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 ```
 
 ## Langfuse Stack Commands (Phase 1)

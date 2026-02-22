@@ -1,9 +1,9 @@
-# SwarmAssistant .NET Runtime (Phase 4)
+# SwarmAssistant .NET Runtime (Phase 5)
 
 ## Projects
 
 - `src/SwarmAssistant.Contracts`: shared task and messaging contracts.
-- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology, Agent Framework role execution, and Langfuse tracing.
+- `src/SwarmAssistant.Runtime`: hosted runtime with Akka actor topology, Agent Framework role execution, Langfuse tracing, and CLI-first execution routing.
 - `tests/SwarmAssistant.Runtime.Tests`: lifecycle/state-machine tests.
 
 ## Actor Topology (Phase 2)
@@ -36,6 +36,31 @@ export Runtime__LangfuseSecretKey=sk-lf-...
 export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/traces
 ```
 
+## CLI-First Role Routing (Phase 5)
+
+- `AgentFrameworkRoleEngine` now supports `subscription-cli-fallback` mode in addition to `in-process-workflow`.
+- `SubscriptionCliRoleExecutor` executes roles with ordered adapters:
+- `copilot`
+- `cline`
+- `kimi`
+- `local-echo` (deterministic fallback)
+- Local profile defaults to `subscription-cli-fallback` with `SandboxMode=host`.
+- Secure sandbox modes (`docker`, `apple-container`) are supported through configurable wrapper commands.
+
+Example env overrides:
+
+```bash
+export Runtime__AgentFrameworkExecutionMode=subscription-cli-fallback
+export Runtime__SandboxMode=docker
+export Runtime__DockerSandboxWrapper__Command=docker
+export Runtime__DockerSandboxWrapper__Args__0=run
+export Runtime__DockerSandboxWrapper__Args__1=--rm
+export Runtime__DockerSandboxWrapper__Args__2=my-tools-image
+export Runtime__DockerSandboxWrapper__Args__3=sh
+export Runtime__DockerSandboxWrapper__Args__4=-lc
+export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
+```
+
 ## Build
 
 ```bash
@@ -64,7 +89,7 @@ From `Runtime` config:
 - `LangfusePublicKey`
 - `LangfuseSecretKey`
 - `LangfuseOtlpEndpoint`
-
-## Remaining Scope
-
-Provider-backed model execution adapters and prompt/eval pipelines are planned for later phases.
+- `RoleExecutionTimeoutSeconds`
+- `CliAdapterOrder`
+- `DockerSandboxWrapper`
+- `AppleContainerSandboxWrapper`

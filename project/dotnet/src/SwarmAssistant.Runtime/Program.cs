@@ -14,11 +14,13 @@ var host = builder.Build();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
 var options = host.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
 logger.LogInformation(
-    "Starting SwarmAssistant.Runtime with profile={Profile}, orchestration={RoleSystem}, agentExecution={AgentExecution}, agentFrameworkMode={AgentFrameworkExecutionMode}, sandbox={SandboxMode}, langfuse={LangfuseBaseUrl}, langfuseTracingEnabled={LangfuseTracingEnabled}",
+    "Starting SwarmAssistant.Runtime with profile={Profile}, orchestration={RoleSystem}, agentExecution={AgentExecution}, agentFrameworkMode={AgentFrameworkExecutionMode}, roleExecutionTimeoutSeconds={RoleExecutionTimeoutSeconds}, cliAdapterOrder={CliAdapterOrder}, sandbox={SandboxMode}, langfuse={LangfuseBaseUrl}, langfuseTracingEnabled={LangfuseTracingEnabled}",
     options.Profile,
     options.RoleSystem,
     options.AgentExecution,
     options.AgentFrameworkExecutionMode,
+    options.RoleExecutionTimeoutSeconds,
+    string.Join(",", options.CliAdapterOrder),
     options.SandboxMode,
     options.LangfuseBaseUrl,
     options.LangfuseTracingEnabled);
