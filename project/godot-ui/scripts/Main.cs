@@ -532,7 +532,7 @@ public partial class Main : Control
             ? new Dictionary<string, object?>()
             : new Dictionary<string, object?>(actionPayload);
         payload["source"] = "godot-ui";
-        payload["at"] = DateTimeOffset.UtcNow;
+        payload["at"] = DateTimeOffset.UtcNow.ToString("O");
 
         var body = JsonSerializer.Serialize(new
         {
@@ -574,9 +574,10 @@ public partial class Main : Control
                         _activeTaskId = taskIdElement.GetString();
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore non-JSON responses.
+                    // Non-JSON response (e.g. plain text or empty body) — not an error.
+                    GD.Print($"[action] Could not parse response body as JSON: {ex.Message}");
                 }
             }
 

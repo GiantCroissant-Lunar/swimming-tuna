@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SwarmAssistant.Runtime.Ui;
 
@@ -9,8 +11,14 @@ public sealed class UiEventStream
     private readonly ConcurrentDictionary<int, Channel<UiEventEnvelope>> _subscribers = new();
     private readonly Queue<UiEventEnvelope> _recentEvents = new();
     private readonly object _recentLock = new();
+    private readonly ILogger<UiEventStream> _logger;
     private long _sequence;
     private int _nextSubscriberId;
+
+    public UiEventStream(ILogger<UiEventStream>? logger = null)
+    {
+        _logger = logger ?? NullLogger<UiEventStream>.Instance;
+    }
 
     public UiEventEnvelope Publish(string type, string? taskId, object payload)
     {
@@ -26,7 +34,11 @@ public sealed class UiEventStream
             _recentEvents.Enqueue(envelope);
             while (_recentEvents.Count > 200)
             {
-                _recentEvents.Dequeue();
+                var dropped = _recentEvents.Dequeue();
+                _logger.LogDebug(
+                    "UiEventStream recent-events buffer full; dropped event type={Type} seq={Seq}",
+                    dropped.Type,
+                    dropped.Sequence);
             }
         }
 

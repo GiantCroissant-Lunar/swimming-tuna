@@ -196,7 +196,7 @@ internal sealed class SubscriptionCliRoleExecutor
         return output;
     }
 
-    private static async Task<ProcessResult> RunProcessAsync(
+    private async Task<ProcessResult> RunProcessAsync(
         SandboxCommand sandboxCommand,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -261,7 +261,7 @@ internal sealed class SubscriptionCliRoleExecutor
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             timedOut = true;
-            TryKill(process);
+            await TryGracefulKillAsync(process);
             await process.WaitForExitAsync(CancellationToken.None);
         }
 
@@ -281,17 +281,36 @@ internal sealed class SubscriptionCliRoleExecutor
         return new ProcessResult(true, output, string.Empty);
     }
 
-    private static void TryKill(Process process)
+    private async Task TryGracefulKillAsync(Process process)
     {
         try
         {
-            if (!process.HasExited)
+            if (process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                return;
+            }
+
+            // First attempt: kill only the main process to allow child processes to receive natural
+            // termination signals and clean up before escalating to the entire process tree.
+            process.Kill(entireProcessTree: false);
+
+            // Allow a short grace period before escalating.
+            using var graceCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            try
+            {
+                await process.WaitForExitAsync(graceCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
             }
         }
-        catch
+        catch (Exception exception)
         {
+            _logger.LogDebug(exception, "Exception while terminating timed-out process.");
         }
     }
 

@@ -17,6 +17,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
     private readonly SemaphoreSlim _schemaLock = new(1, 1);
     private bool _schemaEnsured;
     private DateTimeOffset _lastErrorLogAt = DateTimeOffset.MinValue;
+    private int _consecutiveFailures;
 
     public ArcadeDbTaskMemoryWriter(
         IOptions<RuntimeOptions> options,
@@ -74,6 +75,8 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 "summary = :summary, taskError = :taskError",
                 parameters,
                 cancellationToken);
+
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
         }
         catch (Exception exception)
         {
@@ -185,6 +188,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
 
     private void LogArcadeDbFailure(Exception exception)
     {
+        Interlocked.Increment(ref _consecutiveFailures);
         var now = DateTimeOffset.UtcNow;
         if (now - _lastErrorLogAt < ErrorLogInterval)
         {
@@ -194,8 +198,9 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
         _lastErrorLogAt = now;
         _logger.LogWarning(
             exception,
-            "ArcadeDB write failed endpoint={Endpoint} db={Database}",
+            "ArcadeDB write failed endpoint={Endpoint} db={Database} consecutiveFailures={ConsecutiveFailures}",
             _options.ArcadeDbHttpUrl,
-            _options.ArcadeDbDatabase);
+            _options.ArcadeDbDatabase,
+            _consecutiveFailures);
     }
 }

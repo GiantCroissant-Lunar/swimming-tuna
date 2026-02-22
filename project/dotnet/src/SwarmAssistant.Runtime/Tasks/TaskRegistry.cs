@@ -1,19 +1,29 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using SwarmAssistant.Contracts.Messaging;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Tasks;
 
-public sealed class TaskRegistry
+public sealed class TaskRegistry : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, TaskSnapshot> _tasks = new(StringComparer.Ordinal);
     private readonly ITaskMemoryWriter _memoryWriter;
     private readonly ILogger<TaskRegistry> _logger;
+    private readonly Channel<TaskSnapshot> _persistenceChannel;
+    private readonly Task _drainTask;
 
     public TaskRegistry(ITaskMemoryWriter memoryWriter, ILogger<TaskRegistry> logger)
     {
         _memoryWriter = memoryWriter;
         _logger = logger;
+        _persistenceChannel = Channel.CreateBounded<TaskSnapshot>(
+            new BoundedChannelOptions(50)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true
+            });
+        _drainTask = Task.Run(DrainPersistenceChannelAsync);
     }
 
     public TaskSnapshot Register(TaskAssigned message)
@@ -162,9 +172,15 @@ public sealed class TaskRegistry
             .ToList();
     }
 
-    private void PersistBestEffort(TaskSnapshot snapshot)
+    public async ValueTask DisposeAsync()
     {
-        _ = Task.Run(async () =>
+        _persistenceChannel.Writer.TryComplete();
+        await _drainTask.ConfigureAwait(false);
+    }
+
+    private async Task DrainPersistenceChannelAsync()
+    {
+        await foreach (var snapshot in _persistenceChannel.Reader.ReadAllAsync())
         {
             try
             {
@@ -177,6 +193,16 @@ public sealed class TaskRegistry
                     "Task snapshot persistence failed taskId={TaskId}",
                     snapshot.TaskId);
             }
-        });
+        }
+    }
+
+    private void PersistBestEffort(TaskSnapshot snapshot)
+    {
+        if (!_persistenceChannel.Writer.TryWrite(snapshot))
+        {
+            _logger.LogDebug(
+                "Persistence channel full; dropping snapshot for taskId={TaskId}",
+                snapshot.TaskId);
+        }
     }
 }
