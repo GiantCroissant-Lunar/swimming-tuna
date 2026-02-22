@@ -1,4 +1,4 @@
-# SwarmAssistant .NET Runtime (Phase 10)
+# SwarmAssistant .NET Runtime (Phase 11)
 
 ## Projects
 
@@ -79,23 +79,25 @@ Run and inspect stream:
 
 ```bash
 DOTNET_ENVIRONMENT=Local dotnet run --project project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
+curl -s http://127.0.0.1:5080/healthz
 curl -N http://127.0.0.1:5080/ag-ui/events
 curl -s 'http://127.0.0.1:5080/ag-ui/recent?count=100'
 ```
 
-Supported AG-UI actions (Phase 10):
+Supported AG-UI actions (Phase 11):
 
 - `request_snapshot`
 - `refresh_surface`
 - `submit_task` (payload requires `title`; optional `description`)
 - `load_memory` (payload supports optional `limit`)
 
-Startup memory bootstrap (Phase 10):
+Startup memory bootstrap (Phase 11):
 
 - Enabled by `Runtime__MemoryBootstrapEnabled=true`
 - Restore size controlled by `Runtime__MemoryBootstrapLimit` (default `200`)
 - Startup emits `agui.memory.bootstrap` or `agui.memory.bootstrap.failed`
 - Demo task submission is skipped when restored tasks already exist
+- Startup restore flow is implemented via `StartupMemoryBootstrapper` and covered by dedicated unit tests.
 
 ## A2A + ArcadeDB Integration (Phase 7)
 
@@ -130,12 +132,12 @@ Example task flow:
 ```bash
 curl -s -X POST http://127.0.0.1:5080/a2a/tasks \
   -H 'content-type: application/json' \
-  -d '{"title":"Phase 10 endpoint test","description":"validate task registry + ArcadeDB write/read"}'
+  -d '{"title":"Phase 11 endpoint test","description":"validate task registry + ArcadeDB write/read"}'
 curl -s http://127.0.0.1:5080/a2a/tasks
 curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
 ```
 
-Memory-read APIs (Phase 10):
+Memory-read APIs (Phase 11):
 
 ```bash
 curl -s 'http://127.0.0.1:5080/memory/tasks?limit=20'

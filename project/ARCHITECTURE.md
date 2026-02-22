@@ -115,6 +115,18 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - bootstrap-triggered `agui.ui.surface` / `agui.ui.patch` events for recent restored tasks.
 - Demo task auto-submit is skipped when restored tasks already exist in registry.
 
+## Task List UX + Bootstrap Hardening (Phase 11)
+
+- Startup restore logic is extracted into `dotnet/src/SwarmAssistant.Runtime/Tasks/StartupMemoryBootstrapper.cs` so restore behavior can be tested independently from hosted runtime startup.
+- `Worker` now delegates restore flow to `StartupMemoryBootstrapper` and uses `ShouldAutoSubmitDemoTask(...)` for deterministic demo submit gating.
+- Runtime tests in `dotnet/tests/SwarmAssistant.Runtime.Tests/StartupMemoryBootstrapperTests.cs` cover:
+- successful restore import + AG-UI bootstrap events
+- restore failure event publication
+- disabled restore no-op behavior
+- demo auto-submit gate behavior
+- `godot-ui/scripts/Main.cs` now renders a dedicated task list panel and supports row selection -> `request_snapshot` -> `refresh_surface` action chaining.
+- `.github/workflows/phase11-health.md` adds a weekly gh-aw hygiene workflow to detect runtime/docs drift (non-blocking).
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:

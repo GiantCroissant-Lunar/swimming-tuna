@@ -28,6 +28,7 @@ builder.Services.AddHttpClient("arcadedb");
 builder.Services.AddSingleton<ITaskMemoryWriter, ArcadeDbTaskMemoryWriter>();
 builder.Services.AddSingleton<ITaskMemoryReader, ArcadeDbTaskMemoryReader>();
 builder.Services.AddSingleton<TaskRegistry>();
+builder.Services.AddSingleton<StartupMemoryBootstrapper>();
 builder.Services.AddHostedService<Worker>();
 
 builder.Services.AddCors(options =>
