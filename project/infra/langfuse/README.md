@@ -11,17 +11,19 @@ This folder provides a local Langfuse stack for the swarm runtime.
 
 ## Start Commands
 
+Run these from the repository root:
+
 ```bash
 # Local
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/langfuse
+cd project/infra/langfuse
 docker compose --env-file env/local.env up -d
 
 # Secure local
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/langfuse
+cd project/infra/langfuse
 docker compose --env-file env/secure-local.env up -d
 
 # CI profile
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/langfuse
+cd project/infra/langfuse
 docker compose --env-file env/ci.env up -d
 ```
 

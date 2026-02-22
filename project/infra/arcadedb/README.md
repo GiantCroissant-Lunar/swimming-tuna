@@ -12,17 +12,19 @@ This folder provides a local ArcadeDB stack and validates runtime persistence/re
 
 ## Start Commands
 
+Run these from the repository root:
+
 ```bash
 # Local
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb
+cd project/infra/arcadedb
 docker compose --env-file env/local.env up -d
 
 # Secure local
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb
+cd project/infra/arcadedb
 docker compose --env-file env/secure-local.env up -d
 
 # CI profile
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb
+cd project/infra/arcadedb
 docker compose --env-file env/ci.env up -d
 ```
 
@@ -79,10 +81,10 @@ If you used older bootstrap values and encounter permission errors, recreate the
 
 ## End-to-End Verification
 
-Run the smoke test:
+Run the smoke test from the repository root:
 
 ```bash
-/Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/infra/arcadedb/scripts/smoke-e2e.sh
+project/infra/arcadedb/scripts/smoke-e2e.sh
 ```
 
 The smoke test validates:

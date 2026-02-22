@@ -30,7 +30,20 @@ builder.Services.AddSingleton<ITaskMemoryReader, ArcadeDbTaskMemoryReader>();
 builder.Services.AddSingleton<TaskRegistry>();
 builder.Services.AddHostedService<Worker>();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("DefaultCorsPolicy", policyBuilder =>
+    {
+        policyBuilder
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build();
+
+app.UseCors("DefaultCorsPolicy");
 
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
 var options = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
