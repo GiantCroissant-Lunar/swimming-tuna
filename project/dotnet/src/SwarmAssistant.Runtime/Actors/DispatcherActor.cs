@@ -1,8 +1,9 @@
 using Akka.Actor;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -13,18 +14,10 @@ namespace SwarmAssistant.Runtime.Actors;
 
 /// <summary>
 /// Routes incoming tasks to per-task <see cref="TaskCoordinatorActor"/> instances.
-/// Each task gets its own coordinator actor that manages the full GOAP lifecycle.
-/// Tier 0 supervision: automatically restarts crashed coordinator children.
+/// Maintains task registry state before coordination begins.
 /// </summary>
 public sealed class DispatcherActor : ReceiveActor
 {
-    private static readonly SupervisorStrategy Strategy = new OneForOneStrategy(
-        maxNrOfRetries: 3,
-        withinTimeRange: TimeSpan.FromMinutes(1),
-        localOnlyDecider: ex => Directive.Stop);
-
-    protected override SupervisorStrategy SupervisorStrategy() => Strategy;
-
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
@@ -35,7 +28,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
-    private readonly RuntimeOptions _runtimeOptions;
+    private readonly RuntimeOptions _options;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -57,7 +50,7 @@ public sealed class DispatcherActor : ReceiveActor
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
-        RuntimeOptions runtimeOptions)
+        IOptions<RuntimeOptions> options)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -69,13 +62,18 @@ public sealed class DispatcherActor : ReceiveActor
         _telemetry = telemetry;
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
-        _runtimeOptions = runtimeOptions;
+        _options = options.Value;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
         Receive<SpawnSubTask>(HandleSpawnSubTask);
         Receive<SpawnAgent>(HandleSpawnAgent);
         Receive<Terminated>(OnCoordinatorTerminated);
+    }
+
+    protected override SupervisorStrategy SupervisorStrategy()
+    {
+        return new OneForOneStrategy(ex => Directive.Stop);
     }
 
     private void HandleTaskAssigned(TaskAssigned message)
@@ -116,7 +114,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _runtimeOptions,
+                _options,
                 DefaultMaxRetries,
                 0)),
             $"task-{message.TaskId}");
@@ -172,7 +170,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _runtimeOptions,
+                _options,
                 DefaultMaxRetries,
                 message.Depth)),
             $"task-{message.ChildTaskId}");
@@ -198,7 +196,7 @@ public sealed class DispatcherActor : ReceiveActor
 
         var agent = Context.ActorOf(
             Props.Create(() => new SwarmAgentActor(
-                _runtimeOptions,
+                _options,
                 _loggerFactory,
                 _roleEngine,
                 _telemetry,

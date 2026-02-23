@@ -3,6 +3,7 @@ using Akka.Routing;
 using Akka.TestKit.Xunit2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
@@ -251,12 +252,11 @@ public sealed class SubTaskTests : TestKit
         registry.Register(new TaskAssigned(taskId, "Parent Task", "desc", DateTimeOffset.UtcNow));
 
         // Create coordinator as a child of parentProbe so Context.Parent == parentProbe
-        var consensusProbe = CreateTestProbe();
         var coordinator = parentProbe.ChildActorOf(
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                consensusProbe, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -333,12 +333,11 @@ public sealed class SubTaskTests : TestKit
         var taskId = $"coord-fail-{Guid.NewGuid():N}";
         registry.Register(new TaskAssigned(taskId, "Parent Task", "desc", DateTimeOffset.UtcNow));
 
-        var consensusProbe = CreateTestProbe();
         var coordinator = parentProbe.ChildActorOf(
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                consensusProbe, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
@@ -485,23 +484,19 @@ public sealed class SubTaskTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             $"reviewer-{suffix}");
 
-        var consensusActor = Sys.ActorOf(
-            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
-            $"consensus-{suffix}");
-
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
-                consensusActor,
+                ActorRefs.Nobody,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Options.Create(_options))),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);

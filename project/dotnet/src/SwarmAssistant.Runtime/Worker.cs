@@ -171,11 +171,10 @@ public sealed class Worker : BackgroundService
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;
-
         _supervisor = supervisor;
         await _startupMemoryBootstrapper.RestoreAsync(
             _options.MemoryBootstrapEnabled,

@@ -83,7 +83,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher");
 
         var taskId = $"smoke-{Guid.NewGuid():N}";
@@ -145,7 +145,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher-ui");
 
         var taskId = $"smoke-ui-{Guid.NewGuid():N}";
@@ -209,7 +209,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher-parallel");
 
         var taskIds = Enumerable.Range(1, 3)
@@ -277,7 +277,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Microsoft.Extensions.Options.Options.Create(_options))),
             "dispatcher-tracking");
 
         var taskId = $"smoke-track-{Guid.NewGuid():N}";
