@@ -74,14 +74,12 @@ components:
     TaskState:
       type: string
       enum:
-        - pending
+        - queued
         - planning
         - building
         - reviewing
-        - completed
-        - failed
-        - paused
-        - cancelled
+        - done
+        - blocked
       description: Lifecycle state of a swarm task.
 
     # ── Task snapshot ──────────────────────────────────────────────────────
@@ -350,19 +348,31 @@ components:
       required:
         - name
         - version
+        - protocol
         - capabilities
+        - endpoints
       properties:
         name:
           type: string
         version:
           type: string
+        protocol:
+          type: string
+          description: Protocol identifier (e.g. `a2a`).
         description:
           type:
             - string
             - "null"
         capabilities:
+          type: array
+          items:
+            type: string
+          description: List of capability tags advertised by this agent.
+        endpoints:
           type: object
-          additionalProperties: true
+          additionalProperties:
+            type: string
+          description: Named endpoint URLs exposed by this agent.
 
   responses:
     Unauthorized:
