@@ -857,7 +857,7 @@ public partial class Main : Control
         var root = _taskTree.CreateItem();
         var treeItemsByTaskId = new Dictionary<string, TreeItem>();
 
-        TreeItem EnsureTreeItem(string taskId)
+        TreeItem EnsureTreeItem(string taskId, HashSet<string>? ancestry = null)
         {
             if (treeItemsByTaskId.TryGetValue(taskId, out var existingItem))
             {
@@ -866,6 +866,14 @@ public partial class Main : Control
 
             if (!_taskGraphState.TryGetValue(taskId, out var state))
             {
+                GD.PushWarning($"[task-tree] Missing state for taskId={taskId}; attaching to root");
+                return root;
+            }
+
+            ancestry ??= new HashSet<string>(StringComparer.Ordinal);
+            if (!ancestry.Add(taskId))
+            {
+                GD.PushWarning($"[task-tree] Cycle detected at taskId={taskId}; attaching to root");
                 return root;
             }
 
@@ -873,7 +881,7 @@ public partial class Main : Control
             if (!string.IsNullOrWhiteSpace(state.ParentId) &&
                 !string.Equals(state.ParentId, state.TaskId, StringComparison.Ordinal))
             {
-                parentItem = EnsureTreeItem(state.ParentId);
+                parentItem = EnsureTreeItem(state.ParentId, ancestry);
             }
 
             var item = _taskTree.CreateItem(parentItem);
@@ -892,6 +900,7 @@ public partial class Main : Control
             item.SetCustomColor(0, color);
             item.SetMetadata(0, state.TaskId);
             treeItemsByTaskId[state.TaskId] = item;
+            ancestry.Remove(taskId);
             return item;
         }
 
