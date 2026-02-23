@@ -202,7 +202,7 @@ public sealed class LifecycleEventsTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var uiEvents = new UiEventStream();
 
-        // Use maxRetries=0 so the first failure triggers escalation immediately
+        // Trigger explicit escalation path
         var taskId = $"escalate-{Guid.NewGuid():N}";
         registry.Register(new TaskAssigned(taskId, "Task", "desc", DateTimeOffset.UtcNow));
 
@@ -216,18 +216,18 @@ public sealed class LifecycleEventsTests : TestKit
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
 
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 0.9, null, "worker"));
-        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, TimeSpan.FromSeconds(5));
+            taskId, SwarmRole.Orchestrator, "ACTION: Escalate", DateTimeOffset.UtcNow, 0.9, null, "worker"));
 
-        // Planner fails → escalation
-        coordinator.Tell(new RoleTaskFailed(
-            taskId, SwarmRole.Planner, "planning error", DateTimeOffset.UtcNow));
+        var escalatedEvt = PollForEvent(uiEvents,
+            e => e.Type == "agui.task.escalated" && e.TaskId == taskId,
+            TimeSpan.FromSeconds(5));
+        Assert.NotNull(escalatedEvt);
 
-        var evt = PollForEvent(uiEvents,
+        var failedEvt = PollForEvent(uiEvents,
             e => e.Type == "agui.task.failed" && e.TaskId == taskId,
             TimeSpan.FromSeconds(5));
-        // role.failed is emitted before task.failed
-        Assert.NotNull(evt);
+        Assert.NotNull(failedEvt);
+        Assert.True(escalatedEvt!.Sequence < failedEvt!.Sequence);
     }
 
     // ── agui.task.escalated (via HandleDeadEnd) ──────────────────────────────

@@ -77,8 +77,8 @@ public sealed class ReviewerActor : ReceiveActor
                 command.TaskId,
                 command.Role,
                 "started",
-                Self.Path.Name,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                Self.Path.Name));
 
             var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
             var output = result.Output;

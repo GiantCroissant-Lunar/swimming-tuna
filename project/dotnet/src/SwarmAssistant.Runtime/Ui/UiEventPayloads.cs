@@ -50,4 +50,4 @@ public sealed record RoleFailedPayload(string Role, string TaskId, string Error)
 public sealed record TaskEscalatedPayload(string TaskId, string Reason, int Level);
 
 /// <summary>Payload for <c>agui.task.intervention</c>. Emitted when a human intervention action is accepted.</summary>
-public sealed record TaskInterventionPayload(string TaskId, string ActionId, string DecidedBy = "human");
+public sealed record TaskInterventionPayload(string TaskId, string ActionId, string DecidedBy);

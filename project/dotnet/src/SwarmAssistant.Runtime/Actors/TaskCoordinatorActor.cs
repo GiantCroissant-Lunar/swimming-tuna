@@ -39,6 +39,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     internal const int MaxAllowedSubTaskDepth = 10;
+    private const int EscalationLevelFatal = 2;
 
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
@@ -618,7 +619,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.task.intervention",
                     taskId: _taskId,
-                    payload: new TaskInterventionPayload(_taskId, "approve_review"));
+                    payload: new TaskInterventionPayload(_taskId, "approve_review", "human"));
                 FinishTask();
                 return;
 
@@ -639,7 +640,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.task.intervention",
                     taskId: _taskId,
-                    payload: new TaskInterventionPayload(_taskId, "reject_review"));
+                    payload: new TaskInterventionPayload(_taskId, "reject_review", "human"));
                 BlockFromIntervention($"Review rejected by human: {message.Reason.Trim()}");
                 return;
 
@@ -661,7 +662,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.task.intervention",
                     taskId: _taskId,
-                    payload: new TaskInterventionPayload(_taskId, "request_rework"));
+                    payload: new TaskInterventionPayload(_taskId, "request_rework", "human"));
                 DispatchAction("Rework");
                 return;
 
@@ -691,7 +692,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.task.intervention",
                     taskId: _taskId,
-                    payload: new TaskInterventionPayload(_taskId, "pause_task"));
+                    payload: new TaskInterventionPayload(_taskId, "pause_task", "human"));
 
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "paused"));
                 return;
@@ -716,7 +717,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.task.intervention",
                     taskId: _taskId,
-                    payload: new TaskInterventionPayload(_taskId, "resume_task"));
+                    payload: new TaskInterventionPayload(_taskId, "resume_task", "human"));
 
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "resumed"));
                 if (!string.IsNullOrWhiteSpace(_deferredActionName))
@@ -1015,7 +1016,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _supervisorActor.Tell(new TaskFailed(
             _taskId, TaskState.Blocked, error, DateTimeOffset.UtcNow, Self.Path.Name));
         _supervisorActor.Tell(new EscalationRaised(
-            _taskId, error, 2, DateTimeOffset.UtcNow, Self.Path.Name));
+            _taskId, error, EscalationLevelFatal, DateTimeOffset.UtcNow, Self.Path.Name));
         _taskRegistry.MarkFailed(_taskId, error);
 
         // Stigmergy: write task failure signal to global blackboard
@@ -1024,7 +1025,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.task.escalated",
             taskId: _taskId,
-            payload: new TaskEscalatedPayload(_taskId, error, 2));
+            payload: new TaskEscalatedPayload(_taskId, error, EscalationLevelFatal));
 
         _uiEvents.Publish(
             type: "agui.task.failed",
@@ -1049,7 +1050,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _supervisorActor.Tell(new TaskFailed(
             _taskId, TaskState.Blocked, reason, DateTimeOffset.UtcNow, Self.Path.Name));
         _supervisorActor.Tell(new EscalationRaised(
-            _taskId, reason, 2, DateTimeOffset.UtcNow, Self.Path.Name));
+            _taskId, reason, EscalationLevelFatal, DateTimeOffset.UtcNow, Self.Path.Name));
         _taskRegistry.MarkFailed(_taskId, reason);
 
         // Stigmergy: write escalation signal to global blackboard
@@ -1058,7 +1059,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.task.escalated",
             taskId: _taskId,
-            payload: new TaskEscalatedPayload(_taskId, reason, 2));
+            payload: new TaskEscalatedPayload(_taskId, reason, EscalationLevelFatal));
 
         _uiEvents.Publish(
             type: "agui.task.failed",

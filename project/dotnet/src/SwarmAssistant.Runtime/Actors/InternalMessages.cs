@@ -242,6 +242,6 @@ internal sealed record RoleLifecycleEvent(
     string TaskId,
     SwarmRole Role,
     string Phase,
-    string? ActorName = null,
-    DateTimeOffset? At = null
+    DateTimeOffset At,
+    string? ActorName = null
 );
