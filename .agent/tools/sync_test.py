@@ -482,3 +482,23 @@ class TestSyncAdapter:
         assert (
             self.project_root / ".clinerules" / "AGENTS.md"
         ).read_text() == "# AGENTS"
+
+    def test_sync_copy_directory_without_glob(self):
+        """sync_adapter auto-copies all files when source is a directory with no glob."""
+        hooks_dir = self.project_root / ".agent" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        (hooks_dir / "start.py").write_text("# start")
+        (hooks_dir / "end.py").write_text("# end")
+
+        adapter_dir = self._make_adapter(
+            "test",
+            "name: test\n"
+            "sync:\n"
+            "  hooks:\n"
+            "    target: .test/hooks/\n"
+            "    action: copy\n"
+            "    source: .agent/hooks/\n",
+        )
+        sync_adapter(adapter_dir, self.project_root)
+        assert (self.project_root / ".test" / "hooks" / "start.py").exists()
+        assert (self.project_root / ".test" / "hooks" / "end.py").exists()

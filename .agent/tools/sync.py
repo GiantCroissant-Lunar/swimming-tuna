@@ -237,13 +237,14 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
             target = project_root / target_rel
             glob_pattern = entry.get("glob")
 
-            if glob_pattern:
-                # Directory copy with glob
-                copied = execute_copy(source, target, glob_pattern)
+            if glob_pattern or source.is_dir():
+                # Directory copy with glob (default to "*" if source is a dir)
+                pattern = glob_pattern or "*"
+                copied = execute_copy(source, target, pattern)
                 results.extend(
                     copied
                     if copied
-                    else [f"copy: no matches for {glob_pattern} in {source}"]
+                    else [f"copy: no matches for {pattern} in {source}"]
                 )
             else:
                 # Single file copy
