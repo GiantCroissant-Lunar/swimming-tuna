@@ -20,6 +20,7 @@ SCHEMA_DIR="$REPO_ROOT/project/docs/openapi/schemas"
 CS_OUT="$REPO_ROOT/project/dotnet/src/SwarmAssistant.Contracts/Generated/Models.g.cs"
 TS_OUT="$REPO_ROOT/project/src/generated/models.g.ts"
 OPENAPI_SPEC="$REPO_ROOT/project/docs/openapi/runtime.v1.yaml"
+QUICKTYPE_VERSION="${QUICKTYPE_VERSION:-23.2.6}"
 
 echo "==> Extracting JSON schemas from OpenAPI spec..."
 node "$REPO_ROOT/scripts/extract-schemas.mjs" \
@@ -29,7 +30,7 @@ node "$REPO_ROOT/scripts/extract-schemas.mjs" \
 echo ""
 echo "==> Generating C# models..."
 mkdir -p "$(dirname "$CS_OUT")"
-npx --yes quicktype \
+npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   "$SCHEMA_DIR"/*.schema.json \
   --src-lang schema \
   --lang csharp \
@@ -42,7 +43,7 @@ echo "  wrote $CS_OUT"
 echo ""
 echo "==> Generating TypeScript models..."
 mkdir -p "$(dirname "$TS_OUT")"
-npx --yes quicktype \
+npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   "$SCHEMA_DIR"/*.schema.json \
   --src-lang schema \
   --lang typescript \

@@ -15,6 +15,7 @@ SCHEMA_DIR="$REPO_ROOT/project/docs/openapi/schemas"
 CS_OUT="$REPO_ROOT/project/dotnet/src/SwarmAssistant.Contracts/Generated/Models.g.cs"
 TS_OUT="$REPO_ROOT/project/src/generated/models.g.ts"
 OPENAPI_SPEC="$REPO_ROOT/project/docs/openapi/runtime.v1.yaml"
+QUICKTYPE_VERSION="${QUICKTYPE_VERSION:-23.2.6}"
 
 TMPDIR="$(mktemp -d)"
 TMP_SCHEMA_DIR="$TMPDIR/schemas"
@@ -30,7 +31,7 @@ node "$REPO_ROOT/scripts/extract-schemas.mjs" \
   --output "$TMP_SCHEMA_DIR" > /dev/null
 
 echo "==> Generating C# models into temp file..."
-npx --yes quicktype \
+npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   "$TMP_SCHEMA_DIR"/*.schema.json \
   --src-lang schema \
   --lang csharp \
@@ -40,7 +41,7 @@ npx --yes quicktype \
   --out "$TMP_CS" 2>/dev/null
 
 echo "==> Generating TypeScript models into temp file..."
-npx --yes quicktype \
+npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   "$TMP_SCHEMA_DIR"/*.schema.json \
   --src-lang schema \
   --lang typescript \
@@ -72,6 +73,14 @@ compare_file() {
 
 compare_file "C# models (Models.g.cs)"        "$TMP_CS" "$CS_OUT"
 compare_file "TypeScript models (models.g.ts)" "$TMP_TS" "$TS_OUT"
+
+if ! diff -qr "$TMP_SCHEMA_DIR" "$SCHEMA_DIR" > /dev/null 2>&1; then
+  echo "FAIL: OpenAPI schema artifacts are stale. Run 'task models:generate' and commit the result."
+  diff -ru "$TMP_SCHEMA_DIR" "$SCHEMA_DIR" || true
+  EXIT_CODE=1
+else
+  echo "OK:   OpenAPI schema artifacts are up to date."
+fi
 
 if [ "$EXIT_CODE" -ne 0 ]; then
   echo ""

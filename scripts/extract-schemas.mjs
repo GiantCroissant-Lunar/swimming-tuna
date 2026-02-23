@@ -8,8 +8,8 @@
  *     --output project/docs/openapi/schemas
  *
  * Each schema is written as a self-contained JSON Schema (draft-07) file
- * with a `definitions` block containing all sibling schemas so that
- * $ref pointers resolve correctly during quicktype generation.
+ * with a `definitions` block containing only transitive schema dependencies
+ * so $ref pointers resolve correctly during quicktype generation.
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
@@ -60,6 +60,60 @@ function rewriteRefs(node) {
   return node;
 }
 
+function collectReferencedSchemas(node, out = new Set()) {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectReferencedSchemas(item, out);
+    }
+    return out;
+  }
+
+  if (node !== null && typeof node === "object") {
+    for (const [k, v] of Object.entries(node)) {
+      if (k === "$ref" && typeof v === "string") {
+        const match = /^#\/definitions\/(.+)$/.exec(v);
+        if (match) {
+          out.add(match[1]);
+        }
+      } else {
+        collectReferencedSchemas(v, out);
+      }
+    }
+  }
+
+  return out;
+}
+
+function buildTransitiveDefinitions(rootName, schemas) {
+  const needed = new Set();
+  const queue = [rootName];
+
+  while (queue.length > 0) {
+    const currentName = queue.pop();
+    if (needed.has(currentName)) {
+      continue;
+    }
+
+    const schema = schemas[currentName];
+    if (!schema) {
+      continue;
+    }
+
+    needed.add(currentName);
+    for (const refName of collectReferencedSchemas(schema)) {
+      if (!needed.has(refName)) {
+        queue.push(refName);
+      }
+    }
+  }
+
+  return Object.fromEntries(
+    Array.from(needed)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => [name, schemas[name]])
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -91,11 +145,12 @@ const schemas = rewriteRefs(rawSchemas);
 mkdirSync(outputDir, { recursive: true });
 
 let count = 0;
-for (const [name, schema] of Object.entries(schemas)) {
+for (const name of Object.keys(schemas).sort((a, b) => a.localeCompare(b))) {
+  const schema = schemas[name];
   const document = {
     $schema: "http://json-schema.org/draft-07/schema#",
     title: name,
-    definitions: schemas,
+    definitions: buildTransitiveDefinitions(name, schemas),
     ...schema,
   };
 
