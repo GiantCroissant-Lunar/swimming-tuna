@@ -73,6 +73,13 @@ public sealed class ReviewerActor : ReceiveActor
 
         try
         {
+            Context.System.EventStream.Publish(new RoleLifecycleEvent(
+                command.TaskId,
+                command.Role,
+                "started",
+                DateTimeOffset.UtcNow,
+                Self.Path.Name));
+
             var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
             var output = result.Output;
             var adapterId = result.AdapterId;

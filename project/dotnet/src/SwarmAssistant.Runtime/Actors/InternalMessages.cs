@@ -233,3 +233,15 @@ internal sealed record TaskInterventionResult(
     string ReasonCode,
     string? Message = null
 );
+
+/// <summary>
+/// Emitted by WorkerActor / ReviewerActor via Akka EventStream when role execution begins.
+/// Consumed by TaskCoordinatorActor to forward as <c>agui.role.started</c> to the UI event stream.
+/// </summary>
+internal sealed record RoleLifecycleEvent(
+    string TaskId,
+    SwarmRole Role,
+    string Phase,
+    DateTimeOffset At,
+    string? ActorName = null
+);

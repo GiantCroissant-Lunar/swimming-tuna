@@ -31,3 +31,23 @@ public sealed record TelemetryConsensusPayload(bool Approved, int VoteCount, int
 
 /// <summary>Payload for <c>agui.telemetry.circuit</c>.</summary>
 public sealed record TelemetryCircuitPayload(string AdapterCircuitKey, string State, bool HasOpenCircuits);
+
+// ── Role lifecycle payloads (emitted by TaskCoordinatorActor) ─────────────
+
+/// <summary>Payload for <c>agui.role.dispatched</c>. Emitted when coordinator sends a role task to a worker/reviewer.</summary>
+public sealed record RoleDispatchedPayload(string Role, string TaskId);
+
+/// <summary>Payload for <c>agui.role.started</c>. Emitted when a worker/reviewer begins executing the role.</summary>
+public sealed record RoleStartedPayload(string Role, string TaskId, string? ActorName = null);
+
+/// <summary>Payload for <c>agui.role.succeeded</c>. Emitted on role success (non-orchestrator roles only).</summary>
+public sealed record RoleSucceededPayload(string Role, string TaskId, double Confidence, string? AdapterId = null);
+
+/// <summary>Payload for <c>agui.role.failed</c>. Emitted on role failure (non-orchestrator roles only).</summary>
+public sealed record RoleFailedPayload(string Role, string TaskId, string Error);
+
+/// <summary>Payload for <c>agui.task.escalated</c>. Emitted when the task is escalated due to retries or dead-end.</summary>
+public sealed record TaskEscalatedPayload(string TaskId, string Reason, int Level);
+
+/// <summary>Payload for <c>agui.task.intervention</c>. Emitted when a human intervention action is accepted.</summary>
+public sealed record TaskInterventionPayload(string TaskId, string ActionId, string DecidedBy);
