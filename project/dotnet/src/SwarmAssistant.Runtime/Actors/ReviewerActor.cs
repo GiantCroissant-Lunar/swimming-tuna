@@ -86,10 +86,47 @@ public sealed class ReviewerActor : ReceiveActor
                 _options.AgentFrameworkExecutionMode,
                 confidence);
 
+            // Self-retry if confidence is very low (unless already retried).
+            // Retry BEFORE publishing the concern so the supervisor sees the
+            // final confidence rather than a stale pre-retry value.
+            if (confidence < AgentQualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
+            {
+                _logger.LogInformation(
+                    "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
+                    command.TaskId,
+                    confidence);
+
+                activity?.SetTag("quality.self_retry", true);
+
+                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
+                var adjustedCommand = command with
+                {
+                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
+                    PreviousConfidence = confidence
+                };
+
+                var retryOutput = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
+                var retryConfidence = EvaluateQuality(retryOutput, adjustedCommand.PreferredAdapter);
+
+                _logger.LogInformation(
+                    "Reviewer self-retry completed taskId={TaskId} oldConfidence={OldConfidence} newConfidence={NewConfidence}",
+                    command.TaskId,
+                    confidence,
+                    retryConfidence);
+
+                // Keep the retry if it's better, otherwise fallback to the original
+                if (retryConfidence > confidence)
+                {
+                    output = retryOutput;
+                    confidence = retryConfidence;
+                }
+            }
+
             // Raise QualityConcern for borderline cases
             if (confidence < AgentQualityEvaluator.QualityConcernThreshold)
             {
-                var concern = BuildQualityConcern(output, confidence);
+                var concern = AgentQualityEvaluator.BuildQualityConcern(output, confidence, "Review quality concern");
+
                 _logger.LogWarning(
                     "Reviewer quality concern taskId={TaskId} confidence={Confidence} concern={Concern}",
                     command.TaskId,
@@ -107,40 +144,7 @@ public sealed class ReviewerActor : ReceiveActor
                 activity?.SetTag("quality.concern", concern);
             }
 
-            // Self-retry if confidence is very low (unless already retried)
-            if (confidence < AgentQualityEvaluator.SelfRetryThreshold && command.MaxConfidence is null)
-            {
-                _logger.LogInformation(
-                    "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
-                    command.TaskId,
-                    confidence);
-
-                activity?.SetTag("quality.self_retry", true);
-
-                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
-                var adjustedCommand = command with
-                {
-                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
-                    MaxConfidence = confidence
-                };
-
-                output = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
-                confidence = EvaluateQuality(output, adjustedCommand.PreferredAdapter);
-
-                _logger.LogInformation(
-                    "Reviewer self-retry completed taskId={TaskId} newConfidence={Confidence}",
-                    command.TaskId,
-                    confidence);
-
-                activity?.SetTag("quality.confidence_after_retry", confidence);
-            }
-
-            replyTo.Tell(new RoleTaskSucceeded(
-                command.TaskId,
-                command.Role,
-                output,
-                DateTimeOffset.UtcNow,
-                confidence));
+            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow, confidence));
         }
         catch (Exception exception)
         {
@@ -161,13 +165,13 @@ public sealed class ReviewerActor : ReceiveActor
 
     /// <summary>
     /// Evaluates output quality and returns a confidence score between 0.0 and 1.0.
-    /// Confidence is derived from output length, keyword presence, and adapter type.
+    /// Uses shared helpers from <see cref="AgentQualityEvaluator"/> plus reviewer-specific keyword scoring.
     /// </summary>
     private static double EvaluateQuality(string output, string? adapterId)
     {
         var scores = new List<double>();
 
-        // Factor 1: Output length (normalized)
+        // Factor 1: Output length (normalized — reviewers are typically shorter)
         var lengthScore = Math.Min(output.Length / 300.0, 1.0);
         scores.Add(lengthScore);
 
@@ -175,20 +179,16 @@ public sealed class ReviewerActor : ReceiveActor
         var keywordScore = EvaluateReviewerKeywords(output);
         scores.Add(keywordScore);
 
-        // Factor 3: Adapter reliability bonus
+        // Factor 3: Adapter reliability bonus (shared)
         var adapterScore = AgentQualityEvaluator.GetAdapterReliabilityScore(adapterId);
         scores.Add(adapterScore);
 
-        // Factor 4: Structural indicators (has code blocks, bullet points, etc.)
+        // Factor 4: Structural indicators (shared)
         var structureScore = AgentQualityEvaluator.EvaluateStructure(output);
         scores.Add(structureScore);
 
-        // Factor 5: Review comprehensiveness (pass/fail indicators)
-        var comprehensivenessScore = EvaluateReviewComprehensiveness(output);
-        scores.Add(comprehensivenessScore);
-
-        // Weighted average (can be tuned)
-        var weights = new[] { 0.20, 0.25, 0.15, 0.20, 0.20 };
+        // Weighted average
+        var weights = new[] { 0.25, 0.35, 0.15, 0.25 };
         var confidence = scores.Zip(weights, (s, w) => s * w).Sum();
 
         return Math.Clamp(confidence, 0.0, 1.0);
@@ -228,28 +228,5 @@ public sealed class ReviewerActor : ReceiveActor
             scores.Add(0.5);
 
         return scores.Average();
-    }
-
-    private static string BuildQualityConcern(string output, double confidence)
-    {
-        var concerns = new List<string>();
-
-        if (output.Length < 50)
-            concerns.Add("review too short");
-
-        if (output.Length > 5000)
-            concerns.Add("review excessively long");
-
-        var lowerOutput = output.ToLowerInvariant();
-        if (!lowerOutput.Contains("pass") && !lowerOutput.Contains("fail"))
-            concerns.Add("no clear verdict");
-
-        if (!lowerOutput.Contains("should") && !lowerOutput.Contains("recommend"))
-            concerns.Add("no actionable feedback");
-
-        if (concerns.Count == 0)
-            concerns.Add("low confidence score");
-
-        return $"Review quality concern ({confidence:F2}): {string.Join(", ", concerns)}";
     }
 }

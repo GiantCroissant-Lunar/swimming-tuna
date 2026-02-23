@@ -24,6 +24,8 @@ internal static class AgentQualityEvaluator
     private const double StructurePresent = 1.0;
     private const double StructureAbsent  = 0.5;
 
+    private static readonly string[] Adapters = ["copilot", "kimi", "cline", "local-echo"];
+
     /// <summary>
     /// Returns a reliability score for the given adapter identifier.
     /// </summary>
@@ -66,7 +68,36 @@ internal static class AgentQualityEvaluator
     /// </summary>
     public static string? GetAlternativeAdapter(string? currentAdapter)
     {
-        var adapters = new[] { "copilot", "kimi", "cline", "local-echo" };
-        return adapters.FirstOrDefault(a => !a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
+        return Adapters.FirstOrDefault(a => !a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Builds a human-readable quality concern summary based on output heuristics.
+    /// </summary>
+    public static string BuildQualityConcern(string output, double confidence, string prefix = "Quality concern")
+    {
+        var concerns = new List<string>();
+
+        if (output.Length < 100)
+        {
+            concerns.Add("output too short");
+        }
+
+        if (output.Length > 10000)
+        {
+            concerns.Add("output excessively long");
+        }
+
+        if (!output.Contains("```") && !output.Contains("- ") && !output.Contains("1. "))
+        {
+            concerns.Add("lacks structure");
+        }
+
+        if (concerns.Count == 0)
+        {
+            concerns.Add("low confidence score");
+        }
+
+        return $"{prefix} ({confidence:F2}): {string.Join(", ", concerns)}";
     }
 }

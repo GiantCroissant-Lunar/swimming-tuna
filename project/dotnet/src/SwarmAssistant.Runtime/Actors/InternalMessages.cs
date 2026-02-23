@@ -13,7 +13,7 @@ internal sealed record ExecuteRoleTask(
     string? BuildOutput,
     string? OrchestratorPrompt = null,
     string? PreferredAdapter = null,
-    double? MaxConfidence = null
+    double? PreviousConfidence = null
 );
 
 internal sealed record RoleTaskSucceeded(

@@ -87,10 +87,49 @@ public sealed class WorkerActor : ReceiveActor
                 _options.AgentFrameworkExecutionMode,
                 confidence);
 
+            // Self-retry if confidence is very low (unless already retried).
+            // Retry BEFORE publishing the concern so the supervisor sees the
+            // final confidence rather than a stale pre-retry value.
+            if (confidence < AgentQualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
+            {
+                _logger.LogInformation(
+                    "Worker self-retry triggered taskId={TaskId} role={Role} confidence={Confidence}",
+                    command.TaskId,
+                    command.Role,
+                    confidence);
+
+                activity?.SetTag("quality.self_retry", true);
+
+                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
+                var adjustedCommand = command with
+                {
+                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
+                    PreviousConfidence = confidence
+                };
+
+                var retryOutput = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
+                var retryConfidence = EvaluateQuality(retryOutput, command.Role, adjustedCommand.PreferredAdapter);
+
+                _logger.LogInformation(
+                    "Worker self-retry completed taskId={TaskId} role={Role} oldConfidence={OldConfidence} newConfidence={NewConfidence}",
+                    command.TaskId,
+                    command.Role,
+                    confidence,
+                    retryConfidence);
+
+                // Keep the retry if it's better, otherwise fallback to the original
+                if (retryConfidence > confidence)
+                {
+                    output = retryOutput;
+                    confidence = retryConfidence;
+                }
+            }
+
             // Raise QualityConcern for borderline cases
             if (confidence < AgentQualityEvaluator.QualityConcernThreshold)
             {
-                var concern = BuildQualityConcern(output, confidence);
+                var concern = AgentQualityEvaluator.BuildQualityConcern(output, confidence, $"Worker ({command.Role}) quality concern");
+
                 _logger.LogWarning(
                     "Worker quality concern taskId={TaskId} role={Role} confidence={Confidence} concern={Concern}",
                     command.TaskId,
@@ -109,42 +148,7 @@ public sealed class WorkerActor : ReceiveActor
                 activity?.SetTag("quality.concern", concern);
             }
 
-            // Self-retry if confidence is very low (unless already retried)
-            if (confidence < AgentQualityEvaluator.SelfRetryThreshold && command.MaxConfidence is null)
-            {
-                _logger.LogInformation(
-                    "Worker self-retry triggered taskId={TaskId} role={Role} confidence={Confidence}",
-                    command.TaskId,
-                    command.Role,
-                    confidence);
-
-                activity?.SetTag("quality.self_retry", true);
-
-                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
-                var adjustedCommand = command with
-                {
-                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
-                    MaxConfidence = confidence
-                };
-
-                output = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
-                confidence = EvaluateQuality(output, command.Role, adjustedCommand.PreferredAdapter);
-
-                _logger.LogInformation(
-                    "Worker self-retry completed taskId={TaskId} role={Role} newConfidence={Confidence}",
-                    command.TaskId,
-                    command.Role,
-                    confidence);
-
-                activity?.SetTag("quality.confidence_after_retry", confidence);
-            }
-
-            replyTo.Tell(new RoleTaskSucceeded(
-                command.TaskId,
-                command.Role,
-                output,
-                DateTimeOffset.UtcNow,
-                confidence));
+            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow, confidence));
         }
         catch (Exception exception)
         {
@@ -166,7 +170,7 @@ public sealed class WorkerActor : ReceiveActor
 
     /// <summary>
     /// Evaluates output quality and returns a confidence score between 0.0 and 1.0.
-    /// Confidence is derived from output length, keyword presence, and adapter type.
+    /// Uses shared helpers from <see cref="AgentQualityEvaluator"/> plus role-specific keyword scoring.
     /// </summary>
     private static double EvaluateQuality(string output, SwarmRole role, string? adapterId)
     {
@@ -180,15 +184,15 @@ public sealed class WorkerActor : ReceiveActor
         var keywordScore = EvaluateRoleKeywords(output, role);
         scores.Add(keywordScore);
 
-        // Factor 3: Adapter reliability bonus
+        // Factor 3: Adapter reliability bonus (shared)
         var adapterScore = AgentQualityEvaluator.GetAdapterReliabilityScore(adapterId);
         scores.Add(adapterScore);
 
-        // Factor 4: Structural indicators (has code blocks, bullet points, etc.)
+        // Factor 4: Structural indicators (shared)
         var structureScore = AgentQualityEvaluator.EvaluateStructure(output);
         scores.Add(structureScore);
 
-        // Weighted average (can be tuned)
+        // Weighted average
         var weights = new[] { 0.25, 0.35, 0.15, 0.25 };
         var confidence = scores.Zip(weights, (s, w) => s * w).Sum();
 
@@ -210,24 +214,5 @@ public sealed class WorkerActor : ReceiveActor
 
         var matches = keywords.Count(k => lowerOutput.Contains(k));
         return (double)matches / keywords.Length;
-    }
-
-    private static string BuildQualityConcern(string output, double confidence)
-    {
-        var concerns = new List<string>();
-
-        if (output.Length < 100)
-            concerns.Add("output too short");
-
-        if (output.Length > 10000)
-            concerns.Add("output excessively long");
-
-        if (!output.Contains("```") && !output.Contains("- ") && !output.Contains("1. "))
-            concerns.Add("lacks structure");
-
-        if (concerns.Count == 0)
-            concerns.Add("low confidence score");
-
-        return $"Quality concern ({confidence:F2}): {string.Join(", ", concerns)}";
     }
 }
