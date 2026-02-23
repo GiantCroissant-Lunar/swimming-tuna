@@ -30,7 +30,7 @@ escalations, sub-task lifecycle, and run boundaries) **must** be emitted as a
 | `eventId` | `string` | non-empty, globally unique (ULID recommended) | Stable, immutable identifier for this event. |
 | `eventType` | `EventType` | see §2 | Discriminator that identifies the kind of transition this event records. |
 | `runId` | `string` | non-empty | Identifier of the enclosing Run (see ADR-0001). |
-| `taskId` | `string` | non-empty | Identifier of the task this event belongs to. |
+| `taskId` | `string` | non-empty; empty string `""` for run-scoped events (`run.*`) | Identifier of the task this event belongs to. |
 | `runSeq` | `int` | ≥ 1, monotonically increasing within a `runId` | Global ordering counter scoped to a Run. Assigned by the event emitter at emission time. |
 | `taskSeq` | `int` | ≥ 1, monotonically increasing within a `taskId` | Local ordering counter scoped to a single task. Assigned by the task coordinator at emission time. |
 | `occurredAt` | `DateTimeOffset` | UTC | Wall-clock timestamp at which the event was generated. Used for display and diagnostics only; **must not** be used as the primary sort key for replay ordering. |
@@ -127,14 +127,16 @@ Defined in `SwarmAssistant.Contracts.Tasks.TaskStatus`:
 
 ### 3.1 Canonical Replay Order
 
-Events **must** be replayed in the following sort order (primary → secondary → tertiary):
+Events **must** be replayed in the following sort order (primary → secondary):
 
-1. **`runSeq` ascending** — global ordering within a Run.
-2. **`taskSeq` ascending** — secondary tie-break within a task (when multiple tasks share
-   the same `runSeq` due to parallel emission, consumers sort by `runSeq` first, then by
-   `taskId` consistently, then by `taskSeq`).
-3. **`occurredAt` ascending** — informational tie-break only; **must not** be the sole
-   ordering key because clock skew across actor threads makes wall-clock ordering
+1. **`runSeq` ascending** — global ordering within a Run. Because `runSeq` is assigned
+   atomically (see §3.2), no two events within the same Run share the same value; there
+   are no ties to break.
+2. **`taskSeq` ascending** — used when reconstructing the ordered history of a single
+   task in isolation (e.g. filtering by `taskId`). Has no effect on global replay order
+   since `runSeq` already provides a total order.
+3. **`occurredAt` ascending** — informational only; **must not** be used as a sort key
+   for replay because clock skew across actor threads makes wall-clock ordering
    non-deterministic.
 
 ### 3.2 `runSeq` Assignment Rules
@@ -239,9 +241,9 @@ When a task is escalated to a higher supervision level:
 Sub-tasks are spawned when a `TaskCoordinatorActor` decomposes work during the
 Planning role:
 
-1. A `subtask.spawned` event is emitted on the **parent** task's `taskSeq` and carries
-   both `taskId` (parent) and `parentTaskId` (also parent, for consistency) plus the
-   child's ID in `metadata["childTaskId"]`.
+1. A `subtask.spawned` event is emitted on the **parent** task's `taskSeq`. Its `taskId`
+   is the **parent** task ID and `parentTaskId` is **null** (the parent relationship is
+   already implicit from `taskId`). The child's ID is carried in `metadata["childTaskId"]`.
 2. All subsequent events for the child task use the **child's** `taskId` and its own
    `taskSeq`, but share the parent's `runId` and `runSeq` counter.
 3. When the child task reaches `Done`, a `subtask.completed` event is emitted on the
