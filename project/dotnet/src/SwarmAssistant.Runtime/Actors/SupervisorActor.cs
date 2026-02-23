@@ -15,6 +15,10 @@ public sealed class SupervisorActor : ReceiveActor
 {
     private const int MaxRetriesPerTask = 3;
     private const int AdapterCircuitThreshold = 3;
+
+    /// <summary>Number of quality concerns for the same task that triggers a supervisor-level retry.</summary>
+    private const int QualityConcernRetryThreshold = 2;
+
     private static readonly TimeSpan AdapterCircuitDuration = TimeSpan.FromMinutes(5);
 
     private readonly RuntimeTelemetry _telemetry;
@@ -27,6 +31,7 @@ public sealed class SupervisorActor : ReceiveActor
     private int _completed;
     private int _failed;
     private int _escalations;
+    private int _totalQualityConcerns;
 
     // Active supervision state
     private readonly Dictionary<string, IActorRef> _taskCoordinators = new(StringComparer.Ordinal);
@@ -34,6 +39,13 @@ public sealed class SupervisorActor : ReceiveActor
     private readonly HashSet<string> _startedTaskIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _adapterFailureCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _openCircuits = new(StringComparer.OrdinalIgnoreCase);
+
+    // Quality concern tracking for agent autonomy (Phase 15)
+    private readonly Dictionary<string, List<QualityConcern>> _qualityConcerns = new(StringComparer.Ordinal);
+
+    // Per-task marker to prevent retry storm: once a quality-concern retry is in-flight,
+    // skip further quality-concern retries for that task until the current one resolves.
+    private readonly HashSet<string> _taskQualityRetryInFlight = new(StringComparer.Ordinal);
 
     public SupervisorActor(
         ILoggerFactory loggerFactory,
@@ -51,7 +63,20 @@ public sealed class SupervisorActor : ReceiveActor
         Receive<TaskFailed>(OnTaskFailed);
         Receive<EscalationRaised>(OnEscalationRaised);
         Receive<RoleFailureReport>(OnRoleFailureReport);
+        Receive<QualityConcern>(OnQualityConcern);
         Receive<GetSupervisorSnapshot>(OnGetSnapshot);
+    }
+
+    protected override void PreStart()
+    {
+        Context.System.EventStream.Subscribe(Self, typeof(QualityConcern));
+        base.PreStart();
+    }
+
+    protected override void PostStop()
+    {
+        Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
+        base.PostStop();
     }
 
     private void OnTaskStarted(TaskStarted message)
@@ -96,10 +121,12 @@ public sealed class SupervisorActor : ReceiveActor
         if (message.Status == Contracts.Tasks.TaskStatus.Done)
         {
             _completed += 1;
-            // Clean up tracking state for completed tasks
+            // Clean up all tracking state for completed tasks
             _taskCoordinators.Remove(message.TaskId);
             _taskRetryCounts.Remove(message.TaskId);
             _startedTaskIds.Remove(message.TaskId);
+            _qualityConcerns.Remove(message.TaskId);
+            _taskQualityRetryInFlight.Remove(message.TaskId);
         }
 
         _logger.LogInformation(
@@ -123,10 +150,12 @@ public sealed class SupervisorActor : ReceiveActor
         activity?.SetStatus(ActivityStatusCode.Error, message.Error);
 
         _failed += 1;
-        // Clean up tracking state for permanently failed tasks
+        // Clean up all tracking state for permanently failed tasks
         _taskCoordinators.Remove(message.TaskId);
         _taskRetryCounts.Remove(message.TaskId);
         _startedTaskIds.Remove(message.TaskId);
+        _qualityConcerns.Remove(message.TaskId);
+        _taskQualityRetryInFlight.Remove(message.TaskId);
         _logger.LogWarning(
             "Task failed taskId={TaskId} status={Status} actor={ActorName} error={Error}",
             message.TaskId,
@@ -209,9 +238,73 @@ public sealed class SupervisorActor : ReceiveActor
             totalRetries);
     }
 
+    private void OnQualityConcern(QualityConcern message)
+    {
+        using var activity = _telemetry.StartActivity(
+            "supervisor.quality.concern",
+            taskId: message.TaskId,
+            role: message.Role.ToString().ToLowerInvariant(),
+            tags: new Dictionary<string, object?>
+            {
+                ["quality.concern"] = message.Concern,
+                ["quality.confidence"] = message.Confidence,
+            });
+
+        // Track quality concern alongside failure reports
+        if (!_qualityConcerns.TryGetValue(message.TaskId, out var concerns))
+        {
+            concerns = new List<QualityConcern>();
+            _qualityConcerns[message.TaskId] = concerns;
+        }
+        concerns.Add(message);
+        _totalQualityConcerns++;
+
+        _logger.LogWarning(
+            "Quality concern received taskId={TaskId} role={Role} adapter={AdapterId} confidence={Confidence:F2} concern={Concern}",
+            message.TaskId,
+            message.Role,
+            message.AdapterId,
+            message.Confidence,
+            message.Concern);
+
+        activity?.SetTag("quality.total_concerns_for_task", concerns.Count);
+
+        // If multiple quality concerns for the same task, consider escalating or retrying.
+        // Guard against retry storm: skip if a quality-concern retry is already in-flight.
+        if (concerns.Count >= QualityConcernRetryThreshold
+            && !_taskQualityRetryInFlight.Contains(message.TaskId)
+            && _taskCoordinators.TryGetValue(message.TaskId, out var coordinator))
+        {
+            _logger.LogWarning(
+                "Multiple quality concerns detected taskId={TaskId} count={Count} - initiating retry",
+                message.TaskId,
+                concerns.Count);
+
+            _taskRetryCounts.TryGetValue(message.TaskId, out var retryCount);
+            if (retryCount < MaxRetriesPerTask)
+            {
+                _taskRetryCounts[message.TaskId] = retryCount + 1;
+
+                // Mark in-flight to prevent subsequent concerns triggering additional retries
+                // until the coordinator reports the task as completed or failed.
+                _taskQualityRetryInFlight.Add(message.TaskId);
+
+                var reason = $"Quality concern retry ({concerns.Count} concerns): {message.Concern}";
+                coordinator.Tell(new RetryRole(
+                    message.TaskId,
+                    message.Role,
+                    SkipAdapter: null,
+                    reason));
+
+                activity?.SetTag("supervisor.decision", "quality_retry");
+                activity?.SetTag("supervisor.retry_attempt", retryCount + 1);
+            }
+        }
+    }
+
     private void OnGetSnapshot(GetSupervisorSnapshot _)
     {
-        Sender.Tell(new SupervisorSnapshot(_started, _completed, _failed, _escalations));
+        Sender.Tell(new SupervisorSnapshot(_started, _completed, _failed, _escalations, _totalQualityConcerns));
     }
 
     private void TrackAdapterFailures(string error)
@@ -284,3 +377,4 @@ public sealed class SupervisorActor : ReceiveActor
         return true;
     }
 }
+

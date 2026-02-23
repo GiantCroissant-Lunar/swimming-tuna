@@ -466,7 +466,7 @@ public sealed class SubTaskTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
             $"supervisor-{suffix}");
 
         var blackboardActor = Sys.ActorOf(
@@ -493,7 +493,8 @@ public sealed class SubTaskTests : TestKit
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                _options)),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);

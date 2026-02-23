@@ -28,7 +28,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         RuntimeTelemetry telemetry,
         IActorRef capabilityRegistry,
         SwarmRole[] capabilities,
-        TimeSpan idleTtl = default(TimeSpan))
+        TimeSpan idleTtl = default)
     {
         _options = options;
         _agentFrameworkRoleEngine = agentFrameworkRoleEngine;
@@ -47,7 +47,8 @@ public sealed class SwarmAgentActor : ReceiveActor
         Receive<HelpResponse>(_ => { });
         Receive<ContractNetBidRequest>(HandleContractNetBidRequest);
         Receive<ContractNetAward>(_ => { });
-        if (_idleTtl > TimeSpan.Zero)
+
+        if (idleTtl > TimeSpan.Zero)
         {
             Receive<ReceiveTimeout>(_ => OnIdleTimeout());
         }
@@ -126,8 +127,8 @@ public sealed class SwarmAgentActor : ReceiveActor
                 return;
             }
 
-            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
-            activity?.SetTag("output.length", output.Length);
+            var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            activity?.SetTag("output.length", result.Output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
@@ -136,7 +137,7 @@ public sealed class SwarmAgentActor : ReceiveActor
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode);
 
-            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow));
+            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, result.Output, DateTimeOffset.UtcNow, AdapterId: result.AdapterId));
         }
         catch (Exception exception)
         {
