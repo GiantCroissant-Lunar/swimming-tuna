@@ -171,17 +171,17 @@ public partial class Main : Control
         // Main margin container
         var margin = new MarginContainer();
         margin.SetAnchorsPreset(LayoutPreset.FullRect);
-        margin.AddThemeConstantOverride("margin_left", 12);
-        margin.AddThemeConstantOverride("margin_top", 12);
-        margin.AddThemeConstantOverride("margin_right", 12);
-        margin.AddThemeConstantOverride("margin_bottom", 12);
+        margin.AddThemeConstantOverride("margin_left", 16);
+        margin.AddThemeConstantOverride("margin_top", 16);
+        margin.AddThemeConstantOverride("margin_right", 16);
+        margin.AddThemeConstantOverride("margin_bottom", 16);
         AddChild(margin);
 
         // Main vertical split: top content vs log
         var mainVSplit = new VSplitContainer();
         mainVSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         mainVSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        mainVSplit.SplitOffsets = new int[] { 500 };
+        mainVSplit.SplitOffsets = new int[] { 550 };
         margin.AddChild(mainVSplit);
 
         // Top section with header and content
@@ -197,7 +197,7 @@ public partial class Main : Control
         var contentHSplit = new HSplitContainer();
         contentHSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         contentHSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        contentHSplit.SplitOffsets = new int[] { 300 };
+        contentHSplit.SplitOffsets = new int[] { 350 };
         topVBox.AddChild(contentHSplit);
 
         // Left: Task tree and list
@@ -298,27 +298,32 @@ public partial class Main : Control
         // Tree label
         var treeLabel = new Label();
         treeLabel.Text = "Task Hierarchy";
-        treeLabel.AddThemeFontSizeOverride("font_size", 12);
+        treeLabel.AddThemeFontSizeOverride("font_size", 14);
+        treeLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         leftVBox.AddChild(treeLabel);
 
         // Tree
         _taskTree = new Tree();
         _taskTree.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         _taskTree.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        _taskTree.CustomMinimumSize = new Vector2(0, 150);
+        _taskTree.CustomMinimumSize = new Vector2(0, 200);
         _taskTree.HideRoot = true;
         _taskTree.ItemSelected += OnTaskTreeItemSelected;
         leftVBox.AddChild(_taskTree);
 
+        leftVBox.AddChild(new HSeparator());
+
         // List label
         var listLabel = new Label();
         listLabel.Text = "Active Tasks";
-        listLabel.AddThemeFontSizeOverride("font_size", 12);
+        listLabel.AddThemeFontSizeOverride("font_size", 14);
+        listLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         leftVBox.AddChild(listLabel);
 
         // Task list
         _taskList = new ItemList();
         _taskList.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _taskList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _taskList.CustomMinimumSize = new Vector2(0, 150);
         _taskList.AllowReselect = true;
         _taskList.SelectMode = ItemList.SelectModeEnum.Single;
@@ -341,19 +346,23 @@ public partial class Main : Control
         // Task Details Section
         var detailsLabel = new Label();
         detailsLabel.Text = "Task Details";
-        detailsLabel.AddThemeFontSizeOverride("font_size", 14);
+        detailsLabel.AddThemeFontSizeOverride("font_size", 16);
+        detailsLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         rightVBox.AddChild(detailsLabel);
 
         _selectedTaskLabel = new Label();
         _selectedTaskLabel.Text = "No task selected";
+        _selectedTaskLabel.AddThemeFontSizeOverride("font_size", 14);
         rightVBox.AddChild(_selectedTaskLabel);
 
         _taskStatusLabel = new Label();
         _taskStatusLabel.Text = "Status: -";
+        _taskStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
         rightVBox.AddChild(_taskStatusLabel);
 
         _taskRoleLabel = new Label();
         _taskRoleLabel.Text = "Role: -";
+        _taskRoleLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
         rightVBox.AddChild(_taskRoleLabel);
 
         _taskProgressBar = new ProgressBar();
@@ -368,7 +377,8 @@ public partial class Main : Control
         // HITL Controls
         var hitlLabel = new Label();
         hitlLabel.Text = "HITL Controls";
-        hitlLabel.AddThemeFontSizeOverride("font_size", 14);
+        hitlLabel.AddThemeFontSizeOverride("font_size", 16);
+        hitlLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         rightVBox.AddChild(hitlLabel);
 
         var hitlRow1 = new HBoxContainer();
@@ -436,19 +446,23 @@ public partial class Main : Control
         // Status Widgets
         var widgetsLabel = new Label();
         widgetsLabel.Text = "Status Widgets";
-        widgetsLabel.AddThemeFontSizeOverride("font_size", 14);
+        widgetsLabel.AddThemeFontSizeOverride("font_size", 16);
+        widgetsLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         rightVBox.AddChild(widgetsLabel);
 
         _qualityStatusLabel = new Label();
         _qualityStatusLabel.Text = "Quality: -";
+        _qualityStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
         rightVBox.AddChild(_qualityStatusLabel);
 
         _retryStatusLabel = new Label();
         _retryStatusLabel.Text = "Retries: 0";
+        _retryStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
         rightVBox.AddChild(_retryStatusLabel);
 
         _adapterStatusLabel = new Label();
         _adapterStatusLabel.Text = "Adapter: -";
+        _adapterStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
         rightVBox.AddChild(_adapterStatusLabel);
 
         rightVBox.AddChild(new HSeparator());
@@ -456,7 +470,8 @@ public partial class Main : Control
         // Dynamic Components
         var dynLabel = new Label();
         dynLabel.Text = "Dynamic Components";
-        dynLabel.AddThemeFontSizeOverride("font_size", 14);
+        dynLabel.AddThemeFontSizeOverride("font_size", 16);
+        dynLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         rightVBox.AddChild(dynLabel);
 
         _componentContainer = new VBoxContainer();
@@ -477,7 +492,8 @@ public partial class Main : Control
 
         var logLabel = new Label();
         logLabel.Text = "Event Log";
-        logLabel.AddThemeFontSizeOverride("font_size", 12);
+        logLabel.AddThemeFontSizeOverride("font_size", 14);
+        logLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
         logVBox.AddChild(logLabel);
 
         _logOutput = new RichTextLabel();
