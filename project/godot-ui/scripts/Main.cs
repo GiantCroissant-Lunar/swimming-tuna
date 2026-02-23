@@ -114,8 +114,14 @@ public partial class Main : Control
         if (what == NotificationWMCloseRequest)
         {
             Shutdown();
-            GetTree().Quit();
+            // Use deferred quit to allow cleanup
+            CallDeferred(nameof(DeferredQuit));
         }
+    }
+
+    private void DeferredQuit()
+    {
+        GetTree().Quit();
     }
 
     public override void _ExitTree()
@@ -128,6 +134,8 @@ public partial class Main : Control
         if (_shuttingDown) return;
         _shuttingDown = true;
 
+        GD.Print("[Shutdown] Cleaning up resources...");
+
         if (_pollTimer is not null)
         {
             _pollTimer.Stop();
@@ -138,19 +146,24 @@ public partial class Main : Control
 
         if (_recentRequest is not null)
         {
-            _recentRequest.CancelRequest();
             _recentRequest.RequestCompleted -= OnRecentRequestCompleted;
-            _recentRequest.QueueFree();
+            _recentRequest.CancelRequest();
             _recentRequest = null;
         }
 
         if (_actionRequest is not null)
         {
-            _actionRequest.CancelRequest();
             _actionRequest.RequestCompleted -= OnActionRequestCompleted;
-            _actionRequest.QueueFree();
+            _actionRequest.CancelRequest();
             _actionRequest = null;
         }
+
+        // Clear collections to help GC
+        _taskListTaskIds.Clear();
+        _taskListByIndex.Clear();
+        _taskGraphState.Clear();
+
+        GD.Print("[Shutdown] Cleanup complete");
     }
 
     private void BuildLayout()
