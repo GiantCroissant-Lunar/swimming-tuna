@@ -113,18 +113,22 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<SubTaskFailed>(OnSubTaskFailed);
         Receive<RetryRole>(OnRetryRole);
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
+        Receive<QualityConcern>(OnQualityConcern);
     }
 
     protected override void PreStart()
     {
         // Subscribe to global blackboard changes for stigmergy signals
         Context.System.EventStream.Subscribe(Self, typeof(GlobalBlackboardChanged));
+        // Subscribe to quality concerns from agent actors
+        Context.System.EventStream.Subscribe(Self, typeof(QualityConcern));
         base.PreStart();
     }
 
     protected override void PostStop()
     {
         Context.System.EventStream.Unsubscribe(Self, typeof(GlobalBlackboardChanged));
+        Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
         _blackboardActor.Tell(new RemoveBlackboard(_taskId));
         base.PostStop();
     }
@@ -175,6 +179,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             taskId: _taskId,
             role: message.Role.ToString().ToLowerInvariant());
 
+        // Track confidence in activity for telemetry
+        activity?.SetTag("quality.confidence", message.Confidence);
+
         switch (message.Role)
         {
             case SwarmRole.Orchestrator:
@@ -186,6 +193,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _worldState = (WorldState)_worldState.With(WorldKey.PlanExists, true);
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("planner_output", message.Output);
+                StoreBlackboard("planner_confidence", message.Confidence.ToString("F2"));
                 SpawnSubTasksIfPresent(message.Output);
                 break;
 
@@ -194,11 +202,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _worldState = (WorldState)_worldState.With(WorldKey.BuildExists, true);
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("builder_output", message.Output);
+                StoreBlackboard("builder_confidence", message.Confidence.ToString("F2"));
                 break;
 
             case SwarmRole.Reviewer:
                 _reviewOutput = message.Output;
-                var passed = !ContainsRejection(message.Output);
+                var passed = !ContainsRejection(message.Output) && message.Confidence >= QualityEvaluator.QualityConcernThreshold;
                 if (passed)
                 {
                     _worldState = (WorldState)_worldState
@@ -221,6 +230,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("reviewer_output", message.Output);
                 StoreBlackboard("review_passed", passed.ToString());
+                StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
                 break;
         }
 
@@ -782,4 +792,41 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     // Trigger message to start the coordination loop after actor creation
     internal sealed record StartCoordination;
+
+    private void OnQualityConcern(QualityConcern message)
+    {
+        // Only process quality concerns for this task
+        if (!message.TaskId.Equals(_taskId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        using var activity = _telemetry.StartActivity(
+            "task-coordinator.quality.concern",
+            taskId: _taskId,
+            role: message.Role.ToString().ToLowerInvariant());
+
+        activity?.SetTag("quality.confidence", message.Confidence);
+        activity?.SetTag("quality.concern", message.Concern);
+
+        _logger.LogWarning(
+            "TaskCoordinator received quality concern taskId={TaskId} role={Role} confidence={Confidence:F2}",
+            _taskId,
+            message.Role,
+            message.Confidence);
+
+        // Store quality concern in blackboard for context
+        StoreBlackboard($"quality_concern_{message.Role.ToString().ToLowerInvariant()}",
+            $"{message.Concern} (confidence: {message.Confidence:F2})");
+
+        // Adjust world state based on confidence level
+        if (message.Confidence < QualityEvaluator.SelfRetryThreshold)
+        {
+            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, true);
+            _logger.LogWarning(
+                "Low confidence detected taskId={TaskId} role={Role} - marking high failure risk",
+                _taskId,
+                message.Role);
+        }
+    }
 }
