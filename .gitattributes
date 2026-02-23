@@ -1,1 +1,4 @@
 .github/workflows/*.lock.yml linguist-generated=true merge=ours
+project/dotnet/src/SwarmAssistant.Contracts/Generated/**  linguist-generated=true
+project/src/generated/**                                   linguist-generated=true
+project/docs/openapi/schemas/**                            linguist-generated=true
