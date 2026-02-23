@@ -223,7 +223,7 @@ def _api_request(
 ) -> dict | None:
     """Make an authenticated POST to the Supermemory API."""
     url = f"{API_BASE}{endpoint}"
-    req = urllib.request.Request(
+    req = urllib.request.Request(  # noqa: S310
         url,
         data=json.dumps(body).encode(),
         headers={
@@ -233,7 +233,7 @@ def _api_request(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             return json.loads(resp.read())
     except (
         urllib.error.URLError,

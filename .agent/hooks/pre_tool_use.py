@@ -24,7 +24,10 @@ def main() -> None:
         else:
             print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": f"tool '{tool_name}' not permitted"}))
     else:
-        print(json.dumps({"result": "ok", "tool_name": tool_name}))
+        if approved:
+            print(json.dumps({"result": "ok", "tool_name": tool_name}))
+        else:
+            print(json.dumps({"result": "deny", "tool_name": tool_name}))
 
 
 if __name__ == "__main__":
