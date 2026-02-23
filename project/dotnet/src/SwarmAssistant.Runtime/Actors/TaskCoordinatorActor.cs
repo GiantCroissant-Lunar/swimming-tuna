@@ -38,7 +38,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         @"SUBTASK:\s*([^|\n\r]+)\|([^\n\r]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
-    internal const int MaxSubTaskDepth = 3;
+    internal const int MaxAllowedSubTaskDepth = 10;
 
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
@@ -67,7 +67,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private int _retryCount;
     private readonly int _maxRetries;
+    private bool _isPaused;
     private GoapPlanResult? _lastGoapPlan;
+    private string? _deferredActionName;
+    private int? _maxSubTaskDepthOverride;
     private readonly HashSet<string> _childTaskIds = new(StringComparer.Ordinal);
     private readonly HashSet<string> _pendingChildTaskIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _blackboardEntries = new(StringComparer.Ordinal);
@@ -134,6 +137,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
         Receive<ConsensusResult>(OnConsensusResult);
         Receive<QualityConcern>(OnQualityConcern);
+        Receive<TaskInterventionCommand>(OnTaskInterventionCommand);
     }
 
     protected override void PreStart()
@@ -525,8 +529,177 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _ => "Plan"
     };
 
+    private void OnTaskInterventionCommand(TaskInterventionCommand message)
+    {
+        if (!string.Equals(message.TaskId, _taskId, StringComparison.Ordinal))
+        {
+            Sender.Tell(new TaskInterventionResult(
+                message.TaskId,
+                message.ActionId,
+                Accepted: false,
+                ReasonCode: "task_mismatch",
+                Message: "Intervention taskId does not match coordinator task."));
+            return;
+        }
+
+        var actionId = message.ActionId.Trim().ToLowerInvariant();
+        switch (actionId)
+        {
+            case "approve_review":
+                if (CurrentStatus != TaskState.Reviewing)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task must be in reviewing state."));
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(message.Comment))
+                {
+                    StoreBlackboard("human_review_approval_comment", message.Comment);
+                }
+
+                _worldState = (WorldState)_worldState
+                    .With(WorldKey.ReviewPassed, true)
+                    .With(WorldKey.ReviewRejected, false);
+                StoreBlackboard("review_passed", true.ToString());
+
+                Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "approved"));
+                FinishTask();
+                return;
+
+            case "reject_review":
+                if (CurrentStatus != TaskState.Reviewing)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task must be in reviewing state."));
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(message.Reason))
+                {
+                    Sender.Tell(RejectedIntervention(message, "payload_invalid", "A rejection reason is required."));
+                    return;
+                }
+
+                Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "rejected"));
+                BlockFromIntervention($"Review rejected by human: {message.Reason.Trim()}");
+                return;
+
+            case "request_rework":
+                if (CurrentStatus != TaskState.Building && CurrentStatus != TaskState.Reviewing)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task must be building or reviewing."));
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(message.Feedback))
+                {
+                    Sender.Tell(RejectedIntervention(message, "payload_invalid", "Rework feedback is required."));
+                    return;
+                }
+
+                StoreBlackboard("human_rework_feedback", message.Feedback.Trim());
+                Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "rework_requested"));
+                DispatchAction("Rework");
+                return;
+
+            case "pause_task":
+                if (_isPaused)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task is already paused."));
+                    return;
+                }
+
+                if (CurrentStatus is TaskState.Done or TaskState.Blocked)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task is already in a terminal state."));
+                    return;
+                }
+
+                _isPaused = true;
+                _uiEvents.Publish(
+                    type: "agui.task.transition",
+                    taskId: _taskId,
+                    payload: new
+                    {
+                        source = Self.Path.Name,
+                        action = "Paused",
+                        decidedBy = "human"
+                    });
+
+                Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "paused"));
+                return;
+
+            case "resume_task":
+                if (!_isPaused)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task is not paused."));
+                    return;
+                }
+
+                _isPaused = false;
+                _uiEvents.Publish(
+                    type: "agui.task.transition",
+                    taskId: _taskId,
+                    payload: new
+                    {
+                        source = Self.Path.Name,
+                        action = "Resumed",
+                        decidedBy = "human"
+                    });
+
+                Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "resumed"));
+                if (!string.IsNullOrWhiteSpace(_deferredActionName))
+                {
+                    var actionToDispatch = _deferredActionName;
+                    _deferredActionName = null;
+                    DispatchAction(actionToDispatch);
+                }
+                else
+                {
+                    DecideAndExecute();
+                }
+
+                return;
+
+            case "set_subtask_depth":
+                if (_planningOutput is not null)
+                {
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Sub-task depth can only be set before planning output exists."));
+                    return;
+                }
+
+                if (message.MaxSubTaskDepth is null || message.MaxSubTaskDepth < 0 || message.MaxSubTaskDepth > MaxAllowedSubTaskDepth)
+                {
+                    Sender.Tell(RejectedIntervention(
+                        message,
+                        "payload_invalid",
+                        $"depth must be between 0 and {MaxAllowedSubTaskDepth}."));
+                    return;
+                }
+
+                _maxSubTaskDepthOverride = message.MaxSubTaskDepth.Value;
+                StoreBlackboard("subtask_depth_override", _maxSubTaskDepthOverride.Value.ToString());
+                Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "subtask_depth_updated"));
+                return;
+
+            default:
+                Sender.Tell(RejectedIntervention(message, "unsupported_action", "Unsupported intervention action."));
+                return;
+        }
+    }
+
+    private TaskInterventionResult RejectedIntervention(TaskInterventionCommand command, string reasonCode, string message) =>
+        new(command.TaskId, command.ActionId, Accepted: false, ReasonCode: reasonCode, Message: message);
+
+    private TaskState CurrentStatus => _taskRegistry.GetTask(_taskId)?.Status ?? TaskState.Queued;
+
     private void DecideAndExecute()
     {
+        if (_isPaused)
+        {
+            _logger.LogInformation("Task execution paused taskId={TaskId}; skipping GOAP decision loop", _taskId);
+            return;
+        }
+
         var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask, _strategyAdvice?.RecommendedCostAdjustments);
         _lastGoapPlan = planResult;
 
@@ -594,6 +767,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private void DispatchAction(string actionName)
     {
+        if (_isPaused)
+        {
+            _deferredActionName = actionName;
+            _logger.LogInformation(
+                "Task is paused; deferring action={Action} taskId={TaskId}",
+                actionName,
+                _taskId);
+            return;
+        }
+
         switch (actionName)
         {
             case "Plan":
@@ -788,6 +971,31 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Context.Stop(Self);
     }
 
+    private void BlockFromIntervention(string reason)
+    {
+        _logger.LogWarning("Human intervention blocked task taskId={TaskId} reason={Reason}", _taskId, reason);
+
+        _worldState = (WorldState)_worldState.With(WorldKey.TaskBlocked, true);
+        _taskRegistry.MarkFailed(_taskId, reason);
+
+        _supervisorActor.Tell(new TaskFailed(
+            _taskId, TaskState.Blocked, reason, DateTimeOffset.UtcNow, Self.Path.Name));
+        _supervisorActor.Tell(new EscalationRaised(
+            _taskId, reason, 1, DateTimeOffset.UtcNow, Self.Path.Name));
+
+        _uiEvents.Publish(
+            type: "agui.task.failed",
+            taskId: _taskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                error = reason,
+                a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, reason)
+            });
+
+        Context.Stop(Self);
+    }
+
     private void ReportFailureToGlobalBlackboard(string failureReason)
     {
         _blackboardActor.Tell(new UpdateGlobalBlackboard(
@@ -870,7 +1078,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private void SpawnSubTasksIfPresent(string planningOutput)
     {
-        if (_subTaskDepth >= MaxSubTaskDepth)
+        var effectiveMaxSubTaskDepth = _maxSubTaskDepthOverride ?? _options.DefaultMaxSubTaskDepth;
+        if (_subTaskDepth >= effectiveMaxSubTaskDepth)
         {
             _logger.LogWarning(
                 "Max sub-task depth {Depth} reached; skipping SUBTASK spawning taskId={TaskId}",

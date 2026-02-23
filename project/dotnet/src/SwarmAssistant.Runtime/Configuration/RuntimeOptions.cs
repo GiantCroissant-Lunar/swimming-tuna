@@ -134,6 +134,17 @@ public sealed class RuntimeOptions
         init => _strategyAdvisorCacheTtlMinutes = Math.Clamp(value, 1, 1440);
     }
 
+    /// <summary>
+    /// Default maximum sub-task spawning depth for task coordinators.
+    /// Values are clamped to [0, 10].
+    /// </summary>
+    private int _defaultMaxSubTaskDepth = 3;
+    public int DefaultMaxSubTaskDepth
+    {
+        get => _defaultMaxSubTaskDepth;
+        init => _defaultMaxSubTaskDepth = Math.Clamp(value, 0, 10);
+    }
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 

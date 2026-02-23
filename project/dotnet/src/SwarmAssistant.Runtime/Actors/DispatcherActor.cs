@@ -1,4 +1,5 @@
 using Akka.Actor;
+using Akka.Pattern;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
@@ -74,6 +75,7 @@ public sealed class DispatcherActor : ReceiveActor
 
         Receive<TaskAssigned>(HandleTaskAssigned);
         Receive<SpawnSubTask>(HandleSpawnSubTask);
+        Receive<TaskInterventionCommand>(HandleTaskInterventionCommand);
         Receive<SpawnAgent>(HandleSpawnAgent);
         Receive<Terminated>(OnCoordinatorTerminated);
     }
@@ -197,6 +199,33 @@ public sealed class DispatcherActor : ReceiveActor
             message.ChildTaskId, message.ParentTaskId, message.Depth);
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+    }
+
+    private void HandleTaskInterventionCommand(TaskInterventionCommand message)
+    {
+        if (!_coordinators.TryGetValue(message.TaskId, out var coordinator))
+        {
+            Sender.Tell(new TaskInterventionResult(
+                message.TaskId,
+                message.ActionId,
+                Accepted: false,
+                ReasonCode: "task_not_found",
+                Message: "Task coordinator not found."));
+            return;
+        }
+
+        coordinator
+            .Ask<TaskInterventionResult>(message, TimeSpan.FromSeconds(5))
+            .PipeTo(
+                Sender,
+                Self,
+                success: result => result,
+                failure: ex => new TaskInterventionResult(
+                    message.TaskId,
+                    message.ActionId,
+                    Accepted: false,
+                    ReasonCode: "dispatch_failed",
+                    Message: ex.Message));
     }
 
     private void HandleSpawnAgent(SpawnAgent message)

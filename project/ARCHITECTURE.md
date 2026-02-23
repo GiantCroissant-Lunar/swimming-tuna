@@ -180,6 +180,8 @@ Every AG-UI event is delivered in this wrapper:
 | `agui.ui.surface` | task | Create/replace an A2UI surface in Godot. |
 | `agui.ui.patch` | task | Incremental data-model update to an existing surface. |
 | `agui.action.received` | any | Echo published on every `POST /ag-ui/actions` before processing. |
+| `agui.action.acknowledged` | task | Deterministic ACK for accepted HITL intervention actions. |
+| `agui.action.rejected` | task | Deterministic rejection for failed HITL intervention actions (includes reasonCode). |
 | `agui.memory.bootstrap` | runtime | Startup memory restore summary. |
 | `agui.memory.bootstrap.failed` | runtime | Startup memory restore failure. |
 | `agui.memory.tasks` | runtime | Task summary list (bootstrap or `load_memory`). |
@@ -195,12 +197,12 @@ Actions are submitted as `POST /ag-ui/actions` with body `{ "actionId": "...", "
 | `refresh_surface` | implemented | required | Rebuild A2UI surface for the task. |
 | `submit_task` | implemented | n/a (use `payload.taskId`) | Submit a new task; `payload` requires `title`. Optional `payload.taskId` sets the task ID (top-level `taskId` field is unused for this action). |
 | `load_memory` | implemented | optional | Fetch persisted task list from ArcadeDB. |
-| `approve_review` | planned | required | HITL: approve reviewer output, advance to Done. |
-| `reject_review` | planned | required | HITL: reject reviewer output, mark failed. |
-| `request_rework` | planned | required | HITL: send back to Builder with feedback. |
-| `pause_task` | planned | required | Suspend a running task's role execution. |
-| `resume_task` | planned | required | Resume a paused task. |
-| `set_subtask_depth` | planned | required | Override max sub-task depth before planning starts. |
+| `approve_review` | implemented | required | HITL: approve reviewer output, advance to Done. |
+| `reject_review` | implemented | required | HITL: reject reviewer output, mark failed. |
+| `request_rework` | implemented | required | HITL: send back to Builder with feedback. |
+| `pause_task` | implemented | required | Suspend a running task's role execution. |
+| `resume_task` | implemented | required | Resume a paused task. |
+| `set_subtask_depth` | implemented | required | Override max sub-task depth before planning starts. |
 
 ### A2UI Payloads (Godot Consumption)
 

@@ -223,12 +223,13 @@ public sealed class SubTaskTests : TestKit
     // --- Circular dependency / depth limit test ---
 
     [Fact]
-    public void TaskCoordinatorActor_MaxSubTaskDepth_IsBounded()
+    public void RuntimeOptions_DefaultMaxSubTaskDepth_IsBounded()
     {
-        Assert.True(TaskCoordinatorActor.MaxSubTaskDepth > 0,
-            "MaxSubTaskDepth should be positive to allow at least one level of sub-tasks");
-        Assert.True(TaskCoordinatorActor.MaxSubTaskDepth <= 10,
-            "MaxSubTaskDepth should have a reasonable upper bound to prevent runaway recursion");
+        var min = new RuntimeOptions { DefaultMaxSubTaskDepth = -1 };
+        var max = new RuntimeOptions { DefaultMaxSubTaskDepth = 100 };
+
+        Assert.Equal(0, min.DefaultMaxSubTaskDepth);
+        Assert.Equal(TaskCoordinatorActor.MaxAllowedSubTaskDepth, max.DefaultMaxSubTaskDepth);
     }
 
     // --- Actor-level SUBTASK parsing / GOAP gating tests ---
@@ -380,6 +381,101 @@ public sealed class SubTaskTests : TestKit
 
         // Coordinator should not send any more worker messages after failure
         workerProbe.ExpectNoMsg(PauseVerificationTimeout);
+    }
+
+    [Fact]
+    public void TaskCoordinatorActor_PauseAndResume_DefersDispatchUntilResumed()
+    {
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+
+        var taskId = $"coord-pause-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Pause Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Pause Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, 2, 0)));
+
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
+
+        coordinator.Tell(new TaskInterventionCommand(taskId, "pause_task"));
+        var pauseAck = ExpectMsg<TaskInterventionResult>(ActorResponseTimeout);
+        Assert.True(pauseAck.Accepted);
+
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
+
+        workerProbe.ExpectNoMsg(PauseVerificationTimeout);
+
+        coordinator.Tell(new TaskInterventionCommand(taskId, "resume_task"));
+        var resumeAck = ExpectMsg<TaskInterventionResult>(ActorResponseTimeout);
+        Assert.True(resumeAck.Accepted);
+
+        workerProbe.ExpectMsg<ExecuteRoleTask>(
+            m => m.Role == SwarmRole.Planner,
+            ActorResponseTimeout,
+            "Coordinator should dispatch deferred plan action after resume");
+    }
+
+    [Fact]
+    public void TaskCoordinatorActor_SetSubTaskDepthOverride_AppliesPerTask()
+    {
+        var options = new RuntimeOptions
+        {
+            AgentFrameworkExecutionMode = _options.AgentFrameworkExecutionMode,
+            CliAdapterOrder = _options.CliAdapterOrder,
+            WorkerPoolSize = _options.WorkerPoolSize,
+            ReviewerPoolSize = _options.ReviewerPoolSize,
+            MaxCliConcurrency = _options.MaxCliConcurrency,
+            SandboxMode = _options.SandboxMode,
+            DefaultMaxSubTaskDepth = 0
+        };
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(options, _loggerFactory, _telemetry);
+
+        var taskId = $"coord-depth-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Depth Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Depth Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, options, null, null, 2, 0)));
+
+        coordinator.Tell(new TaskInterventionCommand(taskId, "set_subtask_depth", MaxSubTaskDepth: 1));
+        var depthAck = ExpectMsg<TaskInterventionResult>(ActorResponseTimeout);
+        Assert.True(depthAck.Accepted);
+
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
+
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
+
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, ActorResponseTimeout);
+
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Planner, "SUBTASK: Child|Do work", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
+
+        var spawn = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
+        Assert.Equal(1, spawn.Depth);
     }
 
     // --- Integration: DispatcherActor spawns child coordinator ---
