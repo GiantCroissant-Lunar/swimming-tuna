@@ -1,0 +1,745 @@
+openapi: "3.1.0"
+
+info:
+  title: SwarmAssistant Runtime API
+  version: "1.0.0"
+  description: >
+    REST API for the SwarmAssistant runtime. Exposes health, AG-UI event/action
+    gateway, A2A task submission, and memory read endpoints.
+
+servers:
+  - url: http://127.0.0.1:5080
+    description: Local development runtime
+
+security: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >
+        Optional shared secret set via `Runtime__ApiKey` environment variable.
+        When configured, all protected endpoints require this header.
+
+  schemas:
+    # ── Shared error envelope ──────────────────────────────────────────────
+    ErrorEnvelope:
+      type: object
+      description: Standardised error response body returned on 4xx/5xx responses.
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+          examples:
+            - "task not found"
+            - "invalid action id"
+        taskId:
+          type:
+            - string
+            - "null"
+          description: Task identifier associated with the error, when applicable.
+        actionId:
+          type:
+            - string
+            - "null"
+          description: Action identifier associated with the error, when applicable.
+        reasonCode:
+          type:
+            - string
+            - "null"
+          description: Machine-readable reason code.
+          examples:
+            - "not_found"
+            - "invalid_state"
+            - "actor_unavailable"
+
+    # ── Health ─────────────────────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      description: Response body for the `/healthz` health check endpoint.
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Always `true` when the runtime is reachable.
+          examples:
+            - true
+
+    # ── Task state enum ────────────────────────────────────────────────────
+    TaskState:
+      type: string
+      enum:
+        - queued
+        - planning
+        - building
+        - reviewing
+        - done
+        - blocked
+      description: Lifecycle state of a swarm task.
+
+    # ── Task snapshot ──────────────────────────────────────────────────────
+    TaskSnapshot:
+      type: object
+      description: Full snapshot of a swarm task including all role outputs.
+      required:
+        - taskId
+        - title
+        - description
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        taskId:
+          type: string
+          description: Unique task identifier.
+        title:
+          type: string
+          description: Short human-readable task title.
+        description:
+          type: string
+          description: Full task description.
+        status:
+          $ref: "#/components/schemas/TaskState"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the task was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the last status update.
+        planningOutput:
+          type:
+            - string
+            - "null"
+          description: Output produced by the planner role.
+        buildOutput:
+          type:
+            - string
+            - "null"
+          description: Output produced by the builder role.
+        reviewOutput:
+          type:
+            - string
+            - "null"
+          description: Output produced by the reviewer role.
+        summary:
+          type:
+            - string
+            - "null"
+          description: Final summary when the task is completed.
+        error:
+          type:
+            - string
+            - "null"
+          description: Error message when the task has failed.
+        parentTaskId:
+          type:
+            - string
+            - "null"
+          description: Identifier of the parent task, if this is a sub-task.
+        childTaskIds:
+          type:
+            - array
+            - "null"
+          items:
+            type: string
+          description: Identifiers of child sub-tasks spawned by this task.
+
+    # ── Task summary (lightweight list item) ──────────────────────────────
+    TaskSummary:
+      type: object
+      description: Lightweight task representation used in list responses.
+      required:
+        - taskId
+        - title
+        - status
+        - updatedAt
+      properties:
+        taskId:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskState"
+        updatedAt:
+          type: string
+          format: date-time
+        error:
+          type:
+            - string
+            - "null"
+
+    # ── Memory list response ───────────────────────────────────────────────
+    MemoryTaskListResponse:
+      type: object
+      description: Response body for `GET /memory/tasks` containing a list of task snapshots.
+      required:
+        - source
+        - items
+      properties:
+        source:
+          type: string
+          description: Backend that served the results (`arcadedb` or `registry`).
+          enum:
+            - arcadedb
+            - registry
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskSnapshot"
+
+    # ── AG-UI event envelope ───────────────────────────────────────────────
+    UiEventEnvelope:
+      type: object
+      description: A single event emitted by the AG-UI event stream.
+      required:
+        - sequence
+        - type
+        - at
+        - payload
+      properties:
+        sequence:
+          type: integer
+          format: int64
+          description: Monotonically increasing sequence number.
+        type:
+          type: string
+          description: >
+            Event type discriminator (e.g. `agui.task.snapshot`,
+            `agui.task.status`, `agui.graph.node`, `agui.graph.edge`).
+        taskId:
+          type:
+            - string
+            - "null"
+          description: Associated task identifier, when applicable.
+        at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the event was emitted.
+        payload:
+          type: object
+          additionalProperties: true
+          description: Event-specific payload; shape varies by `type`.
+
+    # ── AG-UI action request ───────────────────────────────────────────────
+    UiActionRequest:
+      type: object
+      description: Action submitted by a UI client via the AG-UI actions gateway.
+      required:
+        - actionId
+      properties:
+        taskId:
+          type:
+            - string
+            - "null"
+          description: Target task identifier, required for task-scoped actions.
+        actionId:
+          type: string
+          description: >
+            Action to perform. Supported values:
+            `request_snapshot`, `refresh_surface`, `submit_task`, `load_memory`,
+            `approve_review`, `reject_review`, `request_rework`,
+            `pause_task`, `resume_task`, `approve_task`, `cancel_task`,
+            `set_subtask_depth`.
+          enum:
+            - request_snapshot
+            - refresh_surface
+            - submit_task
+            - load_memory
+            - approve_review
+            - reject_review
+            - request_rework
+            - pause_task
+            - resume_task
+            - approve_task
+            - cancel_task
+            - set_subtask_depth
+        payload:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+          description: >
+            Action-specific payload. For `submit_task`, provide `title` and
+            optional `description` / `taskId` keys. For `set_subtask_depth`,
+            provide `depth` (integer). For `load_memory`, provide optional
+            `limit` (integer).
+
+    # ── AG-UI action response ──────────────────────────────────────────────
+    UiActionResponse:
+      type: object
+      description: Acknowledgement returned after a UI action is enqueued.
+      required:
+        - actionId
+        - reasonCode
+      properties:
+        actionId:
+          type: string
+          description: Echoes the submitted `actionId`.
+        taskId:
+          type:
+            - string
+            - "null"
+          description: Target task identifier, when applicable.
+        reasonCode:
+          type: string
+          description: Machine-readable outcome code (e.g. `accepted`).
+
+    # ── A2A task submit request ────────────────────────────────────────────
+    A2aTaskSubmitRequest:
+      type: object
+      description: Payload for submitting a new agent-to-agent task.
+      required:
+        - title
+      properties:
+        taskId:
+          type:
+            - string
+            - "null"
+          description: Optional caller-supplied task identifier. Auto-generated if omitted.
+        title:
+          type: string
+          description: Short human-readable task title.
+        description:
+          type:
+            - string
+            - "null"
+          description: Full task description.
+        metadata:
+          type:
+            - object
+            - "null"
+          additionalProperties: true
+          description: Arbitrary caller-supplied metadata attached to the task.
+
+    # ── A2A task submit response ───────────────────────────────────────────
+    A2aTaskSubmitResponse:
+      type: object
+      description: Acknowledgement returned after an A2A task is accepted.
+      required:
+        - taskId
+        - status
+        - statusUrl
+      properties:
+        taskId:
+          type: string
+          description: Assigned task identifier.
+        status:
+          type: string
+          description: Always `accepted` on a successful submission.
+          enum:
+            - accepted
+        statusUrl:
+          type: string
+          description: Relative URL to poll for task status.
+
+    # ── A2A agent card ─────────────────────────────────────────────────────
+    AgentCard:
+      type: object
+      description: >
+        A2A agent capability descriptor served at
+        `/.well-known/agent-card.json`.
+      required:
+        - name
+        - version
+        - protocol
+        - capabilities
+        - endpoints
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        protocol:
+          type: string
+          description: Protocol identifier (e.g. `a2a`).
+        description:
+          type:
+            - string
+            - "null"
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: List of capability tags advertised by this agent.
+        endpoints:
+          type: object
+          additionalProperties:
+            type: string
+          description: Named endpoint URLs exposed by this agent.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid `X-API-Key` header.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    BadRequest:
+      description: The request body or query parameters are invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    ServiceUnavailable:
+      description: The actor system is unavailable or not yet initialised.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+paths:
+  # ── Health ───────────────────────────────────────────────────────────────
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Runtime health check
+      description: >
+        Returns `{ "ok": true }` when the runtime process is reachable.
+        This endpoint is **not** protected by API key.
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Runtime is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  # ── AG-UI ─────────────────────────────────────────────────────────────────
+  /ag-ui/recent:
+    get:
+      operationId: getAgUiRecentEvents
+      summary: Get recent AG-UI events
+      description: >
+        Returns the most recent events from the in-memory AG-UI event buffer.
+        The buffer is bounded; older events are evicted as new ones arrive.
+      tags:
+        - AG-UI
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: count
+          in: query
+          required: false
+          description: Maximum number of events to return (clamped to 1–200, default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Array of recent UI event envelopes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UiEventEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ag-ui/events:
+    get:
+      operationId: streamAgUiEvents
+      summary: Server-sent event stream for AG-UI events
+      description: >
+        Opens a long-lived SSE connection that delivers `UiEventEnvelope`
+        objects as they are emitted. Clients should reconnect on disconnect.
+      tags:
+        - AG-UI
+      security:
+        - ApiKeyAuth: []
+        - {}
+      responses:
+        "200":
+          description: SSE stream of `UiEventEnvelope` objects (text/event-stream).
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/UiEventEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ag-ui/actions:
+    post:
+      operationId: postAgUiAction
+      summary: Submit an AG-UI action
+      description: >
+        Enqueues an action for processing by the runtime actor system.
+        Supported actions include task submission, HITL interventions,
+        surface refresh, and memory queries.
+      tags:
+        - AG-UI
+      security:
+        - ApiKeyAuth: []
+        - {}
+      requestBody:
+        description: AG-UI action to enqueue.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UiActionRequest"
+            examples:
+              submit_task:
+                summary: Submit a new task
+                value:
+                  actionId: submit_task
+                  payload:
+                    title: "Design API contracts"
+                    description: "Focus on role state machine and event schema"
+              request_snapshot:
+                summary: Request a task snapshot
+                value:
+                  actionId: request_snapshot
+                  taskId: "task-abc123"
+                  payload:
+                    source: cli
+              approve_review:
+                summary: Approve a pending review
+                value:
+                  actionId: approve_review
+                  taskId: "task-abc123"
+                  payload: {}
+      responses:
+        "202":
+          description: Action accepted and enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UiActionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Action rejected due to an invalid task state transition.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  # ── Memory ────────────────────────────────────────────────────────────────
+  /memory/tasks:
+    get:
+      operationId: listMemoryTasks
+      summary: List persisted tasks from memory
+      description: >
+        Returns a list of task snapshots from the memory backend (ArcadeDB
+        when enabled, otherwise the in-process task registry).
+      tags:
+        - Memory
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of tasks to return (clamped to 1–500, default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+      responses:
+        "200":
+          description: Task list with source indicator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryTaskListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /memory/tasks/{taskId}:
+    get:
+      operationId: getMemoryTask
+      summary: Get a single persisted task by ID
+      description: >
+        Retrieves a full task snapshot from the memory backend. Falls back to
+        the in-process registry when ArcadeDB is unavailable.
+      tags:
+        - Memory
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: Unique task identifier.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full task snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── A2A ───────────────────────────────────────────────────────────────────
+  /.well-known/agent-card.json:
+    get:
+      operationId: getAgentCard
+      summary: A2A agent capability descriptor
+      description: >
+        Returns the agent card describing the capabilities of this runtime
+        instance, conforming to the A2A protocol discovery convention.
+        This endpoint is **not** protected by API key.
+      tags:
+        - A2A
+      responses:
+        "200":
+          description: Agent capability descriptor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCard"
+
+  /a2a/tasks:
+    get:
+      operationId: listA2aTasks
+      summary: List A2A tasks
+      description: Returns a lightweight summary list of all known agent tasks.
+      tags:
+        - A2A
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of tasks to return (default 50).
+          schema:
+            type: integer
+            minimum: 1
+            default: 50
+      responses:
+        "200":
+          description: Array of task summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      operationId: submitA2aTask
+      summary: Submit a new A2A task
+      description: >
+        Creates and enqueues a new swarm task via the A2A protocol.
+        Returns an acceptance acknowledgement with a polling URL.
+      tags:
+        - A2A
+      security:
+        - ApiKeyAuth: []
+        - {}
+      requestBody:
+        description: A2A task submission payload.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/A2aTaskSubmitRequest"
+            examples:
+              basic:
+                summary: Minimal task submission
+                value:
+                  title: "Design MVP contracts"
+                  description: "Focus on role state machine and event schema"
+              with_id:
+                summary: Task with caller-supplied ID
+                value:
+                  taskId: "my-custom-task-id"
+                  title: "Custom task"
+                  metadata:
+                    source: "external-system"
+      responses:
+        "202":
+          description: Task accepted and enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/A2aTaskSubmitResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /a2a/tasks/{taskId}:
+    get:
+      operationId: getA2aTask
+      summary: Get A2A task status
+      description: Returns the full snapshot of a single agent task.
+      tags:
+        - A2A
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: Unique task identifier.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full task snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+tags:
+  - name: Health
+    description: Runtime health and readiness probes.
+  - name: AG-UI
+    description: >
+      AG-UI gateway — real-time event stream and action ingress for UI clients
+      (Godot desktop client, browser dashboards).
+  - name: A2A
+    description: >
+      Agent-to-agent protocol endpoints for programmatic task submission and
+      capability discovery.
+  - name: Memory
+    description: >
+      Read access to persisted task snapshots via ArcadeDB or the in-process
+      task registry.
