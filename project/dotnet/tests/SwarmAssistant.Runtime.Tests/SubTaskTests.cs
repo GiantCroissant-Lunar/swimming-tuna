@@ -255,7 +255,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, null, null, 2, 0)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -336,7 +336,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, 2, 0)));
+                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 

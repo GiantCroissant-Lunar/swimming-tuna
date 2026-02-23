@@ -106,6 +106,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
+                null,
+                null,
                 DefaultMaxRetries,
                 0)),
             $"task-{message.TaskId}");
@@ -160,6 +162,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
+                null,
+                null,
                 DefaultMaxRetries,
                 message.Depth)),
             $"task-{message.ChildTaskId}");

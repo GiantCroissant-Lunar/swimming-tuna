@@ -1,5 +1,6 @@
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
+using SwarmAssistant.Runtime.Tasks;
 
 namespace SwarmAssistant.Runtime.Execution;
 
@@ -7,7 +8,12 @@ internal static class RolePromptFactory
 {
     public static string BuildPrompt(ExecuteRoleTask command)
     {
-        return command.Role switch
+        return BuildPrompt(command, strategyAdvice: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice)
+    {
+        var basePrompt = command.Role switch
         {
             SwarmRole.Planner => string.Join(
                 Environment.NewLine,
@@ -54,6 +60,72 @@ internal static class RolePromptFactory
                 "Propose focused test cases that validate functionality and regressions."),
             _ => $"Unsupported role {command.Role}"
         };
+
+        // Append historical context if available for relevant roles
+        if (strategyAdvice is not null &&
+            strategyAdvice.SimilarTaskCount > 0 &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            var historicalContext = BuildHistoricalContext(strategyAdvice);
+            return string.Join(Environment.NewLine, basePrompt, string.Empty, historicalContext);
+        }
+
+        return basePrompt;
+    }
+
+    /// <summary>
+    /// Builds a historical context section from strategy advice.
+    /// </summary>
+    private static string BuildHistoricalContext(StrategyAdvice advice)
+    {
+        var lines = new List<string>
+        {
+            "--- Historical Insights ---",
+            $"Based on {advice.SimilarTaskCount} similar past tasks:",
+            $"  Success rate: {advice.SimilarTaskSuccessRate:P0}",
+        };
+
+        if (advice.AverageRetryCount > 0)
+        {
+            lines.Add($"  Average retries: {advice.AverageRetryCount:F1}");
+        }
+
+        if (advice.ReviewRejectionRate > 0.1)
+        {
+            lines.Add($"  Review rejection rate: {advice.ReviewRejectionRate:P0}");
+        }
+
+        // Add insights
+        foreach (var insight in advice.Insights)
+        {
+            lines.Add($"  • {insight}");
+        }
+
+        // Add adapter recommendations if available
+        if (advice.AdapterSuccessRates is { Count: > 0 })
+        {
+            lines.Add(string.Empty);
+            lines.Add("Adapter performance for similar tasks:");
+            foreach (var (adapter, rate) in advice.AdapterSuccessRates.OrderByDescending(kv => kv.Value))
+            {
+                lines.Add($"  {adapter}: {rate:P0} success rate");
+            }
+        }
+
+        // Add common failure patterns if available
+        if (advice.CommonFailurePatterns is { Count: > 0 })
+        {
+            lines.Add(string.Empty);
+            lines.Add("Common failure patterns to avoid:");
+            foreach (var pattern in advice.CommonFailurePatterns)
+            {
+                lines.Add($"  • {pattern}");
+            }
+        }
+
+        lines.Add("--- End Historical Insights ---");
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     public static string BuildOrchestratorPrompt(
