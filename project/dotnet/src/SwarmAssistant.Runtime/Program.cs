@@ -43,6 +43,19 @@ builder.Services.AddSingleton<TaskRegistry>();
 builder.Services.AddSingleton<StartupMemoryBootstrapper>();
 builder.Services.AddHostedService<Worker>();
 
+if (bootstrapOptions.SwaggerEnabled)
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(c =>
+    {
+        c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "SwarmAssistant API",
+            Version = "v1"
+        });
+    });
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultCorsPolicy", policyBuilder =>
@@ -58,6 +71,16 @@ var app = builder.Build();
 
 app.MapDefaultEndpoints();
 app.UseCors("DefaultCorsPolicy");
+
+if (bootstrapOptions.SwaggerEnabled)
+{
+    app.UseSwagger(c => c.RouteTemplate = "openapi/{documentName}.json");
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/openapi/v1.json", "SwarmAssistant API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
 var options = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
