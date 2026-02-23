@@ -4,7 +4,7 @@
 - **Date:** 2026-02-23
 - **Area:** contracts
 - **Phase:** 0
-- **Issue:** [Phase 0][Issue 01]
+- **Issue:** [Phase 0 — Issue 01](https://github.com/GiantCroissant-Lunar/swimming-tuna/issues/74)
 
 ---
 
@@ -52,7 +52,7 @@ A Run is the unit of:
 | `createdAt` | `DateTimeOffset` | UTC, immutable | Timestamp at which the Run was created. |
 | `status` | `RunStatus` | see below | Current lifecycle state of the Run. |
 | `source` | `string` | non-empty | Logical origin of the Run (e.g. `"a2a-api"`, `"ag-ui-action"`, `"memory-bootstrap"`, `"cli"`). |
-| `metadata` | `Dictionary<string, string>` | nullable; keys non-empty | Optional open-ended key/value annotations (e.g. `"requestedBy"`, `"environment"`, `"correlationId"`). |
+| `metadata` | `Map<string, string>` | nullable; keys non-empty | Optional open-ended key/value annotations (e.g. `"requestedBy"`, `"environment"`, `"correlationId"`). |
 
 #### `RunStatus` values
 
@@ -61,17 +61,22 @@ A Run is the unit of:
 | `Pending` | Run created but no tasks have started yet. |
 | `Running` | At least one task is active. |
 | `Completed` | All tasks in the Run reached `Done` status. |
-| `Failed` | At least one task reached `Blocked`/failed status and no retry is pending. |
+| `Failed` | At least one task reached `Blocked` status and no retry is pending. |
 | `Cancelled` | Run was explicitly cancelled before completion. |
 
 Status transitions allowed:
 
-```
-Pending → Running
-Running → Completed
-Running → Failed
-Running → Cancelled
-Pending → Cancelled
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Running
+    Pending --> Cancelled
+    Running --> Completed
+    Running --> Failed
+    Running --> Cancelled
+    Completed --> [*]
+    Failed --> [*]
+    Cancelled --> [*]
 ```
 
 Completed, Failed, and Cancelled are terminal; no further transitions are allowed.
@@ -84,11 +89,12 @@ Completed, Failed, and Cancelled are terminal; no further transitions are allowe
    not** change for the lifetime of the task.
 3. **Single membership:** A task belongs to **at most one** Run. Many-to-many
    membership is not permitted.
-4. **Root scope only:** Only top-level tasks are directly associated with a Run;
-   sub-tasks are implicitly in scope via the root task's `runId`.
+4. **`runId` assignment:** A `runId` is assigned to a task upon creation. Top-level
+   tasks receive a `runId` at submission (either caller-provided or runtime-generated).
+   Sub-tasks automatically inherit the `runId` from their parent task.
 5. **Run completion rule:** A Run transitions to `Completed` only when **all** of
    its root tasks have reached `Done`. A Run transitions to `Failed` when any root
-   task reaches `Blocked`/failed and the Run has no pending retries.
+   task reaches `Blocked` status and the Run has no pending retries.
 
 ### 4 — Terminology: `session` is Telemetry-Only
 
