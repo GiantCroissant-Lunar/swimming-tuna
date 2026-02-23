@@ -236,6 +236,7 @@ public sealed class DispatcherActor : ReceiveActor
             _spawnedAgentIds.Remove(message.ActorRef);
             _logger.LogInformation(
                 "Dynamic agent retired agentId={AgentId}", retiredAgentId);
+            Context.System.EventStream.Publish(new AgentRetired(retiredAgentId, "idle-timeout"));
             return;
         }
 

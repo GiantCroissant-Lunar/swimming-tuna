@@ -198,6 +198,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 decidedBy = "consensus",
             });
 
+        // Report a single consolidated TaskResult to the supervisor for the reviewing phase
+        _supervisorActor.Tell(new TaskResult(
+            _taskId,
+            TaskState.Reviewing,
+            combinedFeedback,
+            DateTimeOffset.UtcNow,
+            Self.Path.Name));
+
         DecideAndExecute();
     }
 
@@ -358,11 +366,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 }
                 else
                 {
-                    _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
-                    StoreBlackboard("reviewer_output", message.Output);
-                    StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
-
-                    // Forward vote to consensus actor
+                    // Forward vote to consensus actor; blackboard/registry are updated in OnConsensusResult
                     _consensusActor.Tell(new ConsensusVote(
                         TaskId: _taskId,
                         VoterId: message.ActorName,
@@ -387,12 +391,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     message.Output)
             });
 
-        _supervisorActor.Tell(new TaskResult(
-            _taskId,
-            MapRoleToState(message.Role),
-            message.Output,
-            message.CompletedAt,
-            Self.Path.Name));
+        // For multi-reviewer consensus, don't send per-vote TaskResult; OnConsensusResult handles it
+        if (message.Role != SwarmRole.Reviewer || _options.ReviewConsensusCount <= 1)
+        {
+            _supervisorActor.Tell(new TaskResult(
+                _taskId,
+                MapRoleToState(message.Role),
+                message.Output,
+                message.CompletedAt,
+                Self.Path.Name));
+        }
 
         // Don't advance to the next GOAP step while sub-tasks are still running
         if (_pendingChildTaskIds.Count > 0)

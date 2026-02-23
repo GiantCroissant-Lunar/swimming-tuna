@@ -482,16 +482,9 @@ public sealed class SubTaskTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             $"reviewer-{suffix}");
 
-        var agent = Sys.ActorOf(
-            Props.Create(() => new SwarmAgentActor(
-                new RuntimeOptions(),
-                _loggerFactory,
-                roleEngine,
-                _telemetry,
-                ActorRefs.Nobody,
-                new[] { SwarmRole.Planner, SwarmRole.Builder, SwarmRole.Reviewer, SwarmRole.Orchestrator },
-                default)),
-            $"agent-{suffix}");
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(NullLogger<ConsensusActor>.Instance)),
+            $"consensus-{suffix}");
 
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
@@ -499,7 +492,7 @@ public sealed class SubTaskTests : TestKit
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
-                agent,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,

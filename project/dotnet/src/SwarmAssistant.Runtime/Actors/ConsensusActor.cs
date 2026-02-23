@@ -34,6 +34,9 @@ public sealed class ConsensusActor : ReceiveActor, IWithTimers
     private readonly ILogger<ConsensusActor> _logger;
     private readonly Dictionary<string, ConsensusSession> _activeSessions = new();
 
+    // Buffer votes that arrive before the ConsensusRequest is processed (race condition guard)
+    private readonly Dictionary<string, List<ConsensusVote>> _pendingVotes = new();
+
     public ITimerScheduler Timers { get; set; } = null!;
 
     public ConsensusActor(ILogger<ConsensusActor> logger)
@@ -60,13 +63,29 @@ public sealed class ConsensusActor : ReceiveActor, IWithTimers
             $"consensus-timeout-{request.TaskId}",
             new ConsensusSessionTimeout(request.TaskId),
             TimeSpan.FromMinutes(5));
+
+        // Replay any votes that arrived before the session was created
+        if (_pendingVotes.Remove(request.TaskId, out var buffered))
+        {
+            foreach (var v in buffered)
+            {
+                HandleVote(v);
+            }
+        }
     }
 
     private void HandleVote(ConsensusVote vote)
     {
         if (!_activeSessions.TryGetValue(vote.TaskId, out var session))
         {
-            _logger.LogWarning("Received vote for unknown or completed consensus session: {TaskId}", vote.TaskId);
+            // Session not yet created — buffer the vote to avoid losing it in the race
+            _logger.LogDebug("Buffering early vote from {VoterId} for task {TaskId}", vote.VoterId, vote.TaskId);
+            if (!_pendingVotes.TryGetValue(vote.TaskId, out var pending))
+            {
+                pending = new List<ConsensusVote>();
+                _pendingVotes[vote.TaskId] = pending;
+            }
+            pending.Add(vote);
             return;
         }
 
@@ -78,7 +97,9 @@ public sealed class ConsensusActor : ReceiveActor, IWithTimers
             return;
         }
 
-        session.Votes.Add(vote);
+        // Clamp confidence to [0, 1] to prevent negative values from inverting weighted results
+        var sanitizedVote = vote with { Confidence = Math.Clamp(vote.Confidence, 0.0, 1.0) };
+        session.Votes.Add(sanitizedVote);
 
         if (session.Votes.Count >= session.Request.RequiredVotes)
         {
@@ -88,6 +109,7 @@ public sealed class ConsensusActor : ReceiveActor, IWithTimers
 
     private void HandleCancel(CancelConsensusSession message)
     {
+        _pendingVotes.Remove(message.TaskId);
         if (_activeSessions.Remove(message.TaskId))
         {
             _logger.LogInformation("Consensus session cancelled for task {TaskId}", message.TaskId);
