@@ -10,6 +10,24 @@ public static class GenUiNodeFactory
 {
     private const int MaxDepth = 10;
 
+    // Compiled regex patterns for ConvertMarkdownToBbcode
+    private static readonly System.Text.RegularExpressions.Regex RxCodeBlock =
+        new(@"```(\w+)?\n([\s\S]*?)```", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex RxInlineCode =
+        new(@"`(.+?)`", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex RxHeader3 =
+        new(@"^### (.+)$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
+    private static readonly System.Text.RegularExpressions.Regex RxHeader2 =
+        new(@"^## (.+)$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
+    private static readonly System.Text.RegularExpressions.Regex RxHeader1 =
+        new(@"^# (.+)$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
+    private static readonly System.Text.RegularExpressions.Regex RxBoldItalic =
+        new(@"\*\*\*(.+?)\*\*\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex RxBold =
+        new(@"\*\*(.+?)\*\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex RxItalic =
+        new(@"\*(.+?)\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>
     /// Builds a Godot node (and its children) from a JSON component element.
     /// </summary>
@@ -211,7 +229,7 @@ public static class GenUiNodeFactory
     {
         var split = new SplitContainer();
         if (TryGetInt(props, "offset", out var offset))
-            split.SplitOffsets = new int[] { offset };
+            split.SplitOffset = offset;
         return split;
     }
 
@@ -418,8 +436,8 @@ public static class GenUiNodeFactory
             edit.Editable = editable;
         if (TryGetBool(props, "secret", out var secret))
             edit.Secret = secret;
-        if (TryGetString(props, "clear_button", out var _))
-            edit.ClearButtonEnabled = true;
+        if (TryGetBool(props, "clear_button", out var clearButton))
+            edit.ClearButtonEnabled = clearButton;
         return edit;
     }
 
@@ -488,11 +506,8 @@ public static class GenUiNodeFactory
         if (TryGetDouble(props, "value", out var val))
             bar.Value = val;
 
-        // Show percentage if specified
-        if (TryGetBool(props, "show_percent", out var showPercent) && showPercent)
-        {
-            // Note: Godot 4 progress bar shows percentage by default when no override is set
-        }
+        if (TryGetBool(props, "show_percent", out var showPercent))
+            bar.ShowPercentage = showPercent;
 
         return bar;
     }
@@ -647,28 +662,30 @@ public static class GenUiNodeFactory
 
     private static string EscapeBbcode(string text)
     {
+        // Two-pass: use placeholder to avoid mangling the [lb] marker itself
         return text
-            .Replace("[", "[lb]")
-            .Replace("]", "[rb]");
+            .Replace("[", "\x01OPEN\x01")
+            .Replace("]", "[rb]")
+            .Replace("\x01OPEN\x01", "[lb]");
     }
 
     private static string ConvertMarkdownToBbcode(string markdown)
     {
-        var result = markdown;
+        // Step 1: replace fenced code blocks, escaping their content so BBCode isn't injected
+        var result = RxCodeBlock.Replace(markdown,
+            m => "[code]" + EscapeBbcode(m.Groups[2].Value) + "[/code]");
 
-        // Headers
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"^### (.+)$", "[b]$1[/b]", System.Text.RegularExpressions.RegexOptions.Multiline);
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"^## (.+)$", "[b][size=14]$1[/size][/b]", System.Text.RegularExpressions.RegexOptions.Multiline);
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"^# (.+)$", "[b][size=16]$1[/size][/b]", System.Text.RegularExpressions.RegexOptions.Multiline);
+        // Step 2: replace inline code, escaping their content
+        result = RxInlineCode.Replace(result,
+            m => "[code]" + EscapeBbcode(m.Groups[1].Value) + "[/code]");
 
-        // Bold and italic
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"\*\*\*(.+?)\*\*\*", "[b][i]$1[/i][/b]");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"\*\*(.+?)\*\*", "[b]$1[/b]");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"\*(.+?)\*", "[i]$1[/i]");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"`(.+?)`", "[code]$1[/code]");
-
-        // Code blocks
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"```(\w+)?\n([\s\S]*?)```", "[code]$2[/code]");
+        // Step 3: apply markdown transforms only on non-code segments
+        result = RxHeader3.Replace(result, "[b]$1[/b]");
+        result = RxHeader2.Replace(result, "[b][size=14]$1[/size][/b]");
+        result = RxHeader1.Replace(result, "[b][size=16]$1[/size][/b]");
+        result = RxBoldItalic.Replace(result, "[b][i]$1[/i][/b]");
+        result = RxBold.Replace(result, "[b]$1[/b]");
+        result = RxItalic.Replace(result, "[i]$1[/i]");
 
         return result;
     }

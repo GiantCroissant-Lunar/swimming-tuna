@@ -32,7 +32,7 @@ This project is a Godot Mono (C#) client that serves as an **Operator Control Su
 
 ## Prerequisites
 
-- Godot Mono 4.x app at `/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app`
+- Godot Mono 4.x (set `GODOT_MONO` env var to the binary path, or ensure `godot` is on `PATH`)
 - .NET 8.0 SDK
 - Runtime running on `http://127.0.0.1:5080` (configurable via `AGUI_HTTP_URL` env var)
 
@@ -41,7 +41,7 @@ This project is a Godot Mono (C#) client that serves as an **Operator Control Su
 ### 1. Run the Runtime
 
 ```bash
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna
+# From repo root:
 dotnet run --project project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
 ```
 
@@ -53,8 +53,10 @@ DOTNET_ENVIRONMENT=Local dotnet run --project project/dotnet/src/SwarmAssistant.
 ### 2. Run Godot UI (Development Mode)
 
 ```bash
-/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot \
-  --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui \
+# Set GODOT_MONO to your Godot Mono binary, e.g.:
+# export GODOT_MONO="/path/to/Godot_mono.app/Contents/MacOS/Godot"
+${GODOT_MONO:-godot} \
+  --path project/godot-ui \
   --windowed --resolution 1280x800
 ```
 
@@ -73,21 +75,23 @@ cp -f /tmp/godot_templates_extract/templates/macos.zip "$HOME/Library/Applicatio
 ### Export macOS App (Debug)
 
 ```bash
-mkdir -p /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui
-/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot \
-  --headless --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui \
+# From repo root:
+mkdir -p build/godot-ui
+${GODOT_MONO:-godot} \
+  --headless --path project/godot-ui \
   --export-debug "macOS" \
-  /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui/SwarmAssistantUI.app
+  build/godot-ui/SwarmAssistantUI.app
 ```
 
 ### Export macOS App (Release)
 
 ```bash
-mkdir -p /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui
-/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot \
-  --headless --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui \
+# From repo root:
+mkdir -p build/godot-ui
+${GODOT_MONO:-godot} \
+  --headless --path project/godot-ui \
   --export-release "macOS" \
-  /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui/SwarmAssistantUI.app
+  build/godot-ui/SwarmAssistantUI.app
 ```
 
 ## Running the Exported App
@@ -95,7 +99,8 @@ mkdir -p /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build
 ### Windowed Mode
 
 ```bash
-"/Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui/SwarmAssistantUI.app/Contents/MacOS/SwarmAssistant UI" \
+# From repo root:
+"build/godot-ui/SwarmAssistantUI.app/Contents/MacOS/SwarmAssistant UI" \
   --windowed --resolution 1280x800
 ```
 
@@ -103,7 +108,7 @@ mkdir -p /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build
 
 ```bash
 export AGUI_HTTP_URL="http://127.0.0.1:5080"
-"/Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/build/godot-ui/SwarmAssistantUI.app/Contents/MacOS/SwarmAssistant UI" \
+"build/godot-ui/SwarmAssistantUI.app/Contents/MacOS/SwarmAssistant UI" \
   --windowed --resolution 1280x800
 ```
 
@@ -112,8 +117,9 @@ export AGUI_HTTP_URL="http://127.0.0.1:5080"
 ### 1. Headless Smoke Check
 
 ```bash
-/Users/apprenticegc/Work/lunar-horse/tools/Godot_mono.app/Contents/MacOS/Godot \
-  --headless --path /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui \
+# From repo root:
+${GODOT_MONO:-godot} \
+  --headless --path project/godot-ui \
   --quit-after 120
 ```
 
@@ -247,14 +253,15 @@ Select a running task and verify:
 ### Building C# Scripts
 
 ```bash
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna/project/godot-ui
+# From repo root:
+cd project/godot-ui
 dotnet build
 ```
 
 ### Running Tests
 
 ```bash
-cd /Users/apprenticegc/Work/lunar-horse/yokan-projects/swimming-tuna
+# From repo root:
 task test
 ```
 
