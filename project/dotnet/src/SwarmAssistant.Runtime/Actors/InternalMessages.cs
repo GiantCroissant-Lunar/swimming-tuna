@@ -216,3 +216,20 @@ internal sealed record AgentRetired(
     string AgentId,
     string Reason
 );
+
+internal sealed record TaskInterventionCommand(
+    string TaskId,
+    string ActionId,
+    string? Comment = null,
+    string? Reason = null,
+    string? Feedback = null,
+    int? MaxSubTaskDepth = null
+);
+
+internal sealed record TaskInterventionResult(
+    string TaskId,
+    string ActionId,
+    bool Accepted,
+    string ReasonCode,
+    string? Message = null
+);
