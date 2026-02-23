@@ -129,7 +129,7 @@ public sealed class ArcadeDbOutcomeReader : IOutcomeReader
         return ParseQueryResult<T>(json);
     }
 
-    private static IReadOnlyList<T> ParseQueryResult<T>(string json)
+    private IReadOnlyList<T> ParseQueryResult<T>(string json)
     {
         var results = new List<T>();
         using var document = JsonDocument.Parse(json);
@@ -152,9 +152,9 @@ public sealed class ArcadeDbOutcomeReader : IOutcomeReader
                         results.Add(record);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip malformed records
+                    _logger.LogWarning(ex, "Skipping malformed record from ArcadeDB result");
                 }
             }
         }
@@ -181,7 +181,7 @@ public sealed class ArcadeDbOutcomeReader : IOutcomeReader
             TitleKeywords = ParseKeywordList(record.TitleKeywords),
             DescriptionLength = record.DescriptionLength,
             SubTaskCount = record.SubTaskCount,
-            RoleExecutions = ParseRoleExecutions(record.RoleExecutions),
+            RoleExecutions = ParseRoleExecutions(record.RoleExecutions, record.TaskId ?? string.Empty),
             FailedRole = Enum.TryParse<SwarmRole>(record.FailedRole, ignoreCase: true, out var role)
                 ? role
                 : null,
@@ -200,7 +200,7 @@ public sealed class ArcadeDbOutcomeReader : IOutcomeReader
         return keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static IReadOnlyList<RoleExecutionRecord> ParseRoleExecutions(string? executions)
+    private static IReadOnlyList<RoleExecutionRecord> ParseRoleExecutions(string? executions, string taskId)
     {
         if (string.IsNullOrWhiteSpace(executions))
         {
@@ -218,6 +218,7 @@ public sealed class ArcadeDbOutcomeReader : IOutcomeReader
             {
                 records.Add(new RoleExecutionRecord
                 {
+                    TaskId = taskId,
                     Role = role,
                     AdapterUsed = string.IsNullOrEmpty(fields[1]) ? null : fields[1],
                     RetryCount = int.TryParse(fields[2], out var retries) ? retries : 0,

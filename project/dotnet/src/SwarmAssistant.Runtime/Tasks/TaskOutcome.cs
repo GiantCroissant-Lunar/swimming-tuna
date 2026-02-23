@@ -91,6 +91,11 @@ public sealed record TaskOutcome
 public sealed record RoleExecutionRecord
 {
     /// <summary>
+    /// The task ID this execution belongs to.
+    /// </summary>
+    public required string TaskId { get; init; }
+
+    /// <summary>
     /// The role that was executed.
     /// </summary>
     public required SwarmRole Role { get; init; }

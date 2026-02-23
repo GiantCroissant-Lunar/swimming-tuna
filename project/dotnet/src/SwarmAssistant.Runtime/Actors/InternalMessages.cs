@@ -188,11 +188,12 @@ internal sealed record SubTaskFailed(
 );
 
 // Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
-// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
+// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor, TaskCoordinatorActor
 internal sealed record QualityConcern(
     string TaskId,
     SwarmRole Role,
     string Concern,
     double Confidence,
-    DateTimeOffset At
+    DateTimeOffset At,
+    string? PreferredAdapter = null
 );

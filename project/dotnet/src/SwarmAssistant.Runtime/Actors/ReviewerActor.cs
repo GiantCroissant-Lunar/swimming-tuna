@@ -106,7 +106,8 @@ public sealed class ReviewerActor : ReceiveActor
                     command.Role,
                     concern,
                     confidence,
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow,
+                    command.PreferredAdapter));
 
                 activity?.SetTag("quality.concern", concern);
             }

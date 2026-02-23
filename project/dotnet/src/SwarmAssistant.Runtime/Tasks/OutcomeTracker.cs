@@ -86,6 +86,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
         // Record the execution
         var record = new RoleExecutionRecord
         {
+            TaskId = taskId,
             Role = role,
             AdapterUsed = adapterUsed,
             RetryCount = _retryCounts.TryGetValue(retryKey, out var retries) ? retries : 0,
@@ -120,8 +121,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
 
         var keywords = ExtractKeywords(snapshot.Title);
         var roleExecutions = _currentExecutions
-            .Where(r => snapshot.TaskId == taskId ||
-                        (snapshot.ChildTaskIds?.Contains(snapshot.TaskId) ?? false))
+            .Where(r => r.TaskId == taskId)
             .ToList();
 
         // If no explicit role executions were recorded, infer from snapshot
@@ -216,7 +216,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
         }
 
         _currentExecutions.RemoveAll(r =>
-            r.Role.ToString().StartsWith(prefix, StringComparison.Ordinal));
+            r.TaskId == taskId);
     }
 
     /// <summary>
@@ -230,6 +230,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
         {
             records.Add(new RoleExecutionRecord
             {
+                TaskId = snapshot.TaskId,
                 Role = SwarmRole.Planner,
                 Succeeded = true,
                 Confidence = 1.0
@@ -240,6 +241,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
         {
             records.Add(new RoleExecutionRecord
             {
+                TaskId = snapshot.TaskId,
                 Role = SwarmRole.Builder,
                 Succeeded = true,
                 Confidence = 1.0
@@ -250,6 +252,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
         {
             records.Add(new RoleExecutionRecord
             {
+                TaskId = snapshot.TaskId,
                 Role = SwarmRole.Reviewer,
                 Succeeded = string.IsNullOrEmpty(snapshot.Error),
                 Confidence = 1.0
