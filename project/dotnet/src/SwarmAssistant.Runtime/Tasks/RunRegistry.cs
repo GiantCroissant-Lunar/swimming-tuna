@@ -11,8 +11,7 @@ public sealed class RunRegistry
     public RunEntry CreateRun(string? runId = null, string? title = null)
     {
         var id = string.IsNullOrWhiteSpace(runId) ? $"run-{Guid.NewGuid():N}" : runId.Trim();
-        var entry = new RunEntry(id, title, DateTimeOffset.UtcNow);
-        return _runs.TryAdd(id, entry) ? entry : _runs[id];
+        return _runs.GetOrAdd(id, _ => new RunEntry(id, title, DateTimeOffset.UtcNow));
     }
 
     public RunEntry? GetRun(string runId)

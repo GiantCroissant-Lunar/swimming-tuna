@@ -669,8 +669,9 @@ if (options.A2AEnabled)
             return Results.NotFound(new { error = "run not found", runId });
         }
 
-        var createdAt = run?.CreatedAt
-            ?? (tasks.Count > 0 ? tasks.Min(t => t.CreatedAt) : DateTimeOffset.UtcNow);
+        var createdAt = run is not null
+            ? run.CreatedAt
+            : tasks.Min(t => t.CreatedAt);
         var updatedAt = tasks.Count > 0
             ? tasks.Max(t => t.UpdatedAt)
             : createdAt;
