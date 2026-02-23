@@ -112,8 +112,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                null,
-                null,
+                null,  // outcomeTracker: learning features are opt-in; wire up via Worker.cs when ArcadeDB is enabled
+                null,  // strategyAdvisorActor: same as above
                 DefaultMaxRetries,
                 0)),
             $"task-{message.TaskId}");
@@ -168,8 +168,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                null,
-                null,
+                null,  // outcomeTracker: learning features are opt-in; wire up via Worker.cs when ArcadeDB is enabled
+                null,  // strategyAdvisorActor: same as above
                 DefaultMaxRetries,
                 message.Depth)),
             $"task-{message.ChildTaskId}");

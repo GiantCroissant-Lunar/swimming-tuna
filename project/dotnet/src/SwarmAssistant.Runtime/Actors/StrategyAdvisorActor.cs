@@ -1,5 +1,7 @@
 using Akka.Actor;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Tasks;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -15,14 +17,16 @@ public sealed class StrategyAdvisorActor : ReceiveActor
 
     // Cache recent advice to reduce database queries
     private readonly Dictionary<string, CachedAdvice> _adviceCache = new();
-    private readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _cacheTtl;
 
     public StrategyAdvisorActor(
         IOutcomeReader outcomeReader,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IOptions<RuntimeOptions> options)
     {
         _outcomeReader = outcomeReader;
         _logger = loggerFactory.CreateLogger<StrategyAdvisorActor>();
+        _cacheTtl = TimeSpan.FromMinutes(options.Value.StrategyAdvisorCacheTtlMinutes);
 
         Receive<StrategyAdviceRequest>(OnStrategyAdviceRequest);
         Receive<ClearAdviceCache>(OnClearAdviceCache);
@@ -56,7 +60,7 @@ public sealed class StrategyAdvisorActor : ReceiveActor
                 },
                 failure: exception =>
                 {
-                    _logger.LogWarning(
+                    _logger.LogError(
                         exception,
                         "Failed to generate strategy advice taskId={TaskId}",
                         request.TaskId);
