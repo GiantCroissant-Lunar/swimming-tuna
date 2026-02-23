@@ -29,10 +29,12 @@ public sealed record CancelConsensusSession(string TaskId);
 
 internal sealed record ConsensusSessionTimeout(string TaskId);
 
-public sealed class ConsensusActor : ReceiveActor
+public sealed class ConsensusActor : ReceiveActor, IWithTimers
 {
     private readonly ILogger<ConsensusActor> _logger;
     private readonly Dictionary<string, ConsensusSession> _activeSessions = new();
+
+    public ITimerScheduler Timers { get; set; } = null!;
 
     public ConsensusActor(ILogger<ConsensusActor> logger)
     {
@@ -53,11 +55,11 @@ public sealed class ConsensusActor : ReceiveActor
 
         _logger.LogInformation("Starting consensus session for task {TaskId}, requiring {RequiredVotes} votes, strategy: {Strategy}", request.TaskId, request.RequiredVotes, request.Strategy);
         _activeSessions[request.TaskId] = new ConsensusSession(request, Sender);
-        Context.System.Scheduler.ScheduleTellOnce(
-            TimeSpan.FromMinutes(5),
-            Self,
+
+        Timers.StartSingleTimer(
+            $"consensus-timeout-{request.TaskId}",
             new ConsensusSessionTimeout(request.TaskId),
-            ActorRefs.NoSender);
+            TimeSpan.FromMinutes(5));
     }
 
     private void HandleVote(ConsensusVote vote)

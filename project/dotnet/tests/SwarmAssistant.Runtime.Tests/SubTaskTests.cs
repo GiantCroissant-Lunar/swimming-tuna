@@ -465,7 +465,7 @@ public sealed class SubTaskTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, default)),
             $"supervisor-{suffix}");
 
         var blackboardActor = Sys.ActorOf(
@@ -482,13 +482,24 @@ public sealed class SubTaskTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             $"reviewer-{suffix}");
 
+        var agent = Sys.ActorOf(
+            Props.Create(() => new SwarmAgentActor(
+                _options,
+                _loggerFactory,
+                roleEngine,
+                _telemetry,
+                ActorRefs.Nobody,
+                new[] { SwarmRole.Planner, SwarmRole.Builder, SwarmRole.Reviewer, SwarmRole.Orchestrator },
+                default)),
+            $"agent-{suffix}");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
-                ActorRefs.Nobody,
+                agent,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,

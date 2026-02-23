@@ -35,7 +35,8 @@ public sealed class SwarmAgentActorTests : TestKit
             engine,
             telemetry,
             registry,
-            new[] { SwarmRole.Planner, SwarmRole.Reviewer })));
+            new[] { SwarmRole.Planner, SwarmRole.Reviewer },
+            default)));
 
         AwaitAssert(() =>
         {
@@ -60,7 +61,8 @@ public sealed class SwarmAgentActorTests : TestKit
             engine,
             telemetry,
             registry,
-            new[] { SwarmRole.Planner, SwarmRole.Researcher })));
+            new[] { SwarmRole.Planner, SwarmRole.Researcher },
+            default)));
         AwaitAgentRegistration(registry);
 
         registry.Tell(new ExecuteRoleTask("task-plan", SwarmRole.Planner, "Plan", "desc", null, null));
@@ -90,7 +92,8 @@ public sealed class SwarmAgentActorTests : TestKit
             engine,
             telemetry,
             registry,
-            new[] { SwarmRole.Planner, SwarmRole.Builder, SwarmRole.Reviewer, SwarmRole.Orchestrator })));
+            new[] { SwarmRole.Planner, SwarmRole.Builder, SwarmRole.Reviewer, SwarmRole.Orchestrator },
+            default)));
         AwaitAgentRegistration(registry);
 
         registry.Tell(new ExecuteRoleTask(
