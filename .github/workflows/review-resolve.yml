@@ -126,26 +126,38 @@ jobs:
             body += `Resolve each review comment listed above and reference this issue in the PR description.\n\n`;
             body += `_Automated by review-resolve workflow run [#${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_\n`;
 
+            // Create issue without assignee (copilot-swe-agent may not be enabled)
             const { data: issue } = await github.rest.issues.create({
               ...context.repo,
               title: `fix(review): resolve ${count} review comment${count === 1 ? '' : 's'} from PR #${pr.number}`,
               body,
               labels: ['review-fix', 'automated'],
-              assignees: ['copilot-swe-agent'],
             });
+
+            // Try to assign copilot-swe-agent; ignore failure if not available
+            try {
+              await github.rest.issues.addAssignees({
+                ...context.repo,
+                issue_number: issue.number,
+                assignees: ['copilot-swe-agent'],
+              });
+              core.info(`Assigned copilot-swe-agent to issue #${issue.number}`);
+            } catch (e) {
+              core.warning(`Could not assign copilot-swe-agent: ${e.message}`);
+            }
 
             // Post tracking comment on the original PR
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: pr.number,
               body: [
-                `Review comments have been forwarded to Copilot Coding Agent for resolution.`,
+                `Review comments have been forwarded for resolution.`,
                 ``,
                 `Tracking issue: #${issue.number}`,
               ].join('\n'),
             });
 
-            core.info(`Created issue #${issue.number} assigned to copilot-swe-agent`);
+            core.info(`Created issue #${issue.number}`);
         env:
           COMMENTS_JSON: ${{ steps.collect.outputs.comments_json }}
           COMMENT_COUNT: ${{ steps.collect.outputs.comment_count }}
