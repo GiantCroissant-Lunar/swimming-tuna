@@ -165,10 +165,21 @@ internal sealed record TaskEscalated(
     DateTimeOffset At
 );
 
+// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
+// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
+internal sealed record QualityConcern(
+    string TaskId,
+    SwarmRole Role,
+    string Concern,
+    double Confidence,
+    string? AdapterId,
+    DateTimeOffset At
+);
+
 // Monitor self-scheduling tick
 internal sealed record MonitorTick;
 
-// Sub-task spawning messages (Phase 14)
+// Sub-task spawning messages
 internal sealed record SpawnSubTask(
     string ParentTaskId,
     string ChildTaskId,
@@ -189,7 +200,7 @@ internal sealed record SubTaskFailed(
     string Error
 );
 
-// Dynamic topology: on-demand agent spawning (Phase 19)
+// Dynamic topology: on-demand agent spawning
 internal sealed record SpawnAgent(
     SwarmRole[] Capabilities,
     TimeSpan IdleTtl
@@ -203,15 +214,4 @@ internal sealed record AgentSpawned(
 internal sealed record AgentRetired(
     string AgentId,
     string Reason
-);
-
-// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
-// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
-internal sealed record QualityConcern(
-    string TaskId,
-    SwarmRole Role,
-    string Concern,
-    double Confidence,
-    string? AdapterId,
-    DateTimeOffset At
 );
