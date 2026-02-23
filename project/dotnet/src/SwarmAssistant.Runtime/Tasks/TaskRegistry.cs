@@ -221,6 +221,15 @@ public sealed class TaskRegistry : IAsyncDisposable
             .ToList();
     }
 
+    public IReadOnlyList<TaskSnapshot> GetTasksByRunId(string runId, int limit = 50)
+    {
+        return _tasks.Values
+            .Where(task => string.Equals(task.RunId, runId, StringComparison.Ordinal))
+            .OrderByDescending(task => task.UpdatedAt)
+            .Take(Math.Clamp(limit, 1, 500))
+            .ToList();
+    }
+
     public async ValueTask DisposeAsync()
     {
         _persistenceChannel.Writer.TryComplete();
