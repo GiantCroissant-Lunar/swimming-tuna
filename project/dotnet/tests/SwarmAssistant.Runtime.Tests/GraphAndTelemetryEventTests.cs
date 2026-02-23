@@ -38,6 +38,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             ReviewerPoolSize = 1,
             MaxCliConcurrency = 4,
             SandboxMode = "none",
+            GraphTelemetryEnabled = true
         };
 
         _loggerFactory = NullLoggerFactory.Instance;
