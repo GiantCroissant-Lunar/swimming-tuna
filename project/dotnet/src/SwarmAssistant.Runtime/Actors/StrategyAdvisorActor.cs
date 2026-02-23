@@ -139,9 +139,7 @@ public sealed class StrategyAdvisorActor : ReceiveActor
 
         var successRate = (double)successCount / similarOutcomes.Count;
         var avgRetries = (double)totalRetries / similarOutcomes.Count;
-        var reviewRejectionRate = similarOutcomes.Count > 0
-            ? (double)reviewRejections / similarOutcomes.Count
-            : 0;
+        var reviewRejectionRate = (double)reviewRejections / similarOutcomes.Count;
 
         // Generate insights
         if (successRate >= 0.8)

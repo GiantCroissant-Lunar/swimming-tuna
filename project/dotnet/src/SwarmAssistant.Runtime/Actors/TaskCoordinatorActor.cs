@@ -431,7 +431,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private void DecideAndExecute()
     {
-        var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask);
+        var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask, _strategyAdvice?.RecommendedCostAdjustments);
         _lastGoapPlan = planResult;
 
         _logger.LogInformation(

@@ -35,6 +35,8 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
     private readonly RuntimeOptions _runtimeOptions;
+    private readonly OutcomeTracker? _outcomeTracker;
+    private readonly IActorRef? _strategyAdvisorActor;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -55,7 +57,9 @@ public sealed class DispatcherActor : ReceiveActor
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
-        RuntimeOptions runtimeOptions)
+        RuntimeOptions runtimeOptions,
+        OutcomeTracker? outcomeTracker = null,
+        IActorRef? strategyAdvisorActor = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -67,6 +71,8 @@ public sealed class DispatcherActor : ReceiveActor
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
         _runtimeOptions = runtimeOptions;
+        _outcomeTracker = outcomeTracker;
+        _strategyAdvisorActor = strategyAdvisorActor;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -112,8 +118,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                null,  // outcomeTracker: learning features are opt-in; wire up via Worker.cs when ArcadeDB is enabled
-                null,  // strategyAdvisorActor: same as above
+                _outcomeTracker,
+                _strategyAdvisorActor,
                 DefaultMaxRetries,
                 0)),
             $"task-{message.TaskId}");
@@ -168,8 +174,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                null,  // outcomeTracker: learning features are opt-in; wire up via Worker.cs when ArcadeDB is enabled
-                null,  // strategyAdvisorActor: same as above
+                _outcomeTracker,
+                _strategyAdvisorActor,
                 DefaultMaxRetries,
                 message.Depth)),
             $"task-{message.ChildTaskId}");
