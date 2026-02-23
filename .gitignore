@@ -28,3 +28,12 @@ repomix-output.*
 .agent/local/
 .agent/secrets/
 .agent/cache/
+
+# Claude Code generated settings (machine-specific absolute paths)
+.claude/
+!.claude/launch.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

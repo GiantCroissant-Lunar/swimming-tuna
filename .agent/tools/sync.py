@@ -44,7 +44,10 @@ def load_adapter_config(config_path: Path) -> dict:
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        return {}
+    return data
 
 
 def discover_adapters(adapters_dir: Path) -> list[Path]:
@@ -114,13 +117,15 @@ def execute_copy_file(source: Path, target: Path) -> str:
     Returns:
         Description of what was done.
     """
+    if not source.exists():
+        return f"copy_file: source missing: {source}"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
     return f"copy_file: {source.name} -> {target}"
 
 
 def execute_merge_claude_hooks(
-    settings_path: Path, hooks_dir: Path, mapping: dict
+    settings_path: Path, hooks_dir: Path, mapping: dict, project_root: Path | None = None
 ) -> str:
     """Merge hook entries into Claude settings.json.
 
@@ -132,6 +137,8 @@ def execute_merge_claude_hooks(
         settings_path: Path to .claude/settings.json (created if missing).
         hooks_dir: Directory containing hook scripts.
         mapping: Dict mapping hook filenames to Claude hook event names.
+        project_root: If provided, hook paths are expressed relative to this
+            directory so the generated file is portable across machines.
 
     Returns:
         Description of what was done.
@@ -139,9 +146,12 @@ def execute_merge_claude_hooks(
     settings_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load existing settings or start fresh
-    if settings_path.exists():
-        with open(settings_path) as f:
-            settings = json.load(f)
+    if settings_path.exists() and settings_path.stat().st_size > 0:
+        try:
+            with open(settings_path) as f:
+                settings = json.load(f)
+        except json.JSONDecodeError:
+            settings = {}
     else:
         settings = {}
 
@@ -151,7 +161,16 @@ def execute_merge_claude_hooks(
 
     for hook_file, event_name in mapping.items():
         hook_path = (hooks_dir / hook_file).resolve()
-        command = f'python "{hook_path}"'
+        if not hook_path.exists():
+            continue
+        if project_root is not None:
+            try:
+                rel_path = hook_path.relative_to(project_root.resolve())
+                command = f'python3 "{rel_path}"'
+            except ValueError:
+                command = f'python3 "{hook_path}"'
+        else:
+            command = f'python3 "{hook_path}"'
         entry = {"type": "command", "command": command}
 
         if event_name not in settings["hooks"]:
@@ -194,7 +213,7 @@ def execute_concatenate(source: Path, target: Path, glob: str) -> str:
     for src_file in matching:
         parts.append(src_file.read_text())
 
-    target.write_text("\n".join(parts))
+    target.write_text("\n\n".join(parts))
     return f"concatenate: {len(matching)} files -> {target}"
 
 
@@ -225,6 +244,10 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
             results.append(f"skip (none): {entry_name}")
             continue
 
+        if not target_rel:
+            results.append(f"skip (missing target): {entry_name}")
+            continue
+
         if action == "pointer":
             content = entry.get("content", "")
             target = project_root / target_rel
@@ -233,6 +256,9 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
 
         elif action == "copy":
             source_rel = entry.get("source", "")
+            if not source_rel:
+                results.append(f"skip (missing source): {entry_name}")
+                continue
             source = project_root / source_rel
             target = project_root / target_rel
             glob_pattern = entry.get("glob")
@@ -257,13 +283,16 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
                 mapping = entry.get("mapping", {})
                 settings_path = project_root / target_rel
                 hooks_dir = project_root / ".agent" / "hooks"
-                result = execute_merge_claude_hooks(settings_path, hooks_dir, mapping)
+                result = execute_merge_claude_hooks(settings_path, hooks_dir, mapping, project_root)
                 results.append(result)
             else:
                 results.append(f"skip: unknown merge format '{fmt}'")
 
         elif action == "concatenate":
             source_rel = entry.get("source", "")
+            if not source_rel:
+                results.append(f"skip (missing source): {entry_name}")
+                continue
             source = project_root / source_rel
             target = project_root / target_rel
             glob_pattern = entry.get("glob", "*")

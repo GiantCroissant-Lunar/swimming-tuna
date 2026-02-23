@@ -26,6 +26,12 @@ sync:
     source: .agent/rules/
     glob: "*.md"
 
+  hooks_config:
+    target: .agent/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "claude", "supermemory": {"enabled": false}}
+
   hooks:
     target: .claude/settings.json
     action: merge
@@ -33,4 +39,4 @@ sync:
     mapping:
       session_start.py: SessionStart
       session_end.py: Stop
-      pre_tool_use.py: PreToolUse
+      pre_tool_use.py: PreCompact

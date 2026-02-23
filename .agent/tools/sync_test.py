@@ -270,7 +270,7 @@ class TestMergeAction:
         commands = data["hooks"]["SessionStart"]
         assert len(commands) == 1
         assert commands[0]["type"] == "command"
-        hook_path = str(self.hooks_dir / "session_start.py")
+        hook_path = str((self.hooks_dir / "session_start.py").resolve())
         assert hook_path in commands[0]["command"]
 
     def test_preserves_existing_settings(self):
@@ -314,7 +314,7 @@ class TestMergeAction:
                 "SessionStart": [
                     {
                         "type": "command",
-                        "command": f'python "{hook_path}"',
+                        "command": f'python3 "{hook_path}"',
                     }
                 ]
             }

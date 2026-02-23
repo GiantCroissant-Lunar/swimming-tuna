@@ -2,7 +2,7 @@ name: copilot-cli
 description: GitHub Copilot CLI adapter
 
 capabilities:
-  hooks: [sessionStart, sessionEnd, preToolUse, postToolUse]
+  hooks: [sessionStart, sessionEnd, preToolUse]
   mcp: true
   skills: false
   rules: true
@@ -18,12 +18,33 @@ sync:
     source: .agent/rules/
     glob: "*.md"
 
+  hooks_config:
+    target: .github/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "copilot", "supermemory": {"enabled": true}}
+
+  hooks_json:
+    target: .github/hooks/hooks.json
+    action: pointer
+    content: |
+      {
+        "version": 1,
+        "hooks": {
+          "sessionStart": [{"type": "command", "bash": "python3 .github/hooks/session_start.py"}],
+          "sessionEnd": [{"type": "command", "bash": "python3 .github/hooks/session_end.py"}],
+          "preToolUse": [{"type": "command", "bash": "python3 .github/hooks/pre_tool_use.py"}]
+        }
+      }
+
   hooks:
     target: .github/hooks/
     action: copy
     source: .agent/hooks/
     glob: "*.py"
-    mapping:
-      session_start.py: sessionStart
-      session_end.py: sessionEnd
-      pre_tool_use.py: preToolUse
+
+  lib:
+    target: .github/lib/
+    action: copy
+    source: .agent/lib/
+    glob: "*.py"
