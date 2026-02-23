@@ -235,6 +235,72 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
                      entry.Message.Contains("Failed to parse 'occurredAt' timestamp", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task ListByTaskAsync_EventWithNullRunId_SynthesisesLegacyRunId()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var responseBody = $$"""
+        {
+          "result": [
+            {
+              "eventId": "e-legacy-1",
+              "runId": null,
+              "taskId": "task-legacy-evt",
+              "eventType": "task.started",
+              "payload": null,
+              "occurredAt": "{{now.ToString("O")}}",
+              "taskSequence": 1,
+              "runSequence": 1
+            }
+          ]
+        }
+        """;
+
+        var handler = new FixedResponseHandler(responseBody);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+        var events = await repository.ListByTaskAsync("task-legacy-evt");
+
+        Assert.Single(events);
+        Assert.Equal("legacy-task-legacy-evt", events[0].RunId);
+    }
+
+    [Fact]
+    public async Task ListByTaskAsync_EventWithExplicitRunId_ReturnsRunIdUnchanged()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var responseBody = $$"""
+        {
+          "result": [
+            {
+              "eventId": "e-modern-1",
+              "runId": "run-modern-77",
+              "taskId": "task-modern-evt",
+              "eventType": "task.started",
+              "payload": null,
+              "occurredAt": "{{now.ToString("O")}}",
+              "taskSequence": 1,
+              "runSequence": 1
+            }
+          ]
+        }
+        """;
+
+        var handler = new FixedResponseHandler(responseBody);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+        var events = await repository.ListByTaskAsync("task-modern-evt");
+
+        Assert.Single(events);
+        Assert.Equal("run-modern-77", events[0].RunId);
+    }
+
     private static ArcadeDbTaskExecutionEventRepository CreateRepository(
         IHttpClientFactory factory,
         bool autoCreateSchema,
