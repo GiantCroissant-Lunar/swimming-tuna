@@ -26,7 +26,7 @@ public sealed class TaskRegistry : IAsyncDisposable
         _drainTask = Task.Run(DrainPersistenceChannelAsync);
     }
 
-    public TaskSnapshot Register(TaskAssigned message)
+    public TaskSnapshot Register(TaskAssigned message, string? runId = null)
     {
         var snapshot = new TaskSnapshot(
             TaskId: message.TaskId,
@@ -34,7 +34,8 @@ public sealed class TaskRegistry : IAsyncDisposable
             Description: message.Description,
             Status: TaskState.Queued,
             CreatedAt: message.AssignedAt,
-            UpdatedAt: message.AssignedAt);
+            UpdatedAt: message.AssignedAt,
+            RunId: runId);
 
         if (_tasks.TryAdd(message.TaskId, snapshot))
         {
@@ -137,6 +138,10 @@ public sealed class TaskRegistry : IAsyncDisposable
 
     public TaskSnapshot RegisterSubTask(string taskId, string title, string description, string parentTaskId)
     {
+        var parentRunId = _tasks.TryGetValue(parentTaskId, out var parentSnapshot)
+            ? parentSnapshot.RunId
+            : null;
+
         var snapshot = new TaskSnapshot(
             TaskId: taskId,
             Title: title,
@@ -144,7 +149,8 @@ public sealed class TaskRegistry : IAsyncDisposable
             Status: TaskState.Queued,
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
-            ParentTaskId: parentTaskId);
+            ParentTaskId: parentTaskId,
+            RunId: parentRunId);
 
         if (_tasks.TryAdd(taskId, snapshot))
         {

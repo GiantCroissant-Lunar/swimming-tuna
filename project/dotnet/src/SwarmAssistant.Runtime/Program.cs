@@ -117,7 +117,8 @@ static object MapTaskSnapshot(TaskSnapshot snapshot)
         summary = snapshot.Summary,
         error = snapshot.Error,
         parentTaskId = snapshot.ParentTaskId,
-        childTaskIds = snapshot.ChildTaskIds
+        childTaskIds = snapshot.ChildTaskIds,
+        runId = snapshot.RunId
     };
 }
 
@@ -141,7 +142,8 @@ static IResult SubmitTask(
     RuntimeActorRegistry actorRegistry,
     TaskRegistry taskRegistry,
     UiEventStream uiEvents,
-    string eventType)
+    string eventType,
+    string? runId = null)
 {
     if (string.IsNullOrWhiteSpace(title))
     {
@@ -162,8 +164,8 @@ static IResult SubmitTask(
         description?.Trim() ?? string.Empty,
         DateTimeOffset.UtcNow);
 
+    taskRegistry.Register(task, runId);
     coordinator.Tell(task, ActorRefs.NoSender);
-    taskRegistry.Register(task);
 
     uiEvents.Publish(
         type: eventType,
@@ -431,7 +433,8 @@ if (options.AgUiEnabled)
                     actorRegistry,
                     taskRegistry,
                     stream,
-                    eventType: "agui.action.task.submitted");
+                    eventType: "agui.action.task.submitted",
+                    runId: UiActionPayload.GetString(action.Payload, "runId"));
 
             case "approve_review":
                 if (string.IsNullOrWhiteSpace(action.TaskId))
@@ -606,7 +609,8 @@ if (options.A2AEnabled)
             actorRegistry,
             taskRegistry,
             uiEvents,
-            eventType: "a2a.task.submitted");
+            eventType: "a2a.task.submitted",
+            runId: request.RunId);
     }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/a2a/tasks/{taskId}", (string taskId, TaskRegistry taskRegistry) =>
