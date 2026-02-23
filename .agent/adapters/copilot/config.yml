@@ -1,0 +1,28 @@
+name: copilot-cli
+description: GitHub Copilot CLI adapter
+
+capabilities:
+  hooks: [sessionStart, sessionEnd, preToolUse, postToolUse]
+  mcp: true
+  skills: false
+  rules: true
+
+sync:
+  agents_md:
+    target: AGENTS.md
+    action: none
+
+  rules:
+    target: .github/copilot-instructions.md
+    action: concatenate
+    source: .agent/rules/
+    glob: "*.md"
+
+  hooks:
+    target: .github/hooks/
+    action: copy
+    source: .agent/hooks/
+    mapping:
+      session_start.py: sessionStart
+      session_end.py: sessionEnd
+      pre_tool_use.py: preToolUse

@@ -1,0 +1,22 @@
+name: codex-cli
+description: OpenAI Codex CLI adapter
+
+capabilities:
+  hooks: []
+  mcp: true
+  skills: false
+  rules: true
+
+sync:
+  agents_md:
+    target: AGENTS.md
+    action: none
+
+  rules:
+    target: .codex/rules/
+    action: copy
+    source: .agent/rules/
+    glob: "*.md"
+
+  hooks:
+    action: none
