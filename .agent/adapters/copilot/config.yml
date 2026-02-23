@@ -22,6 +22,7 @@ sync:
     target: .github/hooks/
     action: copy
     source: .agent/hooks/
+    glob: "*.py"
     mapping:
       session_start.py: sessionStart
       session_end.py: sessionEnd

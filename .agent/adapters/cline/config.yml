@@ -23,6 +23,7 @@ sync:
     target: .clinerules/hooks/
     action: copy
     source: .agent/hooks/
+    glob: "*.py"
     mapping:
       session_start.py: TaskStart
       session_end.py: TaskCancel
