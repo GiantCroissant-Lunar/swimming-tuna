@@ -346,12 +346,40 @@ if (options.AgUiEnabled)
                     stream,
                     eventType: "agui.action.task.submitted");
 
+            case "pause_task":
+            case "approve_task":
+            case "cancel_task":
+                if (!options.HitlEnabled)
+                {
+                    stream.Publish(
+                        type: "agui.feature.disabled",
+                        taskId: action.TaskId,
+                        payload: new
+                        {
+                            feature = "hitl",
+                            actionId = action.ActionId,
+                            notice = "HITL intervention controls are not enabled in this profile. Set Runtime__HitlEnabled=true to enable."
+                        });
+                    return Results.Ok(new
+                    {
+                        notice = "HITL intervention controls are disabled.",
+                        feature = "hitl",
+                        actionId = action.ActionId
+                    });
+                }
+
+                stream.Publish(
+                    type: "agui.hitl.action.received",
+                    taskId: action.TaskId,
+                    payload: new { actionId = action.ActionId, action.Payload });
+                return Results.Accepted();
+
             default:
                 return Results.BadRequest(new
                 {
                     error = "Unsupported actionId.",
                     actionId = action.ActionId,
-                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory" }
+                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory", "pause_task", "approve_task", "cancel_task" }
                 });
         }
     }).AddEndpointFilter(requireApiKey);

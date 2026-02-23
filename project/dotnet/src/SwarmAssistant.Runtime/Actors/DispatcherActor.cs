@@ -196,6 +196,20 @@ public sealed class DispatcherActor : ReceiveActor
             "Spawned sub-task childTaskId={ChildTaskId} parentTaskId={ParentTaskId} depth={Depth}",
             message.ChildTaskId, message.ParentTaskId, message.Depth);
 
+        if (_options.GraphTelemetryEnabled)
+        {
+            _uiEvents.Publish(
+                type: "agui.task.graph.edge",
+                taskId: message.ParentTaskId,
+                payload: new
+                {
+                    parentTaskId = message.ParentTaskId,
+                    childTaskId = message.ChildTaskId,
+                    message.Title,
+                    message.Depth
+                });
+        }
+
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
 

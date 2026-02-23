@@ -143,6 +143,20 @@ public sealed class RuntimeOptions
     /// Leave empty to disable (localhost-only deployments do not require a key).
     /// </summary>
     public string? ApiKey { get; init; }
+
+    /// <summary>
+    /// When true, enables Human-in-the-Loop (HITL) intervention controls, including
+    /// <c>pause_task</c>, <c>approve_task</c>, and <c>cancel_task</c> AG-UI actions.
+    /// Defaults to <c>false</c> for safe rollout; enable explicitly in profiles that support it.
+    /// </summary>
+    public bool HitlEnabled { get; init; } = false;
+
+    /// <summary>
+    /// When true, publishes task-graph topology events (e.g. subtask spawned/completed)
+    /// to the AG-UI event stream under the <c>agui.task.graph.*</c> event namespace.
+    /// Defaults to <c>false</c> for safe rollout; enable explicitly in profiles that support it.
+    /// </summary>
+    public bool GraphTelemetryEnabled { get; init; } = false;
 }
 
 public sealed class SandboxWrapperOptions
