@@ -476,7 +476,37 @@ if (options.AgUiEnabled)
                     Feedback: reworkFeedback));
 
             case "pause_task":
+            case "approve_task":
+            case "cancel_task":
             case "resume_task":
+                if (!options.HitlEnabled)
+                {
+                    stream.Publish(
+                        type: "agui.feature.disabled",
+                        taskId: action.TaskId,
+                        payload: new
+                        {
+                            feature = "hitl",
+                            actionId = action.ActionId,
+                            notice = "HITL intervention controls are not enabled in this profile. Set Runtime__HitlEnabled=true to enable."
+                        });
+                    return Results.Ok(new
+                    {
+                        notice = "HITL intervention controls are disabled.",
+                        feature = "hitl",
+                        actionId = action.ActionId
+                    });
+                }
+
+                if (normalizedActionId is "approve_task" or "cancel_task")
+                {
+                    stream.Publish(
+                        type: "agui.hitl.action.received",
+                        taskId: action.TaskId,
+                        payload: new { actionId = action.ActionId, action.Payload });
+                    return Results.Accepted();
+                }
+
                 if (string.IsNullOrWhiteSpace(action.TaskId))
                 {
                     return RejectAction("task_id_required", $"taskId is required for {normalizedActionId}.", StatusCodes.Status400BadRequest);
@@ -508,7 +538,7 @@ if (options.AgUiEnabled)
                 {
                     error = "Unsupported actionId.",
                     actionId = action.ActionId,
-                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory", "approve_review", "reject_review", "request_rework", "pause_task", "resume_task", "set_subtask_depth" }
+                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory", "approve_review", "reject_review", "request_rework", "pause_task", "resume_task", "set_subtask_depth", "approve_task", "cancel_task" }
                 });
         }
     }).AddEndpointFilter(requireApiKey);

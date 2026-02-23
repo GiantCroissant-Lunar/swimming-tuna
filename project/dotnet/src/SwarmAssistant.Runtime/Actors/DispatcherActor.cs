@@ -193,14 +193,17 @@ public sealed class DispatcherActor : ReceiveActor
             "Spawned sub-task childTaskId={ChildTaskId} parentTaskId={ParentTaskId} depth={Depth}",
             message.ChildTaskId, message.ParentTaskId, message.Depth);
 
-        _uiEvents.Publish(
-            type: "agui.graph.link_created",
-            taskId: message.ParentTaskId,
-            payload: new GraphLinkCreatedPayload(
-                message.ParentTaskId,
-                message.ChildTaskId,
-                message.Depth,
-                message.Title));
+        if (_options.GraphTelemetryEnabled)
+        {
+            _uiEvents.Publish(
+                type: "agui.graph.link_created",
+                taskId: message.ParentTaskId,
+                payload: new GraphLinkCreatedPayload(
+                    message.ParentTaskId,
+                    message.ChildTaskId,
+                    message.Depth,
+                    message.Title));
+        }
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
