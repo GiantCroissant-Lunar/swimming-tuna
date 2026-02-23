@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskSummary",
+  "definitions": {
+    "TaskState": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "planning",
+        "building",
+        "reviewing",
+        "done",
+        "blocked"
+      ],
+      "description": "Lifecycle state of a swarm task."
+    },
+    "TaskSummary": {
+      "type": "object",
+      "description": "Lightweight task representation used in list responses.",
+      "required": [
+        "taskId",
+        "title",
+        "status",
+        "updatedAt"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/TaskState"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "type": "object",
+  "description": "Lightweight task representation used in list responses.",
+  "required": [
+    "taskId",
+    "title",
+    "status",
+    "updatedAt"
+  ],
+  "properties": {
+    "taskId": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/definitions/TaskState"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

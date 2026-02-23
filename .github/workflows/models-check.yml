@@ -1,0 +1,39 @@
+name: Models freshness check
+
+on:
+  pull_request:
+    paths:
+      - "project/docs/openapi/runtime.v1.yaml"
+      - "project/docs/openapi/schemas/**"
+      - "project/dotnet/src/SwarmAssistant.Contracts/Generated/**"
+      - "project/src/generated/**"
+      - "scripts/extract-schemas.mjs"
+      - "scripts/generate-models.sh"
+      - "scripts/verify-models.sh"
+  push:
+    branches:
+      - main
+    paths:
+      - "project/docs/openapi/runtime.v1.yaml"
+      - "project/docs/openapi/schemas/**"
+      - "project/dotnet/src/SwarmAssistant.Contracts/Generated/**"
+      - "project/src/generated/**"
+      - "scripts/extract-schemas.mjs"
+      - "scripts/generate-models.sh"
+      - "scripts/verify-models.sh"
+
+jobs:
+  models-check:
+    name: Verify generated models are up to date
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify models are not stale
+        run: bash scripts/verify-models.sh

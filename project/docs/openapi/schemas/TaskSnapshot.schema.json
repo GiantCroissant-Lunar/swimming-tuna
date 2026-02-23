@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskSnapshot",
+  "definitions": {
+    "TaskSnapshot": {
+      "type": "object",
+      "description": "Full snapshot of a swarm task including all role outputs.",
+      "required": [
+        "taskId",
+        "title",
+        "description",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "description": "Unique task identifier."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short human-readable task title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Full task description."
+        },
+        "status": {
+          "$ref": "#/definitions/TaskState"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the task was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of the last status update."
+        },
+        "planningOutput": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Output produced by the planner role."
+        },
+        "buildOutput": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Output produced by the builder role."
+        },
+        "reviewOutput": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Output produced by the reviewer role."
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Final summary when the task is completed."
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Error message when the task has failed."
+        },
+        "parentTaskId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Identifier of the parent task, if this is a sub-task."
+        },
+        "childTaskIds": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Identifiers of child sub-tasks spawned by this task."
+        }
+      }
+    },
+    "TaskState": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "planning",
+        "building",
+        "reviewing",
+        "done",
+        "blocked"
+      ],
+      "description": "Lifecycle state of a swarm task."
+    }
+  },
+  "type": "object",
+  "description": "Full snapshot of a swarm task including all role outputs.",
+  "required": [
+    "taskId",
+    "title",
+    "description",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "description": "Unique task identifier."
+    },
+    "title": {
+      "type": "string",
+      "description": "Short human-readable task title."
+    },
+    "description": {
+      "type": "string",
+      "description": "Full task description."
+    },
+    "status": {
+      "$ref": "#/definitions/TaskState"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the task was created."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the last status update."
+    },
+    "planningOutput": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Output produced by the planner role."
+    },
+    "buildOutput": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Output produced by the builder role."
+    },
+    "reviewOutput": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Output produced by the reviewer role."
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Final summary when the task is completed."
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Error message when the task has failed."
+    },
+    "parentTaskId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Identifier of the parent task, if this is a sub-task."
+    },
+    "childTaskIds": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "description": "Identifiers of child sub-tasks spawned by this task."
+    }
+  }
+}
