@@ -19,4 +19,6 @@ public enum WorldKey
     // Stigmergy WorldKeys for swarm coordination
     HighFailureRateDetected,
     SimilarTaskSucceeded,
+    NegotiationComplete,
+    AgentsAvailable,
 }

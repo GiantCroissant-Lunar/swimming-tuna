@@ -4,10 +4,15 @@ using SwarmAssistant.Contracts.Messaging;
 
 namespace SwarmAssistant.Runtime.Actors;
 
-public sealed class CapabilityRegistryActor : ReceiveActor
+public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
 {
+    private const int DefaultContractNetTimeoutMs = 500;
+    private const string ContractNetTimerPrefix = "contract-net-";
+
     private readonly ILogger _logger;
     private readonly Dictionary<IActorRef, AgentCapabilityAdvertisement> _agents = new();
+    private readonly Dictionary<Guid, ContractNetAuctionState> _auctions = new();
+    public ITimerScheduler Timers { get; set; } = null!;
 
     public CapabilityRegistryActor(ILoggerFactory loggerFactory)
     {
@@ -17,6 +22,9 @@ public sealed class CapabilityRegistryActor : ReceiveActor
         Receive<GetBestAgentForRole>(HandleGetBestAgentForRole);
         Receive<GetCapabilitySnapshot>(_ => Sender.Tell(new CapabilitySnapshot(_agents.Values.ToArray())));
         Receive<ExecuteRoleTask>(HandleExecuteRoleTask);
+        Receive<ContractNetCallForProposals>(HandleContractNetCallForProposals);
+        Receive<ContractNetBid>(HandleContractNetBid);
+        Receive<ContractNetFinalize>(HandleContractNetFinalize);
         Receive<Terminated>(HandleTerminated);
     }
 
@@ -58,6 +66,97 @@ public sealed class CapabilityRegistryActor : ReceiveActor
         candidate.Tell(message, Sender);
     }
 
+    private void HandleContractNetCallForProposals(ContractNetCallForProposals message)
+    {
+        var candidates = _agents
+            .Where(static pair => pair.Key != ActorRefs.Nobody)
+            .Where(pair => pair.Value.Capabilities.Contains(message.Role))
+            .Select(pair => pair.Key)
+            .ToArray();
+
+        var auctionId = Guid.NewGuid();
+        if (candidates.Length == 0)
+        {
+            Sender.Tell(new ContractNetNoBid(auctionId, message.TaskId, message.Role, "No capable agents available"));
+            return;
+        }
+
+        var timeout = message.Timeout <= TimeSpan.Zero
+            ? TimeSpan.FromMilliseconds(DefaultContractNetTimeoutMs)
+            : message.Timeout;
+
+        var state = new ContractNetAuctionState(
+            Sender,
+            message.TaskId,
+            message.Role,
+            candidates.ToHashSet());
+        _auctions[auctionId] = state;
+
+        var deadline = DateTimeOffset.UtcNow.Add(timeout);
+        foreach (var candidate in candidates)
+        {
+            candidate.Tell(new ContractNetBidRequest(
+                auctionId,
+                message.TaskId,
+                message.Role,
+                message.Description,
+                deadline), Self);
+        }
+
+        Timers.StartSingleTimer(ContractNetTimerPrefix + auctionId, new ContractNetFinalize(auctionId, message.TaskId, message.Role), timeout);
+    }
+
+    private void HandleContractNetBid(ContractNetBid bid)
+    {
+        if (!_auctions.TryGetValue(bid.AuctionId, out var state))
+        {
+            return;
+        }
+
+        if (!state.Candidates.Contains(Sender))
+        {
+            return;
+        }
+
+        state.Bids[Sender] = bid;
+        if (state.Bids.Count == state.Candidates.Count)
+        {
+            Timers.Cancel(ContractNetTimerPrefix + bid.AuctionId);
+            HandleContractNetFinalize(new ContractNetFinalize(bid.AuctionId, state.TaskId, state.Role));
+        }
+    }
+
+    private void HandleContractNetFinalize(ContractNetFinalize finalize)
+    {
+        if (!_auctions.Remove(finalize.AuctionId, out var state))
+        {
+            return;
+        }
+
+        // Contract Net Protocol winner selection: choose the lowest-cost bid first,
+        // then shortest estimate, and finally stable lexical actor-path ordering.
+        var winner = state.Bids
+            .OrderBy(pair => pair.Value.EstimatedCost)
+            .ThenBy(pair => pair.Value.EstimatedTimeMs)
+            .ThenBy(pair => pair.Value.FromAgent, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        if (winner.Equals(default(KeyValuePair<IActorRef, ContractNetBid>)))
+        {
+            state.Requester.Tell(new ContractNetNoBid(finalize.AuctionId, finalize.TaskId, finalize.Role, "No bids received"));
+            return;
+        }
+
+        var award = new ContractNetAward(
+            finalize.AuctionId,
+            finalize.TaskId,
+            finalize.Role,
+            winner.Value.FromAgent);
+
+        winner.Key.Tell(award, Self);
+        state.Requester.Tell(award, Self);
+    }
+
     private IActorRef? SelectAgent(SwarmRole role)
     {
         return _agents
@@ -72,5 +171,20 @@ public sealed class CapabilityRegistryActor : ReceiveActor
     private void HandleTerminated(Terminated message)
     {
         _agents.Remove(message.ActorRef);
+    }
+
+    private sealed class ContractNetAuctionState(
+        IActorRef requester,
+        string taskId,
+        SwarmRole role,
+        HashSet<IActorRef> candidates)
+    {
+        public IActorRef Requester { get; } = requester;
+        public string TaskId { get; } = taskId;
+        public SwarmRole Role { get; } = role;
+
+        public HashSet<IActorRef> Candidates { get; } = candidates;
+
+        public Dictionary<IActorRef, ContractNetBid> Bids { get; } = new();
     }
 }

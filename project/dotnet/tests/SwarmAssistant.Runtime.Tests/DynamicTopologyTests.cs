@@ -179,9 +179,8 @@ public sealed class DynamicTopologyTests : TestKit
             Props.Create(() => new CapabilityRegistryActor(_loggerFactory)), "cap-reg-no-ttl");
 
         // No TTL (default = zero)
-        var agent = Sys.ActorOf(
-            Props.Create(() => new SwarmAgentActor(
-                options,
+        var agentActor = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+                new RuntimeOptions(),
                 _loggerFactory,
                 engine,
                 telemetry,
@@ -190,7 +189,7 @@ public sealed class DynamicTopologyTests : TestKit
                 default)),
             "no-ttl-agent");
 
-        Watch(agent);
+        Watch(agentActor);
         // Actor should NOT terminate within a short window
         ExpectNoMsg(TimeSpan.FromMilliseconds(500));
     }

@@ -112,7 +112,20 @@ public static class SwarmActions
         },
         cost: BaseCosts.WaitForSubTasks);
 
-    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, Rework, Escalate, Finalize, WaitForSubTasks];
+    public static readonly IGoapAction Negotiate = new GoapAction(
+        name: "Negotiate",
+        preconditions: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.TaskExists] = true,
+            [WorldKey.AgentsAvailable] = true,
+        },
+        effects: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.NegotiationComplete] = true,
+        },
+        cost: 1);
+
+    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, Rework, Escalate, Finalize, WaitForSubTasks, Negotiate];
 
     /// <summary>
     /// Creates a new set of actions with adjusted costs based on learning data.
