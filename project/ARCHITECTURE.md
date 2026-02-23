@@ -127,6 +127,13 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `godot-ui/scripts/Main.cs` now renders a dedicated task list panel and supports row selection -> `request_snapshot` -> `refresh_surface` action chaining.
 - `.github/workflows/phase11-health.md` adds a weekly gh-aw hygiene workflow to detect runtime/docs drift (non-blocking).
 
+## .NET Aspire Orchestration (Phase 12)
+
+- `project/dotnet/src/SwarmAssistant.AppHost` is the .NET Aspire orchestrator project that spins up the backend runtime, ArcadeDB, Langfuse (PostgreSQL), and the Godot UI executable.
+- `project/dotnet/src/SwarmAssistant.ServiceDefaults` provides OpenTelemetry extensions for observability and service discovery.
+- Use `task run:aspire` to boot the entire local development environment including frontend, backend, and databases.
+- The `Runtime` and `Godot UI` are configured via environment variables to dynamically discover ports assigned by Aspire.
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:

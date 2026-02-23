@@ -14,6 +14,17 @@ namespace SwarmAssistant.Runtime;
 
 public sealed class Worker : BackgroundService
 {
+    private static readonly SwarmRole[] AllRoles =
+    [
+        SwarmRole.Planner,
+        SwarmRole.Builder,
+        SwarmRole.Reviewer,
+        SwarmRole.Orchestrator,
+        SwarmRole.Researcher,
+        SwarmRole.Debugger,
+        SwarmRole.Tester
+    ];
+
     private readonly ILogger<Worker> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly RuntimeOptions _options;
@@ -24,7 +35,10 @@ public sealed class Worker : BackgroundService
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
+    private IActorRef? _dispatcher;
     private RuntimeTelemetry? _telemetry;
+    private int _dynamicAgentCount;
+    private int _fixedPoolSize;
 
     public Worker(
         ILogger<Worker> logger,
@@ -52,6 +66,8 @@ public sealed class Worker : BackgroundService
         var reviewerPoolSize = Math.Clamp(_options.ReviewerPoolSize, 1, 16);
         var swarmAgentPoolSize = Math.Clamp(workerPoolSize + reviewerPoolSize, 1, 32);
         var maxCliConcurrency = Math.Clamp(_options.MaxCliConcurrency, 1, 32);
+        _fixedPoolSize = swarmAgentPoolSize;
+        _dynamicAgentCount = 0;
 
         using var startupActivity = _telemetry.StartActivity(
             "runtime.startup",
@@ -149,9 +165,11 @@ public sealed class Worker : BackgroundService
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
-                _taskRegistry)),
+                _taskRegistry,
+                _options)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
+        _dispatcher = dispatcher;
 
         _supervisor = supervisor;
         await _startupMemoryBootstrapper.RestoreAsync(
@@ -188,6 +206,7 @@ public sealed class Worker : BackgroundService
         finally
         {
             _actorRegistry.ClearDispatcher();
+            _dispatcher = null;
 
             if (_actorSystem is not null)
             {
@@ -233,5 +252,21 @@ public sealed class Worker : BackgroundService
                 snapshot.Failed,
                 snapshot.Escalations
             });
+
+        if (_options.AutoScaleEnabled && _dispatcher is not null)
+        {
+            var activeTasks = snapshot.Started - snapshot.Completed - snapshot.Failed;
+            var totalAgents = _fixedPoolSize + _dynamicAgentCount;
+            if (activeTasks > _options.ScaleUpThreshold && totalAgents < _options.MaxPoolSize)
+            {
+                _dynamicAgentCount++;
+                _dispatcher.Tell(new SpawnAgent(AllRoles, TimeSpan.FromMinutes(5)));
+                _logger.LogInformation(
+                    "Auto-scale up: spawning dynamic agent activeTasks={ActiveTasks} threshold={Threshold} totalAgents={TotalAgents}",
+                    activeTasks,
+                    _options.ScaleUpThreshold,
+                    totalAgents + 1);
+            }
+        }
     }
 }

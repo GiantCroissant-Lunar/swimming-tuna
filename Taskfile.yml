@@ -40,8 +40,14 @@ tasks:
   build:
     desc: Build the project
     cmds:
+      - dotnet build project/dotnet/SwarmAssistant.sln
       - mkdir -p {{.BUILD_DIR}}
       - go build -ldflags "-s -w -X main.version=$(gitversion /showvariable SemVer)" -o {{.BUILD_DIR}}/{{.PROJECT_NAME}} .
+
+  run:aspire:
+    desc: Run the .NET Aspire AppHost orchestrator
+    cmds:
+      - dotnet run --project project/dotnet/src/SwarmAssistant.AppHost/SwarmAssistant.AppHost.csproj
 
   clean:
     desc: Clean build artifacts

@@ -2,6 +2,7 @@ using Akka.Actor;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -33,12 +34,14 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
+    private readonly RuntimeOptions _runtimeOptions;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
     private readonly Dictionary<IActorRef, string> _coordinatorTaskIds = new();
     private readonly Dictionary<string, IActorRef> _parentCoordinators = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _childParentTaskIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<IActorRef, string> _spawnedAgentIds = new();
 
     private const int DefaultMaxRetries = 2;
 
@@ -51,7 +54,8 @@ public sealed class DispatcherActor : ReceiveActor
         ILoggerFactory loggerFactory,
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
-        TaskRegistry taskRegistry)
+        TaskRegistry taskRegistry,
+        RuntimeOptions runtimeOptions)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -62,10 +66,12 @@ public sealed class DispatcherActor : ReceiveActor
         _telemetry = telemetry;
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
+        _runtimeOptions = runtimeOptions;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
         Receive<SpawnSubTask>(HandleSpawnSubTask);
+        Receive<SpawnAgent>(HandleSpawnAgent);
         Receive<Terminated>(OnCoordinatorTerminated);
     }
 
@@ -181,8 +187,46 @@ public sealed class DispatcherActor : ReceiveActor
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
 
+    private void HandleSpawnAgent(SpawnAgent message)
+    {
+        var agentId = $"dynamic-agent-{Guid.NewGuid():N}";
+        var capabilities = message.Capabilities;
+        var idleTtl = message.IdleTtl;
+
+        var agent = Context.ActorOf(
+            Props.Create(() => new SwarmAgentActor(
+                _runtimeOptions,
+                _loggerFactory,
+                _roleEngine,
+                _telemetry,
+                _workerActor,
+                capabilities,
+                idleTtl)),
+            agentId);
+
+        _spawnedAgentIds[agent] = agentId;
+        Context.Watch(agent);
+
+        _logger.LogInformation(
+            "Spawned dynamic agent agentId={AgentId} capabilities=[{Capabilities}] idleTtl={IdleTtl}",
+            agentId,
+            string.Join(",", capabilities.Select(c => c.ToString())),
+            idleTtl);
+
+        Sender.Tell(new AgentSpawned(agentId, agent));
+    }
+
     private void OnCoordinatorTerminated(Terminated message)
     {
+        // Handle dynamic agent retirement
+        if (_spawnedAgentIds.TryGetValue(message.ActorRef, out var retiredAgentId))
+        {
+            _spawnedAgentIds.Remove(message.ActorRef);
+            _logger.LogInformation(
+                "Dynamic agent retired agentId={AgentId}", retiredAgentId);
+            return;
+        }
+
         if (!_coordinatorTaskIds.TryGetValue(message.ActorRef, out var taskId))
         {
             return;
