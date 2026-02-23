@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -55,6 +56,24 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
         {
             Assert.Equal(i + 1, sequences[i]);
         }
+    }
+
+    [Fact]
+    public async Task AppendAsync_SeedsSequenceFromPersistedMax_OnCacheMiss()
+    {
+        var recorder = new CommandRecorderHandler();
+        recorder.SetMaxTaskSequence("task-seeded", 7);
+        recorder.SetMaxRunSequence("run-seeded", 3);
+        using var client = new HttpClient(recorder);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+
+        await repository.AppendAsync(MakeEvent("evt-seeded", "run-seeded", "task-seeded", "step"));
+
+        Assert.Equal([8L], recorder.CapturedTaskSequences);
+        Assert.Equal([4L], recorder.RunSequencesByRun("run-seeded"));
     }
 
     [Fact]
@@ -181,10 +200,46 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
         factory.Verify(x => x.CreateClient(It.IsAny<string>()), Times.Never);
     }
 
+    [Fact]
+    public async Task ListByTaskAsync_InvalidOccurredAt_LogsWarning()
+    {
+        const string responseBody = """
+        {
+          "result": [
+            {
+              "eventId": "bad-ts",
+              "runId": "run-1",
+              "taskId": "task-1",
+              "eventType": "task.started",
+              "payload": null,
+              "occurredAt": "not-a-timestamp",
+              "taskSequence": 1,
+              "runSequence": 1
+            }
+          ]
+        }
+        """;
+
+        var handler = new FixedResponseHandler(responseBody);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+        var logger = new CapturingLogger<ArcadeDbTaskExecutionEventRepository>();
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false, enabled: true, logger);
+
+        _ = await repository.ListByTaskAsync("task-1");
+
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Warning &&
+                     entry.Message.Contains("Failed to parse 'occurredAt' timestamp", StringComparison.Ordinal));
+    }
+
     private static ArcadeDbTaskExecutionEventRepository CreateRepository(
         IHttpClientFactory factory,
         bool autoCreateSchema,
-        bool enabled = true)
+        bool enabled = true,
+        ILogger<ArcadeDbTaskExecutionEventRepository>? logger = null)
     {
         var options = Options.Create(new RuntimeOptions
         {
@@ -197,7 +252,7 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
         return new ArcadeDbTaskExecutionEventRepository(
             options,
             factory,
-            NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
+            logger ?? NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
     }
 
     private static TaskExecutionEvent MakeEvent(string eventId, string runId, string taskId, string eventType)
@@ -218,6 +273,8 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
         private readonly List<string> _commands = [];
         private readonly List<(string RunId, long RunSeq)> _runSeqCaptures = [];
         private readonly List<long> _taskSeqCaptures = [];
+        private readonly Dictionary<string, long> _maxTaskSequences = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, long> _maxRunSequences = new(StringComparer.Ordinal);
 
         public List<long> CapturedTaskSequences => _taskSeqCaptures;
 
@@ -237,6 +294,16 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
         public int CountContaining(string substring)
         {
             return _commands.Count(c => c.Contains(substring, StringComparison.Ordinal));
+        }
+
+        public void SetMaxTaskSequence(string taskId, long maxSequence)
+        {
+            _maxTaskSequences[taskId] = maxSequence;
+        }
+
+        public void SetMaxRunSequence(string runId, long maxSequence)
+        {
+            _maxRunSequences[runId] = maxSequence;
         }
 
         protected override async Task<HttpResponseMessage> SendAsync(
@@ -269,6 +336,36 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
                         _runSeqCaptures.Add((runIdEl.GetString() ?? string.Empty, rSeq));
                     }
                 }
+
+                if (command.Contains("SELECT max(taskSequence)", StringComparison.Ordinal) &&
+                    root.TryGetProperty("params", out var taskParamsEl) &&
+                    taskParamsEl.TryGetProperty("selectorValue", out var taskSelectorEl))
+                {
+                    var taskId = taskSelectorEl.GetString() ?? string.Empty;
+                    var maxTaskSequence = _maxTaskSequences.GetValueOrDefault(taskId, 0L);
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $"{{\"result\":[{{\"maxSequence\":{maxTaskSequence}}}]}}",
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                if (command.Contains("SELECT max(runSequence)", StringComparison.Ordinal) &&
+                    root.TryGetProperty("params", out var runParamsEl) &&
+                    runParamsEl.TryGetProperty("selectorValue", out var runSelectorEl))
+                {
+                    var runId = runSelectorEl.GetString() ?? string.Empty;
+                    var maxRunSequence = _maxRunSequences.GetValueOrDefault(runId, 0L);
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $"{{\"result\":[{{\"maxSequence\":{maxRunSequence}}}]}}",
+                            Encoding.UTF8,
+                            "application/json")
+                    };
+                }
             }
 
             return new HttpResponseMessage(HttpStatusCode.OK)
@@ -295,6 +392,39 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
             {
                 Content = new StringContent(_responseBody, Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public readonly List<(LogLevel Level, string Message)> Entries = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull
+        {
+            return NullScope.Instance;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add((logLevel, formatter(state, exception)));
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose()
+            {
+            }
         }
     }
 }

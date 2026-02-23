@@ -18,6 +18,8 @@ namespace SwarmAssistant.Runtime.Tasks;
 public sealed class ArcadeDbTaskExecutionEventRepository
     : ITaskExecutionEventWriter, ITaskExecutionEventReader
 {
+    private const int MaxInMemorySequenceEntries = 10_000;
+    private const int SequenceTrimBatchSize = 1_000;
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
 
     private static readonly string[] SchemaCommands =
@@ -46,6 +48,7 @@ public sealed class ArcadeDbTaskExecutionEventRepository
     // Per-task and per-run sequence counters; long values start at 0 and increment atomically.
     private readonly ConcurrentDictionary<string, long> _taskSequences = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, long> _runSequences = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _sequenceLock = new(1, 1);
 
     private DateTimeOffset _lastErrorLogAt = DateTimeOffset.MinValue;
     private int _consecutiveFailures;
@@ -77,9 +80,22 @@ public sealed class ArcadeDbTaskExecutionEventRepository
                 await EnsureSchemaAsync(client, cancellationToken);
             }
 
-            // Allocate monotonically increasing sequence numbers without DB round-trips.
-            var taskSeq = _taskSequences.AddOrUpdate(evt.TaskId, 1L, (_, v) => v + 1L);
-            var runSeq = _runSequences.AddOrUpdate(evt.RunId, 1L, (_, v) => v + 1L);
+            // Allocate monotonically increasing sequence numbers.
+            // Misses are seeded from persisted max() values to avoid collisions if in-memory entries are trimmed.
+            var taskSeq = await NextSequenceAsync(
+                client,
+                _taskSequences,
+                key: evt.TaskId,
+                selectorField: "taskId",
+                sequenceField: "taskSequence",
+                cancellationToken);
+            var runSeq = await NextSequenceAsync(
+                client,
+                _runSequences,
+                key: evt.RunId,
+                selectorField: "runId",
+                sequenceField: "runSequence",
+                cancellationToken);
 
             await ExecuteCommandAsync(
                 client,
@@ -285,7 +301,7 @@ public sealed class ArcadeDbTaskExecutionEventRepository
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", encoded);
     }
 
-    private static IReadOnlyList<TaskExecutionEvent> ParseEvents(string json)
+    private IReadOnlyList<TaskExecutionEvent> ParseEvents(string json)
     {
         using var document = JsonDocument.Parse(json);
         if (!document.RootElement.TryGetProperty("result", out var result) ||
@@ -312,7 +328,7 @@ public sealed class ArcadeDbTaskExecutionEventRepository
         return events;
     }
 
-    private static TaskExecutionEvent? ParseEvent(JsonElement item)
+    private TaskExecutionEvent? ParseEvent(JsonElement item)
     {
         var eventId = GetString(item, "eventId");
         if (string.IsNullOrWhiteSpace(eventId))
@@ -324,8 +340,10 @@ public sealed class ArcadeDbTaskExecutionEventRepository
         var occurredAt = ParseTimestamp(occurredAtRaw);
         if (occurredAt is null && !string.IsNullOrWhiteSpace(occurredAtRaw))
         {
-            // Value was present but unparseable – fall back to now so the record is not lost,
-            // but the caller can detect data quality issues via the timestamp being suspiciously recent.
+            _logger.LogWarning(
+                "Failed to parse 'occurredAt' timestamp '{Timestamp}' for event '{EventId}'. Falling back to current time.",
+                occurredAtRaw,
+                eventId);
         }
 
         var taskSequence = GetLong(item, "taskSequence");
@@ -379,6 +397,89 @@ public sealed class ArcadeDbTaskExecutionEventRepository
         return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
             ? parsed
             : null;
+    }
+
+    private async Task<long> NextSequenceAsync(
+        HttpClient client,
+        ConcurrentDictionary<string, long> cache,
+        string key,
+        string selectorField,
+        string sequenceField,
+        CancellationToken cancellationToken)
+    {
+        if (cache.TryGetValue(key, out _))
+        {
+            return cache.AddOrUpdate(key, 1L, (_, current) => current + 1L);
+        }
+
+        await _sequenceLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!cache.TryGetValue(key, out _))
+            {
+                var maxSequence = await GetMaxSequenceAsync(client, selectorField, sequenceField, key, cancellationToken);
+                cache[key] = maxSequence;
+                TrimSequenceCache(cache);
+            }
+        }
+        finally
+        {
+            _sequenceLock.Release();
+        }
+
+        return cache.AddOrUpdate(key, 1L, (_, current) => current + 1L);
+    }
+
+    private async Task<long> GetMaxSequenceAsync(
+        HttpClient client,
+        string selectorField,
+        string sequenceField,
+        string selectorValue,
+        CancellationToken cancellationToken)
+    {
+        var response = await ExecuteCommandAsync(
+            client,
+            $"SELECT max({sequenceField}) AS maxSequence FROM TaskExecutionEvent WHERE {selectorField} = :selectorValue",
+            new Dictionary<string, object?>
+            {
+                ["selectorValue"] = selectorValue
+            },
+            cancellationToken);
+
+        return ParseMaxSequence(response);
+    }
+
+    private static long ParseMaxSequence(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("result", out var result) ||
+            result.ValueKind != JsonValueKind.Array ||
+            result.GetArrayLength() == 0)
+        {
+            return 0L;
+        }
+
+        var first = result[0];
+        return GetLong(first, "maxSequence");
+    }
+
+    private static void TrimSequenceCache(ConcurrentDictionary<string, long> cache)
+    {
+        if (cache.Count <= MaxInMemorySequenceEntries)
+        {
+            return;
+        }
+
+        var toRemove = Math.Min(SequenceTrimBatchSize, cache.Count - MaxInMemorySequenceEntries);
+        foreach (var entry in cache)
+        {
+            if (toRemove-- <= 0)
+            {
+                break;
+            }
+
+            cache.TryRemove(entry.Key, out _);
+        }
     }
 
     private void LogArcadeDbFailure(Exception exception, string operation)
