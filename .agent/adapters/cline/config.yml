@@ -2,7 +2,7 @@ name: cline-cli
 description: Cline CLI adapter
 
 capabilities:
-  hooks: [TaskStart, TaskResume, PreToolUse, PostToolUse]
+  hooks: [TaskStart, TaskCancel, PreToolUse]
   mcp: true
   skills: false
   rules: true
@@ -26,5 +26,5 @@ sync:
     glob: "*.py"
     mapping:
       session_start.py: TaskStart
-      session_end.py: TaskCancel
+      session_end.py: TaskCancel  # Cline treats session end as task cancel (no separate TaskStop event)
       pre_tool_use.py: PreToolUse

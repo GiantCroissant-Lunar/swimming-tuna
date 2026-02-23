@@ -44,7 +44,10 @@ def load_adapter_config(config_path: Path) -> dict:
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        return {}
+    return data
 
 
 def discover_adapters(adapters_dir: Path) -> list[Path]:
@@ -140,8 +143,11 @@ def execute_merge_claude_hooks(
 
     # Load existing settings or start fresh
     if settings_path.exists():
-        with open(settings_path) as f:
-            settings = json.load(f)
+        try:
+            with open(settings_path) as f:
+                settings = json.load(f)
+        except json.JSONDecodeError:
+            settings = {}
     else:
         settings = {}
 
@@ -151,7 +157,9 @@ def execute_merge_claude_hooks(
 
     for hook_file, event_name in mapping.items():
         hook_path = (hooks_dir / hook_file).resolve()
-        command = f'python "{hook_path}"'
+        if not hook_path.exists():
+            continue
+        command = f'python3 "{hook_path}"'
         entry = {"type": "command", "command": command}
 
         if event_name not in settings["hooks"]:
@@ -194,7 +202,7 @@ def execute_concatenate(source: Path, target: Path, glob: str) -> str:
     for src_file in matching:
         parts.append(src_file.read_text())
 
-    target.write_text("\n".join(parts))
+    target.write_text("\n\n".join(parts))
     return f"concatenate: {len(matching)} files -> {target}"
 
 
@@ -223,6 +231,10 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
 
         if action == "none":
             results.append(f"skip (none): {entry_name}")
+            continue
+
+        if not target_rel:
+            results.append(f"skip (missing target): {entry_name}")
             continue
 
         if action == "pointer":

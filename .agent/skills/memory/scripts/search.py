@@ -47,15 +47,18 @@ def main() -> None:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:
-        result = json.loads(resp.read())
-        for mem in result.get("results", []):
-            content = mem.get("content") or mem.get("memory") or ""
-            similarity = mem.get("similarity", 0)
-            print(f"[{similarity:.0%}] {content[:200]}")
-
-    if not result.get("results"):
-        print("No memories found.")
+    try:
+        with urllib.request.urlopen(req) as resp:  # noqa: S310
+            result = json.loads(resp.read())
+            for mem in result.get("results", []):
+                content = mem.get("content") or mem.get("memory") or ""
+                similarity = mem.get("score", 0)
+                print(f"[{similarity:.0%}] {content[:200]}")
+            if not result.get("results"):
+                print("No memories found.")
+    except Exception as e:
+        print(f"Error: API request failed: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
