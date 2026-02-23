@@ -19,10 +19,6 @@ public sealed class ReviewerActor : ReceiveActor
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
-    // Quality thresholds for autonomy
-    private const double QualityConcernThreshold = 0.5;
-    private const double SelfRetryThreshold = 0.3;
-
     public ReviewerActor(
         RuntimeOptions options,
         ILoggerFactory loggerFactory,
@@ -91,7 +87,7 @@ public sealed class ReviewerActor : ReceiveActor
                 confidence);
 
             // Raise QualityConcern for borderline cases
-            if (confidence < QualityConcernThreshold)
+            if (confidence < AgentQualityEvaluator.QualityConcernThreshold)
             {
                 var concern = BuildQualityConcern(output, confidence);
                 _logger.LogWarning(
@@ -112,7 +108,7 @@ public sealed class ReviewerActor : ReceiveActor
             }
 
             // Self-retry if confidence is very low (unless already retried)
-            if (confidence < SelfRetryThreshold && command.MaxConfidence is null)
+            if (confidence < AgentQualityEvaluator.SelfRetryThreshold && command.MaxConfidence is null)
             {
                 _logger.LogInformation(
                     "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
@@ -124,7 +120,7 @@ public sealed class ReviewerActor : ReceiveActor
                 // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
-                    PreferredAdapter = GetAlternativeAdapter(command.PreferredAdapter),
+                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
                     MaxConfidence = confidence
                 };
 
@@ -180,11 +176,11 @@ public sealed class ReviewerActor : ReceiveActor
         scores.Add(keywordScore);
 
         // Factor 3: Adapter reliability bonus
-        var adapterScore = GetAdapterReliabilityScore(adapterId);
+        var adapterScore = AgentQualityEvaluator.GetAdapterReliabilityScore(adapterId);
         scores.Add(adapterScore);
 
         // Factor 4: Structural indicators (has code blocks, bullet points, etc.)
-        var structureScore = EvaluateStructure(output);
+        var structureScore = AgentQualityEvaluator.EvaluateStructure(output);
         scores.Add(structureScore);
 
         // Factor 5: Review comprehensiveness (pass/fail indicators)
@@ -210,45 +206,6 @@ public sealed class ReviewerActor : ReceiveActor
 
         var matches = keywords.Count(k => lowerOutput.Contains(k));
         return (double)matches / keywords.Length;
-    }
-
-    private static double GetAdapterReliabilityScore(string? adapterId)
-    {
-        if (string.IsNullOrWhiteSpace(adapterId)) return 0.5;
-
-        return adapterId.ToLowerInvariant() switch
-        {
-            "copilot" => 0.85,
-            "kimi" => 0.80,
-            "cline" => 0.75,
-            "local-echo" => 0.50,
-            _ => 0.60
-        };
-    }
-
-    private static double EvaluateStructure(string output)
-    {
-        var scores = new List<double>();
-
-        // Has code blocks
-        if (output.Contains("```"))
-            scores.Add(1.0);
-        else
-            scores.Add(0.5);
-
-        // Has bullet points or numbered lists
-        if (output.Contains("- ") || output.Contains("1. "))
-            scores.Add(1.0);
-        else
-            scores.Add(0.5);
-
-        // Has sections (headers)
-        if (output.Contains("# ") || output.Contains("## "))
-            scores.Add(1.0);
-        else
-            scores.Add(0.5);
-
-        return scores.Average();
     }
 
     private static double EvaluateReviewComprehensiveness(string output)
@@ -294,11 +251,5 @@ public sealed class ReviewerActor : ReceiveActor
             concerns.Add("low confidence score");
 
         return $"Review quality concern ({confidence:F2}): {string.Join(", ", concerns)}";
-    }
-
-    private static string? GetAlternativeAdapter(string? currentAdapter)
-    {
-        var adapters = new[] { "copilot", "kimi", "cline", "local-echo" };
-        return adapters.FirstOrDefault(a => !a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
     }
 }

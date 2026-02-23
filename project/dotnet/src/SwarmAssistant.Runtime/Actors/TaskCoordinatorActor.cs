@@ -207,7 +207,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             case SwarmRole.Reviewer:
                 _reviewOutput = message.Output;
-                var passed = !ContainsRejection(message.Output) && message.Confidence >= 0.5;
+                var passed = !ContainsRejection(message.Output) && message.Confidence >= AgentQualityEvaluator.QualityConcernThreshold;
                 if (passed)
                 {
                     _worldState = (WorldState)_worldState
@@ -820,7 +820,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             $"{message.Concern} (confidence: {message.Confidence:F2})");
 
         // Adjust world state based on confidence level
-        if (message.Confidence < 0.3)
+        if (message.Confidence < AgentQualityEvaluator.SelfRetryThreshold)
         {
             _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, true);
             _logger.LogWarning(
