@@ -138,6 +138,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<ConsensusResult>(OnConsensusResult);
         Receive<QualityConcern>(OnQualityConcern);
         Receive<TaskInterventionCommand>(OnTaskInterventionCommand);
+        Receive<RoleLifecycleEvent>(OnRoleLifecycleEvent);
     }
 
     protected override void PreStart()
@@ -146,6 +147,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Context.System.EventStream.Subscribe(Self, typeof(GlobalBlackboardChanged));
         // Subscribe to quality concerns from agent actors
         Context.System.EventStream.Subscribe(Self, typeof(QualityConcern));
+        // Subscribe to role lifecycle events from worker/reviewer actors
+        Context.System.EventStream.Subscribe(Self, typeof(RoleLifecycleEvent));
         base.PreStart();
     }
 
@@ -153,6 +156,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     {
         Context.System.EventStream.Unsubscribe(Self, typeof(GlobalBlackboardChanged));
         Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
+        Context.System.EventStream.Unsubscribe(Self, typeof(RoleLifecycleEvent));
         _blackboardActor.Tell(new RemoveBlackboard(_taskId));
         base.PostStop();
     }
@@ -413,6 +417,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     message.Output)
             });
 
+        // Emit explicit role.succeeded event for all non-orchestrator roles
+        if (message.Role != SwarmRole.Orchestrator)
+        {
+            _uiEvents.Publish(
+                type: "agui.role.succeeded",
+                taskId: _taskId,
+                payload: new RoleSucceededPayload(
+                    message.Role.ToString().ToLowerInvariant(),
+                    _taskId,
+                    message.Confidence,
+                    message.AdapterId));
+        }
+
         // For multi-reviewer consensus, don't send per-vote TaskResult; OnConsensusResult handles it
         if (message.Role != SwarmRole.Reviewer || _options.ReviewConsensusCount <= 1)
         {
@@ -460,6 +477,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             FallbackToGoap();
             return;
         }
+
+        // Emit explicit role.failed event
+        _uiEvents.Publish(
+            type: "agui.role.failed",
+            taskId: _taskId,
+            payload: new RoleFailedPayload(
+                message.Role.ToString().ToLowerInvariant(),
+                _taskId,
+                message.Error));
 
         // Send detailed failure report to supervisor for active retry decisions
         _supervisorActor.Tell(new RoleFailureReport(
@@ -589,6 +615,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 StoreBlackboard("review_passed", true.ToString());
 
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "approved"));
+                _uiEvents.Publish(
+                    type: "agui.task.intervention",
+                    taskId: _taskId,
+                    payload: new TaskInterventionPayload(_taskId, "approve_review"));
                 FinishTask();
                 return;
 
@@ -606,6 +636,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 }
 
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "rejected"));
+                _uiEvents.Publish(
+                    type: "agui.task.intervention",
+                    taskId: _taskId,
+                    payload: new TaskInterventionPayload(_taskId, "reject_review"));
                 BlockFromIntervention($"Review rejected by human: {message.Reason.Trim()}");
                 return;
 
@@ -624,6 +658,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
                 StoreBlackboard("human_rework_feedback", message.Feedback.Trim());
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "rework_requested"));
+                _uiEvents.Publish(
+                    type: "agui.task.intervention",
+                    taskId: _taskId,
+                    payload: new TaskInterventionPayload(_taskId, "request_rework"));
                 DispatchAction("Rework");
                 return;
 
@@ -650,6 +688,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                         action = "Paused",
                         decidedBy = "human"
                     });
+                _uiEvents.Publish(
+                    type: "agui.task.intervention",
+                    taskId: _taskId,
+                    payload: new TaskInterventionPayload(_taskId, "pause_task"));
 
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "paused"));
                 return;
@@ -671,6 +713,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                         action = "Resumed",
                         decidedBy = "human"
                     });
+                _uiEvents.Publish(
+                    type: "agui.task.intervention",
+                    taskId: _taskId,
+                    payload: new TaskInterventionPayload(_taskId, "resume_task"));
 
                 Sender.Tell(new TaskInterventionResult(message.TaskId, actionId, true, "resumed"));
                 if (!string.IsNullOrWhiteSpace(_deferredActionName))
@@ -807,18 +853,30 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         {
             case "Plan":
                 TransitionTo(TaskState.Planning);
+                _uiEvents.Publish(
+                    type: "agui.role.dispatched",
+                    taskId: _taskId,
+                    payload: new RoleDispatchedPayload("planner", _taskId));
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Planner, _title, _description, null, null));
                 break;
 
             case "Build":
                 TransitionTo(TaskState.Building);
+                _uiEvents.Publish(
+                    type: "agui.role.dispatched",
+                    taskId: _taskId,
+                    payload: new RoleDispatchedPayload("builder", _taskId));
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null));
                 break;
 
             case "Review":
                 TransitionTo(TaskState.Reviewing);
+                _uiEvents.Publish(
+                    type: "agui.role.dispatched",
+                    taskId: _taskId,
+                    payload: new RoleDispatchedPayload("reviewer", _taskId));
                 var reviewCount = _options.ReviewConsensusCount;
                 if (reviewCount == 1)
                 {
@@ -839,6 +897,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             case "SecondOpinion":
                 TransitionTo(TaskState.Reviewing);
+                _uiEvents.Publish(
+                    type: "agui.role.dispatched",
+                    taskId: _taskId,
+                    payload: new RoleDispatchedPayload("reviewer", _taskId));
                 _logger.LogInformation("Requesting SecondOpinion for task {TaskId}", _taskId);
 
                 // Cancel any stale session before starting the new one
@@ -860,6 +922,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             case "Rework":
                 StoreBlackboard($"rework_attempt_{_retryCount}", "Reworking after review rejection");
                 TransitionTo(TaskState.Building);
+                _uiEvents.Publish(
+                    type: "agui.role.dispatched",
+                    taskId: _taskId,
+                    payload: new RoleDispatchedPayload("builder", _taskId));
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput));
                 break;
@@ -956,6 +1022,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         ReportFailureToGlobalBlackboard(error);
 
         _uiEvents.Publish(
+            type: "agui.task.escalated",
+            taskId: _taskId,
+            payload: new TaskEscalatedPayload(_taskId, error, 2));
+
+        _uiEvents.Publish(
             type: "agui.task.failed",
             taskId: _taskId,
             payload: new
@@ -983,6 +1054,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         // Stigmergy: write escalation signal to global blackboard
         ReportFailureToGlobalBlackboard(reason);
+
+        _uiEvents.Publish(
+            type: "agui.task.escalated",
+            taskId: _taskId,
+            payload: new TaskEscalatedPayload(_taskId, reason, 2));
 
         _uiEvents.Publish(
             type: "agui.task.failed",
@@ -1292,6 +1368,26 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId,
                 message.Role,
                 message.Confidence);
+        }
+    }
+
+    private void OnRoleLifecycleEvent(RoleLifecycleEvent message)
+    {
+        // Only process lifecycle events for this task
+        if (!message.TaskId.Equals(_taskId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (message.Phase == "started")
+        {
+            _uiEvents.Publish(
+                type: "agui.role.started",
+                taskId: _taskId,
+                payload: new RoleStartedPayload(
+                    message.Role.ToString().ToLowerInvariant(),
+                    _taskId,
+                    message.ActorName));
         }
     }
 }
