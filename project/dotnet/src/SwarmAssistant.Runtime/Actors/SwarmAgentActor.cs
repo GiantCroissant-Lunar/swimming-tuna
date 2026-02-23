@@ -18,13 +18,16 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     private int _currentLoad;
 
+    private readonly TimeSpan _idleTtl;
+
     public SwarmAgentActor(
         RuntimeOptions options,
         ILoggerFactory loggerFactory,
         AgentFrameworkRoleEngine agentFrameworkRoleEngine,
         RuntimeTelemetry telemetry,
         IActorRef capabilityRegistry,
-        SwarmRole[] capabilities)
+        SwarmRole[] capabilities,
+        TimeSpan idleTtl = default)
     {
         _options = options;
         _agentFrameworkRoleEngine = agentFrameworkRoleEngine;
@@ -32,13 +35,22 @@ public sealed class SwarmAgentActor : ReceiveActor
         _capabilityRegistry = capabilityRegistry;
         _capabilities = Array.AsReadOnly((SwarmRole[])capabilities.Clone());
         _logger = loggerFactory.CreateLogger<SwarmAgentActor>();
+        _idleTtl = idleTtl;
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
         Receive<HealthCheckRequest>(HandleHealthCheck);
+        if (idleTtl > TimeSpan.Zero)
+        {
+            Receive<ReceiveTimeout>(_ => OnIdleTimeout());
+        }
     }
 
     protected override void PreStart()
     {
+        if (_idleTtl > TimeSpan.Zero)
+        {
+            Context.SetReceiveTimeout(_idleTtl);
+        }
         AdvertiseCapability();
         base.PreStart();
     }
@@ -139,6 +151,14 @@ public sealed class SwarmAgentActor : ReceiveActor
             _currentLoad = Math.Max(0, _currentLoad - 1);
             AdvertiseCapability();
         }
+    }
+
+    private void OnIdleTimeout()
+    {
+        _logger.LogInformation(
+            "SwarmAgentActor idle TTL expired, retiring agentId={AgentId}",
+            Self.Path.Name);
+        Context.Stop(Self);
     }
 
     private void AdvertiseCapability()

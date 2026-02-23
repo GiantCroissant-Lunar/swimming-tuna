@@ -196,3 +196,19 @@ internal sealed record QualityConcern(
     double Confidence,
     DateTimeOffset At
 );
+
+// Dynamic topology: on-demand agent spawning
+internal sealed record SpawnAgent(
+    SwarmRole[] Capabilities,
+    TimeSpan IdleTtl
+);
+
+internal sealed record AgentSpawned(
+    string AgentId,
+    IActorRef AgentRef
+);
+
+internal sealed record AgentRetired(
+    string AgentId,
+    string Reason
+);
