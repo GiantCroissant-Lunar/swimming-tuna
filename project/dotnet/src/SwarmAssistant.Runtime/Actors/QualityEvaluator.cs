@@ -3,24 +3,27 @@ using SwarmAssistant.Contracts.Messaging;
 namespace SwarmAssistant.Runtime.Actors;
 
 /// <summary>
-/// Shared quality-evaluation helpers used by <see cref="WorkerActor"/> and <see cref="ReviewerActor"/>.
-/// Centralises thresholds, adapter reliability scores, structural heuristics, and the
-/// round-robin alternative-adapter selection so the two actors stay in sync.
+/// Shared quality evaluation utilities used by WorkerActor and ReviewerActor.
+/// Centralizes confidence scoring, threshold constants, adapter reliability,
+/// and structural analysis to avoid duplication across actor types.
 /// </summary>
 internal static class QualityEvaluator
 {
-    /// <summary>Confidence below this triggers a QualityConcern raised to the supervisor.</summary>
-    internal const double QualityConcernThreshold = 0.5;
-
-    /// <summary>Confidence below this triggers an actor-level self-retry.</summary>
-    internal const double SelfRetryThreshold = 0.3;
-
-    private static readonly string[] AdapterSequence = ["copilot", "kimi", "cline", "local-echo"];
+    // ── Shared thresholds ───────────────────────────────────────────────
+    /// <summary>
+    /// Confidence below this value triggers a QualityConcern publication.
+    /// Also used by TaskCoordinatorActor to gate review-pass decisions.
+    /// </summary>
+    public const double QualityConcernThreshold = 0.5;
 
     /// <summary>
-    /// Returns a reliability bonus score [0.0-1.0] for the given adapter ID.
+    /// Confidence below this value triggers an in-actor self-retry.
+    /// Also referenced by TaskCoordinatorActor for high-failure-rate detection.
     /// </summary>
-    internal static double GetAdapterReliabilityScore(string? adapterId)
+    public const double SelfRetryThreshold = 0.3;
+
+    // ── Adapter reliability scores ──────────────────────────────────────
+    public static double GetAdapterReliabilityScore(string? adapterId)
     {
         if (string.IsNullOrWhiteSpace(adapterId)) return 0.5;
 
@@ -34,12 +37,8 @@ internal static class QualityEvaluator
         };
     }
 
-    /// <summary>
-    /// Evaluates structural indicators (code blocks, bullet points, headers) in <paramref name="output"/>.
-    /// Returns 0.5 (neutral) for <see cref="SwarmRole.Orchestrator"/> because its output is intentionally
-    /// terse and would otherwise be penalised by structural heuristics.
-    /// </summary>
-    internal static double EvaluateStructure(string output, SwarmRole role)
+    // ── Structural evaluation ───────────────────────────────────────────
+    public static double EvaluateStructure(string output, SwarmRole role)
     {
         // Orchestrator output is intentionally short (ACTION / REASON lines) — structural
         // indicators don't apply and would unfairly lower the confidence score.
@@ -50,27 +49,50 @@ internal static class QualityEvaluator
 
         var scores = new List<double>();
 
+        // Has code blocks
         scores.Add(output.Contains("```") ? 1.0 : 0.5);
+
+        // Has bullet points or numbered lists
         scores.Add(output.Contains("- ") || output.Contains("1. ") ? 1.0 : 0.5);
+
+        // Has sections (headers)
         scores.Add(output.Contains("# ") || output.Contains("## ") ? 1.0 : 0.5);
 
         return scores.Average();
     }
 
-    /// <summary>
-    /// Returns the next adapter in the round-robin sequence after <paramref name="currentAdapter"/>.
-    /// Wraps around so every configured adapter is exercised during retries.
-    /// If <paramref name="currentAdapter"/> is unknown, starts from the first adapter in the sequence.
-    /// </summary>
-    internal static string? GetAlternativeAdapter(string? currentAdapter)
+    // ── Concern description builder ─────────────────────────────────────
+    public static string BuildQualityConcern(string output, double confidence, string prefix = "Quality concern")
+    {
+        var concerns = new List<string>();
+
+        if (output.Length < 100)
+            concerns.Add("output too short");
+
+        if (output.Length > 10000)
+            concerns.Add("output excessively long");
+
+        if (!output.Contains("```") && !output.Contains("- ") && !output.Contains("1. "))
+            concerns.Add("lacks structure");
+
+        if (concerns.Count == 0)
+            concerns.Add("low confidence score");
+
+        return $"{prefix} ({confidence:F2}): {string.Join(", ", concerns)}";
+    }
+
+    // ── Alternative adapter selection ───────────────────────────────────
+    private static readonly string[] Adapters = ["copilot", "kimi", "cline", "local-echo"];
+
+    public static string? GetAlternativeAdapter(string? currentAdapter)
     {
         var index = Array.FindIndex(
-            AdapterSequence,
+            Adapters,
             a => a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
 
         // When the current adapter is not found (index == -1) start from index 0;
         // otherwise advance to the next position in the round-robin.
-        var nextIndex = index < 0 ? 0 : (index + 1) % AdapterSequence.Length;
-        return AdapterSequence[nextIndex];
+        var nextIndex = index < 0 ? 0 : (index + 1) % Adapters.Length;
+        return Adapters[nextIndex];
     }
 }

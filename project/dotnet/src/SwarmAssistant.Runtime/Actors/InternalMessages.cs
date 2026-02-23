@@ -165,17 +165,6 @@ internal sealed record TaskEscalated(
     DateTimeOffset At
 );
 
-// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
-// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
-internal sealed record QualityConcern(
-    string TaskId,
-    SwarmRole Role,
-    string Concern,
-    double Confidence,
-    string? AdapterId,
-    DateTimeOffset At
-);
-
 // Monitor self-scheduling tick
 internal sealed record MonitorTick;
 
@@ -207,6 +196,7 @@ internal sealed record QualityConcern(
     SwarmRole Role,
     string Concern,
     double Confidence,
+    string? AdapterId,
     DateTimeOffset At
 );
 

@@ -93,7 +93,7 @@ public sealed class ReviewerActor : ReceiveActor
             // Self-retry if confidence is very low (unless already retried).
             // Retry BEFORE publishing the concern so the supervisor sees the
             // final confidence rather than a stale pre-retry value.
-            if (confidence < AgentQualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
+            if (confidence < QualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
             {
                 _logger.LogInformation(
                     "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
@@ -105,7 +105,7 @@ public sealed class ReviewerActor : ReceiveActor
                 // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
-                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(adapterId),
+                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId),
                     PreviousConfidence = confidence
                 };
 
@@ -128,9 +128,9 @@ public sealed class ReviewerActor : ReceiveActor
             }
 
             // Raise QualityConcern for borderline cases
-            if (confidence < AgentQualityEvaluator.QualityConcernThreshold)
+            if (confidence < QualityEvaluator.QualityConcernThreshold)
             {
-                var concern = AgentQualityEvaluator.BuildQualityConcern(output, confidence, "Review quality concern");
+                var concern = QualityEvaluator.BuildQualityConcern(output, confidence, "Review quality concern");
 
                 _logger.LogWarning(
                     "Reviewer quality concern taskId={TaskId} confidence={Confidence} concern={Concern}",
@@ -144,6 +144,7 @@ public sealed class ReviewerActor : ReceiveActor
                     command.Role,
                     concern,
                     confidence,
+                    adapterId,
                     DateTimeOffset.UtcNow));
 
                 activity?.SetTag("quality.concern", concern);
@@ -154,7 +155,8 @@ public sealed class ReviewerActor : ReceiveActor
                 command.Role,
                 output,
                 DateTimeOffset.UtcNow,
-                Self.Path.Name));
+                confidence,
+                adapterId));
         }
         catch (Exception exception)
         {
@@ -175,7 +177,7 @@ public sealed class ReviewerActor : ReceiveActor
 
     /// <summary>
     /// Evaluates output quality and returns a confidence score between 0.0 and 1.0.
-    /// Uses shared helpers from <see cref="AgentQualityEvaluator"/> plus reviewer-specific keyword scoring.
+    /// Uses shared helpers from <see cref="QualityEvaluator"/> plus reviewer-specific keyword scoring.
     /// </summary>
     private static double EvaluateQuality(string output, string? adapterId)
     {
@@ -190,15 +192,19 @@ public sealed class ReviewerActor : ReceiveActor
         scores.Add(keywordScore);
 
         // Factor 3: Adapter reliability bonus (shared)
-        var adapterScore = AgentQualityEvaluator.GetAdapterReliabilityScore(adapterId);
+        var adapterScore = QualityEvaluator.GetAdapterReliabilityScore(adapterId);
         scores.Add(adapterScore);
 
         // Factor 4: Structural indicators (shared)
-        var structureScore = AgentQualityEvaluator.EvaluateStructure(output);
+        var structureScore = QualityEvaluator.EvaluateStructure(output, SwarmRole.Reviewer);
         scores.Add(structureScore);
 
+        // Factor 5: Review comprehensiveness (pass/fail indicators)
+        var comprehensivenessScore = EvaluateReviewComprehensiveness(output);
+        scores.Add(comprehensivenessScore);
+
         // Weighted average
-        var weights = new[] { 0.25, 0.35, 0.15, 0.25 };
+        var weights = new[] { 0.20, 0.25, 0.15, 0.20, 0.20 };
         var confidence = scores.Zip(weights, (s, w) => s * w).Sum();
 
         return Math.Clamp(confidence, 0.0, 1.0);
