@@ -283,9 +283,9 @@ public class TaskOutcomeTests
             TitleKeywords = new List<string> { "test", "task" },
             RoleExecutions = new List<RoleExecutionRecord>
             {
-                new() { Role = SwarmRole.Planner, RetryCount = 0, Succeeded = true },
-                new() { Role = SwarmRole.Builder, RetryCount = 2, Succeeded = true },
-                new() { Role = SwarmRole.Reviewer, RetryCount = 1, Succeeded = true }
+                new() { TaskId = "test-task", Role = SwarmRole.Planner, RetryCount = 0, Succeeded = true },
+                new() { TaskId = "test-task", Role = SwarmRole.Builder, RetryCount = 2, Succeeded = true },
+                new() { TaskId = "test-task", Role = SwarmRole.Reviewer, RetryCount = 1, Succeeded = true }
             }
         };
 
@@ -330,6 +330,7 @@ public class RoleExecutionRecordTests
         // Act
         var record = new RoleExecutionRecord
         {
+            TaskId = "test-task",
             Role = SwarmRole.Builder,
             StartedAt = startedAt,
             CompletedAt = completedAt,
@@ -348,6 +349,7 @@ public class RoleExecutionRecordTests
         // Arrange & Act
         var record = new RoleExecutionRecord
         {
+            TaskId = "test-task",
             Role = SwarmRole.Planner,
             Succeeded = true,
             Confidence = 1.0
