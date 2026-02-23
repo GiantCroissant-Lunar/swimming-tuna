@@ -62,7 +62,8 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 ["parentTaskId"] = snapshot.ParentTaskId,
                 ["childTaskIds"] = snapshot.ChildTaskIds is { Count: > 0 }
                     ? string.Join(ChildTaskIdDelimiter, snapshot.ChildTaskIds)
-                    : null
+                    : null,
+                ["runId"] = snapshot.RunId
             };
 
             // Atomic UPSERT: updates the existing record or inserts a new one in a single statement.
@@ -73,7 +74,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 "createdAt = :createdAt, updatedAt = :updatedAt, " +
                 "planningOutput = :planningOutput, buildOutput = :buildOutput, reviewOutput = :reviewOutput, " +
                 "summary = :summary, taskError = :taskError, " +
-                "parentTaskId = :parentTaskId, childTaskIds = :childTaskIds " +
+                "parentTaskId = :parentTaskId, childTaskIds = :childTaskIds, runId = :runId " +
                 "UPSERT WHERE taskId = :taskId",
                 parameters,
                 cancellationToken);
@@ -118,6 +119,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.taskError IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.parentTaskId IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.childTaskIds IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.runId IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
 
             _schemaEnsured = allSucceeded;

@@ -26,7 +26,7 @@ public sealed class TaskRegistry : IAsyncDisposable
         _drainTask = Task.Run(DrainPersistenceChannelAsync);
     }
 
-    public TaskSnapshot Register(TaskAssigned message)
+    public TaskSnapshot Register(TaskAssigned message, string? runId = null)
     {
         var snapshot = new TaskSnapshot(
             TaskId: message.TaskId,
@@ -34,7 +34,8 @@ public sealed class TaskRegistry : IAsyncDisposable
             Description: message.Description,
             Status: TaskState.Queued,
             CreatedAt: message.AssignedAt,
-            UpdatedAt: message.AssignedAt);
+            UpdatedAt: message.AssignedAt,
+            RunId: runId);
 
         if (_tasks.TryAdd(message.TaskId, snapshot))
         {
