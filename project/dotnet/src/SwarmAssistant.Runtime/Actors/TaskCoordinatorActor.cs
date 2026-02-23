@@ -198,6 +198,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 decidedBy = "consensus",
             });
 
+        _uiEvents.Publish(
+            type: "agui.telemetry.consensus",
+            taskId: _taskId,
+            payload: new
+            {
+                approved = message.Approved,
+                voteCount = message.Votes.Count,
+                retryCount = _retryCount,
+            });
+
         // Report a single consolidated TaskResult to the supervisor for the reviewing phase
         _supervisorActor.Tell(new TaskResult(
             _taskId,
@@ -218,6 +228,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         {
             // HighFailureRateDetected is true only while at least one adapter circuit is open
             _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, HasOpenCircuits());
+
+            _uiEvents.Publish(
+                type: "agui.telemetry.circuit",
+                taskId: _taskId,
+                payload: new
+                {
+                    adapterCircuitKey = message.Key,
+                    state = message.Value,
+                    hasOpenCircuits = HasOpenCircuits(),
+                });
         }
         else if (message.Key.StartsWith(GlobalBlackboardKeys.TaskSucceededPrefix, StringComparison.Ordinal))
         {
@@ -303,6 +323,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         // Track confidence in activity for telemetry
         activity?.SetTag("quality.confidence", message.Confidence);
+
+        _uiEvents.Publish(
+            type: "agui.telemetry.quality",
+            taskId: _taskId,
+            payload: new
+            {
+                role = message.Role.ToString().ToLowerInvariant(),
+                confidence = message.Confidence,
+                retryCount = _retryCount,
+            });
 
         switch (message.Role)
         {
@@ -509,6 +539,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             {
                 source = Self.Path.Name,
                 role = message.Role.ToString().ToLowerInvariant(),
+                reason = message.Reason,
+            });
+
+        _uiEvents.Publish(
+            type: "agui.telemetry.retry",
+            taskId: _taskId,
+            payload: new
+            {
+                role = message.Role.ToString().ToLowerInvariant(),
+                retryCount = _retryCount,
                 reason = message.Reason,
             });
 
@@ -1029,6 +1069,17 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // Store quality concern in blackboard for context
         StoreBlackboard($"quality_concern_{message.Role.ToString().ToLowerInvariant()}",
             $"{message.Concern} (confidence: {message.Confidence:F2})");
+
+        _uiEvents.Publish(
+            type: "agui.telemetry.quality",
+            taskId: _taskId,
+            payload: new
+            {
+                role = message.Role.ToString().ToLowerInvariant(),
+                confidence = message.Confidence,
+                concern = message.Concern,
+                retryCount = _retryCount,
+            });
 
         // Adjust world state based on confidence level
         if (message.Confidence < QualityEvaluator.SelfRetryThreshold)

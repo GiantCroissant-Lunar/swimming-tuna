@@ -196,6 +196,17 @@ public sealed class DispatcherActor : ReceiveActor
             "Spawned sub-task childTaskId={ChildTaskId} parentTaskId={ParentTaskId} depth={Depth}",
             message.ChildTaskId, message.ParentTaskId, message.Depth);
 
+        _uiEvents.Publish(
+            type: "agui.graph.link_created",
+            taskId: message.ParentTaskId,
+            payload: new
+            {
+                parentTaskId = message.ParentTaskId,
+                childTaskId = message.ChildTaskId,
+                depth = message.Depth,
+                title = message.Title,
+            });
+
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
 
@@ -263,6 +274,15 @@ public sealed class DispatcherActor : ReceiveActor
                     resolvedParentTaskId,
                     taskId,
                     snapshot.Summary ?? string.Empty));
+
+                _uiEvents.Publish(
+                    type: "agui.graph.child_completed",
+                    taskId: resolvedParentTaskId,
+                    payload: new
+                    {
+                        parentTaskId = resolvedParentTaskId,
+                        childTaskId = taskId,
+                    });
             }
             else
             {
@@ -271,6 +291,16 @@ public sealed class DispatcherActor : ReceiveActor
                     resolvedParentTaskId,
                     taskId,
                     error));
+
+                _uiEvents.Publish(
+                    type: "agui.graph.child_failed",
+                    taskId: resolvedParentTaskId,
+                    payload: new
+                    {
+                        parentTaskId = resolvedParentTaskId,
+                        childTaskId = taskId,
+                        error,
+                    });
             }
         }
 

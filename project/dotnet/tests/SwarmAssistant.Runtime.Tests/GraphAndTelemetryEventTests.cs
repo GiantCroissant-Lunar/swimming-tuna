@@ -1,0 +1,523 @@
+using Akka.Actor;
+using Akka.Routing;
+using Akka.TestKit.Xunit2;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Actors;
+using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Planning;
+using SwarmAssistant.Runtime.Tasks;
+using SwarmAssistant.Runtime.Telemetry;
+using SwarmAssistant.Runtime.Ui;
+using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
+
+namespace SwarmAssistant.Runtime.Tests;
+
+/// <summary>
+/// Tests verifying that graph lifecycle and telemetry events are emitted correctly
+/// for UI consumption (Phase 2: task-graph and live telemetry).
+/// </summary>
+public sealed class GraphAndTelemetryEventTests : TestKit
+{
+    private readonly RuntimeOptions _options;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly RuntimeTelemetry _telemetry;
+    private readonly UiEventStream _uiEvents;
+    private readonly TaskRegistry _taskRegistry;
+
+    public GraphAndTelemetryEventTests()
+    {
+        _options = new RuntimeOptions
+        {
+            AgentFrameworkExecutionMode = "subscription-cli-fallback",
+            CliAdapterOrder = ["local-echo"],
+            WorkerPoolSize = 2,
+            ReviewerPoolSize = 1,
+            MaxCliConcurrency = 4,
+            SandboxMode = "none",
+        };
+
+        _loggerFactory = NullLoggerFactory.Instance;
+        _telemetry = new RuntimeTelemetry(_options, _loggerFactory);
+        _uiEvents = new UiEventStream();
+        _taskRegistry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+    }
+
+    // ── graph.link_created ────────────────────────────────────────────────────
+
+    [Fact]
+    public void DispatcherActor_SpawnSubTask_EmitsGraphLinkCreatedEvent()
+    {
+        var (dispatcher, localUiEvents) = BuildProbeDispatcher("link-created");
+        var parentTaskId = $"parent-{Guid.NewGuid():N}";
+        var childTaskId = $"child-{Guid.NewGuid():N}";
+
+        _taskRegistry.Register(new TaskAssigned(parentTaskId, "Parent", "desc", DateTimeOffset.UtcNow));
+        dispatcher.Tell(new SpawnSubTask(parentTaskId, childTaskId, "Child Task", "do work", 1), TestActor);
+
+        // Poll the recent event buffer until the link_created event appears
+        UiEventEnvelope? linkEvent = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            linkEvent = localUiEvents.GetRecent(50)
+                .FirstOrDefault(e => e.Type == "agui.graph.link_created"
+                    && e.TaskId == parentTaskId);
+            if (linkEvent != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(linkEvent);
+        Assert.Equal(parentTaskId, linkEvent!.TaskId);
+    }
+
+    [Fact]
+    public void DispatcherActor_SpawnSubTask_GraphLinkPayloadContainsChildInfo()
+    {
+        var (dispatcher, localUiEvents) = BuildProbeDispatcher("link-payload");
+        var parentTaskId = $"parent-{Guid.NewGuid():N}";
+        var childTaskId = $"child-{Guid.NewGuid():N}";
+
+        _taskRegistry.Register(new TaskAssigned(parentTaskId, "Parent", "desc", DateTimeOffset.UtcNow));
+        dispatcher.Tell(new SpawnSubTask(parentTaskId, childTaskId, "My Child", "desc", 2), TestActor);
+
+        UiEventEnvelope? linkEvent = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            linkEvent = localUiEvents.GetRecent(50)
+                .FirstOrDefault(e => e.Type == "agui.graph.link_created"
+                    && e.TaskId == parentTaskId);
+            if (linkEvent != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(linkEvent);
+
+        // Verify payload shape via anonymous type inspection
+        var payload = linkEvent!.Payload;
+        var payloadType = payload.GetType();
+        Assert.Equal(parentTaskId, payloadType.GetProperty("parentTaskId")?.GetValue(payload)?.ToString());
+        Assert.Equal(childTaskId, payloadType.GetProperty("childTaskId")?.GetValue(payload)?.ToString());
+        Assert.Equal("My Child", payloadType.GetProperty("title")?.GetValue(payload)?.ToString());
+        Assert.Equal(2, (int)(payloadType.GetProperty("depth")?.GetValue(payload) ?? -1));
+    }
+
+    // ── graph.child_completed / child_failed ─────────────────────────────────
+
+    [Fact]
+    public async Task DispatcherActor_ChildTaskCompletes_EmitsGraphChildCompletedEvent()
+    {
+        var dispatcher = BuildDispatcher("child-done");
+        var parentTaskId = $"parent-done-{Guid.NewGuid():N}";
+        var childTaskId = $"child-done-{Guid.NewGuid():N}";
+
+        _taskRegistry.Register(new TaskAssigned(parentTaskId, "Parent", "desc", DateTimeOffset.UtcNow));
+
+        dispatcher.Tell(
+            new SpawnSubTask(parentTaskId, childTaskId, "Child", "do work", 1),
+            TestActor);
+
+        // Wait for the child to reach a terminal state
+        await Task.Run(() =>
+            FishForMessage(m => m is SubTaskCompleted or SubTaskFailed, TimeSpan.FromSeconds(30)));
+
+        var evt = _uiEvents.GetRecent(200)
+            .FirstOrDefault(e => e.Type == "agui.graph.child_completed"
+                && e.TaskId == parentTaskId);
+
+        // child_failed is also acceptable if local-echo adapters fail
+        var failEvt = _uiEvents.GetRecent(200)
+            .FirstOrDefault(e => e.Type == "agui.graph.child_failed"
+                && e.TaskId == parentTaskId);
+
+        Assert.True(evt != null || failEvt != null,
+            "Expected either agui.graph.child_completed or agui.graph.child_failed to be emitted.");
+    }
+
+    // ── telemetry.quality (OnRoleSucceeded) ───────────────────────────────────
+
+    [Fact]
+    public void TaskCoordinatorActor_OnRoleSucceeded_EmitsTelemetryQualityEvent()
+    {
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+        var uiEvents = new UiEventStream();
+
+        var taskId = $"tel-quality-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+
+        // Wait for orchestrator request
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
+
+        // Reply as orchestrator to trigger Plan → emits agui.telemetry.quality for orchestrator
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 0.9, null, "worker"));
+
+        // Wait for planner request
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, TimeSpan.FromSeconds(5));
+
+        // Reply as planner
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Planner, "plan output with no subtasks", DateTimeOffset.UtcNow, 0.85, null, "worker"));
+
+        // Poll for telemetry.quality event
+        UiEventEnvelope? evt = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            evt = uiEvents.GetRecent(100)
+                .FirstOrDefault(e => e.Type == "agui.telemetry.quality" && e.TaskId == taskId);
+            if (evt != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(evt);
+        Assert.Equal(taskId, evt!.TaskId);
+
+        // Verify payload shape
+        var payload = evt.Payload;
+        var payloadType = payload.GetType();
+        var confidence = (double)(payloadType.GetProperty("confidence")?.GetValue(payload) ?? -1.0);
+        Assert.True(confidence > 0.0, "Confidence should be positive");
+        Assert.NotNull(payloadType.GetProperty("role")?.GetValue(payload));
+        Assert.NotNull(payloadType.GetProperty("retryCount")?.GetValue(payload));
+    }
+
+    // ── telemetry.retry ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void TaskCoordinatorActor_OnRetryRole_EmitsTelemetryRetryEvent()
+    {
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+        var uiEvents = new UiEventStream();
+
+        var taskId = $"tel-retry-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
+
+        // Drive to planning
+        coordinator.Tell(new RoleTaskSucceeded(
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 1.0, null, "w"));
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, TimeSpan.FromSeconds(5));
+
+        // Simulate a supervisor-initiated retry for Planner
+        coordinator.Tell(new RetryRole(taskId, SwarmRole.Planner, null, "test-retry-reason"));
+
+        // Poll for telemetry.retry event
+        UiEventEnvelope? evt = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            evt = uiEvents.GetRecent(100)
+                .FirstOrDefault(e => e.Type == "agui.telemetry.retry" && e.TaskId == taskId);
+            if (evt != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(evt);
+        Assert.Equal(taskId, evt!.TaskId);
+
+        var payload = evt.Payload;
+        var payloadType = payload.GetType();
+        Assert.Equal("planner", payloadType.GetProperty("role")?.GetValue(payload)?.ToString());
+        Assert.Equal("test-retry-reason", payloadType.GetProperty("reason")?.GetValue(payload)?.ToString());
+    }
+
+    // ── telemetry.consensus ───────────────────────────────────────────────────
+
+    [Fact]
+    public void TaskCoordinatorActor_OnConsensusResult_EmitsTelemetryConsensusEvent()
+    {
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+        var uiEvents = new UiEventStream();
+
+        var taskId = $"tel-consensus-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+
+        // Send a consensus result directly
+        var votes = new List<ConsensusVote>
+        {
+            new ConsensusVote(taskId, "voter-1", true, 0.9, "Looks good"),
+            new ConsensusVote(taskId, "voter-2", true, 0.85, "Approved"),
+        };
+        coordinator.Tell(new ConsensusResult(taskId, true, votes));
+
+        // Poll for telemetry.consensus event
+        UiEventEnvelope? evt = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            evt = uiEvents.GetRecent(100)
+                .FirstOrDefault(e => e.Type == "agui.telemetry.consensus" && e.TaskId == taskId);
+            if (evt != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(evt);
+        Assert.Equal(taskId, evt!.TaskId);
+
+        var payload = evt.Payload;
+        var payloadType = payload.GetType();
+        Assert.Equal(true, payloadType.GetProperty("approved")?.GetValue(payload));
+        Assert.Equal(2, (int)(payloadType.GetProperty("voteCount")?.GetValue(payload) ?? -1));
+    }
+
+    // ── telemetry.circuit ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void TaskCoordinatorActor_OnGlobalBlackboardChanged_Circuit_EmitsTelemetryCircuitEvent()
+    {
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+        var uiEvents = new UiEventStream();
+
+        var taskId = $"tel-circuit-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+
+        // Start coordination so PreStart() runs and event stream subscription is established
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
+
+        // Now we know PreStart has completed; publish the circuit event
+        Sys.EventStream.Publish(new GlobalBlackboardChanged(
+            GlobalBlackboardKeys.AdapterCircuitPrefix + "test-adapter",
+            GlobalBlackboardKeys.CircuitStateOpen));
+
+        // Poll for telemetry.circuit event
+        UiEventEnvelope? evt = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            evt = uiEvents.GetRecent(100)
+                .FirstOrDefault(e => e.Type == "agui.telemetry.circuit" && e.TaskId == taskId);
+            if (evt != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(evt);
+        Assert.Equal(taskId, evt!.TaskId);
+
+        var payload = evt.Payload;
+        var payloadType = payload.GetType();
+        Assert.NotNull(payloadType.GetProperty("adapterCircuitKey")?.GetValue(payload));
+        Assert.Equal(GlobalBlackboardKeys.CircuitStateOpen,
+            payloadType.GetProperty("state")?.GetValue(payload)?.ToString());
+    }
+
+    // ── telemetry.quality (OnQualityConcern) ─────────────────────────────────
+
+    [Fact]
+    public void TaskCoordinatorActor_OnQualityConcern_EmitsTelemetryQualityEvent()
+    {
+        var parentProbe = CreateTestProbe();
+        var supervisorProbe = CreateTestProbe();
+        var blackboardProbe = CreateTestProbe();
+        var workerProbe = CreateTestProbe();
+        var reviewerProbe = CreateTestProbe();
+
+        var registry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+        var uiEvents = new UiEventStream();
+
+        var taskId = $"tel-concern-{Guid.NewGuid():N}";
+        registry.Register(new TaskAssigned(taskId, "Task", "desc", DateTimeOffset.UtcNow));
+
+        var coordinator = parentProbe.ChildActorOf(
+            Props.Create(() => new TaskCoordinatorActor(
+                taskId, "Task", "desc",
+                workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+
+        // Start coordination so PreStart() runs and event stream subscription is established
+        coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+        workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
+
+        // Now PreStart has completed; publish a quality concern for this task
+        Sys.EventStream.Publish(new QualityConcern(
+            taskId, SwarmRole.Builder, "Output quality too low", 0.3, "local-echo", DateTimeOffset.UtcNow));
+
+        // Poll for telemetry.quality event from OnQualityConcern (has a concern field)
+        UiEventEnvelope? evt = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            evt = uiEvents.GetRecent(100)
+                .FirstOrDefault(e =>
+                    e.Type == "agui.telemetry.quality"
+                    && e.TaskId == taskId
+                    && e.Payload.GetType().GetProperty("concern") != null
+                    && e.Payload.GetType().GetProperty("concern")!.GetValue(e.Payload) != null);
+            if (evt != null) break;
+            Thread.Sleep(20);
+        }
+
+        Assert.NotNull(evt);
+        Assert.Equal(taskId, evt!.TaskId);
+
+        var payload = evt.Payload;
+        var payloadType = payload.GetType();
+        Assert.Equal("builder", payloadType.GetProperty("role")?.GetValue(payload)?.ToString());
+        Assert.Equal(0.3, (double)(payloadType.GetProperty("confidence")?.GetValue(payload) ?? -1.0));
+        Assert.Equal("Output quality too low", payloadType.GetProperty("concern")?.GetValue(payload)?.ToString());
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds a dispatcher backed by test probes (no real workers), with its own
+    /// isolated <see cref="UiEventStream"/> so events from each test don't mix.
+    /// </summary>
+    private (IActorRef Dispatcher, UiEventStream UiEvents) BuildProbeDispatcher(string suffix)
+    {
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+        var localUiEvents = new UiEventStream();
+
+        var workerProbe = CreateTestProbe($"worker-probe-{suffix}");
+        var reviewerProbe = CreateTestProbe($"reviewer-probe-{suffix}");
+        var supervisorProbe = CreateTestProbe($"supervisor-probe-{suffix}");
+        var blackboardProbe = CreateTestProbe($"blackboard-probe-{suffix}");
+        var consensusProbe = CreateTestProbe($"consensus-probe-{suffix}");
+
+        var dispatcher = Sys.ActorOf(
+            Props.Create(() => new DispatcherActor(
+                workerProbe,
+                reviewerProbe,
+                supervisorProbe,
+                blackboardProbe,
+                consensusProbe,
+                roleEngine,
+                _loggerFactory,
+                _telemetry,
+                localUiEvents,
+                _taskRegistry,
+                Options.Create(_options),
+                null,
+                null)),
+            $"dispatcher-probe-{suffix}");
+
+        return (dispatcher, localUiEvents);
+    }
+
+    private IActorRef BuildDispatcher(string suffix)
+    {
+        var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
+
+        var supervisorActor = Sys.ActorOf(
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
+            $"supervisor-ge-{suffix}");
+
+        var blackboardActor = Sys.ActorOf(
+            Props.Create(() => new BlackboardActor(_loggerFactory)),
+            $"blackboard-ge-{suffix}");
+
+        var workerActor = Sys.ActorOf(
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+                .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
+            $"worker-ge-{suffix}");
+
+        var reviewerActor = Sys.ActorOf(
+            Props.Create(() => new ReviewerActor(_options, _loggerFactory, roleEngine, _telemetry))
+                .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
+            $"reviewer-ge-{suffix}");
+
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(NullLogger<ConsensusActor>.Instance)),
+            $"consensus-ge-{suffix}");
+
+        return Sys.ActorOf(
+            Props.Create(() => new DispatcherActor(
+                workerActor,
+                reviewerActor,
+                supervisorActor,
+                blackboardActor,
+                consensusActor,
+                roleEngine,
+                _loggerFactory,
+                _telemetry,
+                _uiEvents,
+                _taskRegistry,
+                Options.Create(_options),
+                null,
+                null)),
+            $"dispatcher-ge-{suffix}");
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _loggerFactory.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private sealed class NoOpTaskMemoryWriter : ITaskMemoryWriter
+    {
+        public Task WriteAsync(TaskSnapshot snapshot, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+}
