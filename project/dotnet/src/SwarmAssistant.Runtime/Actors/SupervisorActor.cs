@@ -255,6 +255,7 @@ public sealed class SupervisorActor : ReceiveActor
             _qualityConcerns[message.TaskId] = concerns;
         }
         concerns.Add(message);
+        _totalQualityConcerns++;
 
         _logger.LogWarning(
             "Quality concern received taskId={TaskId} role={Role} adapter={AdapterId} confidence={Confidence:F2} concern={Concern}",
