@@ -227,7 +227,7 @@ class TestSessionEnd:
                 session_end,
                 {
                     "session_id": "s2",
-                    "transcript_path": "/tmp/transcript.json",
+                    "transcript_path": str(tmp_path / "transcript.json"),
                 },
             )
             assert result["result"] == "ok"

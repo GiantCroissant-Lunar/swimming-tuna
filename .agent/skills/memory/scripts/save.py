@@ -38,7 +38,7 @@ def main() -> None:
         print("Error: no Supermemory API key found", file=sys.stderr)
         sys.exit(1)
 
-    req = urllib.request.Request(
+    req = urllib.request.Request(  # noqa: S310
         API_URL,
         data=json.dumps({"content": content}).encode(),
         headers={

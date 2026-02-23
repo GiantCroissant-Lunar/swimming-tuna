@@ -29,6 +29,9 @@ repomix-output.*
 .agent/secrets/
 .agent/cache/
 
+# Claude Code generated settings (machine-specific absolute paths)
+.claude/
+
 # Python
 __pycache__/
 *.pyc
