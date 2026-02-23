@@ -41,6 +41,7 @@ public static class GenUiNodeFactory
                 control.ThemeTypeVariation = themeVariation;
 
             ApplyLayoutProps(control, props);
+            ApplyStyleProps(control, props);
         }
 
         if (component.TryGetProperty("children", out var children)
@@ -230,7 +231,11 @@ public static class GenUiNodeFactory
             label.VerticalAlignment = valign;
 
         // Color support
-        if (TryGetString(props, "color", out var colorStr))
+        if (TryGetString(props, "font_color", out var fontColorStr))
+        {
+            label.AddThemeColorOverride("font_color", ParseColor(fontColorStr));
+        }
+        else if (TryGetString(props, "color", out var colorStr))
         {
             label.AddThemeColorOverride("font_color", ParseColor(colorStr));
         }
@@ -253,6 +258,9 @@ public static class GenUiNodeFactory
 
         if (TryGetInt(props, "font_size", out var fontSize))
             rtl.AddThemeFontSizeOverride("normal_font_size", fontSize);
+
+        if (TryGetString(props, "font_color", out var fontColorStr))
+            rtl.AddThemeColorOverride("default_color", ParseColor(fontColorStr));
 
         return rtl;
     }
@@ -598,6 +606,41 @@ public static class GenUiNodeFactory
 
         if (TryGetBool(props, "disabled", out var disabled) && control is BaseButton btn)
             btn.Disabled = disabled;
+    }
+
+    private static void ApplyStyleProps(Control control, JsonElement props)
+    {
+        if (props.ValueKind != JsonValueKind.Object)
+            return;
+
+        if (TryGetString(props, "font_color", out var fontColorStr))
+        {
+            var color = ParseColor(fontColorStr);
+            control.AddThemeColorOverride("font_color", color);
+            if (control is RichTextLabel rtl)
+                rtl.AddThemeColorOverride("default_color", color);
+        }
+
+        if (TryGetInt(props, "font_size", out var fontSize) && fontSize > 0)
+        {
+            control.AddThemeFontSizeOverride("font_size", fontSize);
+            if (control is RichTextLabel rtl)
+                rtl.AddThemeFontSizeOverride("normal_font_size", fontSize);
+        }
+
+        if (control is PanelContainer panel && TryGetString(props, "bg_color", out var bgColorStr))
+        {
+            var styleBox = new StyleBoxFlat
+            {
+                BgColor = ParseColor(bgColorStr),
+                BorderWidthBottom = 1,
+                BorderWidthLeft = 1,
+                BorderWidthRight = 1,
+                BorderWidthTop = 1,
+                BorderColor = new Color(0.25f, 0.25f, 0.25f)
+            };
+            panel.AddThemeStyleboxOverride("panel", styleBox);
+        }
     }
 
     // --- Helper methods ---

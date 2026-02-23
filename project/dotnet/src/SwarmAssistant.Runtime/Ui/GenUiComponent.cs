@@ -54,11 +54,21 @@ public sealed record GenUiComponent(
 
     // --- Content factories ---
 
-    public static GenUiComponent Text(string id, string text, string? themeVariation = null)
-        => new(id, "text", new Dictionary<string, object?> { ["text"] = text }, ThemeTypeVariation: themeVariation);
+    public static GenUiComponent Text(string id, string text, string? themeVariation = null, string? fontColor = null, int? fontSize = null)
+    {
+        var props = new Dictionary<string, object?> { ["text"] = text };
+        if (fontColor != null) props["font_color"] = fontColor;
+        if (fontSize != null) props["font_size"] = fontSize;
+        return new(id, "text", props, ThemeTypeVariation: themeVariation);
+    }
 
-    public static GenUiComponent RichText(string id, string text, bool bbcode = false)
-        => new(id, "rich_text", new Dictionary<string, object?> { ["text"] = text, ["bbcode"] = bbcode });
+    public static GenUiComponent RichText(string id, string text, bool bbcode = false, string? fontColor = null, int? fontSize = null)
+    {
+        var props = new Dictionary<string, object?> { ["text"] = text, ["bbcode"] = bbcode };
+        if (fontColor != null) props["font_color"] = fontColor;
+        if (fontSize != null) props["font_size"] = fontSize;
+        return new(id, "rich_text", props);
+    }
 
     public static GenUiComponent Separator(string id = "sep")
         => new(id, "separator");
