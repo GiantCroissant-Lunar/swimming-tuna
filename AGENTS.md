@@ -20,7 +20,8 @@ observability.
 │   ├── adapters/        # Per-tool sync configs (claude/, codex/, cline/, copilot/)
 │   ├── hooks/           # Shared Python hook scripts
 │   ├── rules/           # Shared coding rules (conventions.md, security.md)
-│   └── skills/          # Agent skills (SKILL.md format)
+│   ├── skills/          # Agent skills (SKILL.md format)
+│   └── tools/           # Sync engine (sync.py) and tests
 ├── project/
 │   ├── dotnet/          # .NET runtime (Akka actors, Agent Framework, AG-UI, A2A, ArcadeDB)
 │   │   ├── src/SwarmAssistant.Runtime/     # Main runtime
@@ -64,6 +65,7 @@ task ruff:format        # Format Python files
 task repomix:pack       # Pack repo for AI context
 task skills:list        # List available agent skills
 task skills:new SKILL=x # Create a new skill
+task agent:sync         # Sync all adapters (claude, codex, cline, copilot)
 ```
 
 ## Development Guidelines
@@ -135,6 +137,7 @@ Skills are in `.agent/skills/`:
 |-------|-------------|
 | [skill-creator](.agent/skills/skill-creator/) | Guide for creating effective skills |
 | [remotion](.agent/skills/remotion/) | Remotion video creation best practices |
+| [memory](.agent/skills/memory/) | Cross-session memory via Supermemory (decisions, debugging) |
 
 To add a new skill: `task skills:new SKILL=my-skill`, then edit `.agent/skills/my-skill/SKILL.md`.
 
