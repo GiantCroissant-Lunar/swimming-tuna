@@ -15,12 +15,15 @@ concurrency:
 
 jobs:
   resolve-review-comments:
-    # Only trigger for bot reviewers requesting changes
+    # Only trigger for bot reviewers (commented or changes_requested)
     if: >-
-      github.event.review.state == 'changes_requested'
+      (
+        github.event.review.state == 'changes_requested'
+        || github.event.review.state == 'commented'
+      )
       && (
         github.event.review.user.type == 'Bot'
-        || contains(fromJSON('["github-actions[bot]","copilot[bot]"]'), github.event.review.user.login)
+        || contains(fromJSON('["github-actions[bot]","copilot[bot]","gemini-code-assist[bot]","coderabbitai[bot]"]'), github.event.review.user.login)
       )
     runs-on: ubuntu-latest
     steps:
@@ -64,7 +67,7 @@ jobs:
             const botComments = comments.filter(c =>
               c.pull_request_review_id === reviewId
               && (c.user.type === 'Bot'
-                || ['github-actions[bot]', 'copilot[bot]'].includes(c.user.login))
+                || ['github-actions[bot]', 'copilot[bot]', 'gemini-code-assist[bot]', 'coderabbitai[bot]'].includes(c.user.login))
             );
 
             if (botComments.length === 0) {
