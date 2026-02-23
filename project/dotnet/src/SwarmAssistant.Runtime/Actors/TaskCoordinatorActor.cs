@@ -201,12 +201,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.telemetry.consensus",
             taskId: _taskId,
-            payload: new
-            {
-                approved = message.Approved,
-                voteCount = message.Votes.Count,
-                retryCount = _retryCount,
-            });
+            payload: new TelemetryConsensusPayload(message.Approved, message.Votes.Count, _retryCount));
 
         // Report a single consolidated TaskResult to the supervisor for the reviewing phase
         _supervisorActor.Tell(new TaskResult(
@@ -232,12 +227,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             _uiEvents.Publish(
                 type: "agui.telemetry.circuit",
                 taskId: _taskId,
-                payload: new
-                {
-                    adapterCircuitKey = message.Key,
-                    state = message.Value,
-                    hasOpenCircuits = HasOpenCircuits(),
-                });
+                payload: new TelemetryCircuitPayload(message.Key, message.Value, HasOpenCircuits()));
         }
         else if (message.Key.StartsWith(GlobalBlackboardKeys.TaskSucceededPrefix, StringComparison.Ordinal))
         {
@@ -327,12 +317,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.telemetry.quality",
             taskId: _taskId,
-            payload: new
-            {
-                role = message.Role.ToString().ToLowerInvariant(),
-                confidence = message.Confidence,
-                retryCount = _retryCount,
-            });
+            payload: new TelemetryQualityPayload(
+                message.Role.ToString().ToLowerInvariant(),
+                message.Confidence,
+                _retryCount));
 
         switch (message.Role)
         {
@@ -545,12 +533,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.telemetry.retry",
             taskId: _taskId,
-            payload: new
-            {
-                role = message.Role.ToString().ToLowerInvariant(),
-                retryCount = _retryCount,
-                reason = message.Reason,
-            });
+            payload: new TelemetryRetryPayload(
+                message.Role.ToString().ToLowerInvariant(),
+                _retryCount,
+                message.Reason));
 
         // Re-dispatch the failed role
         var actionName = MapRoleToActionName(message.Role);
@@ -1073,13 +1059,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.telemetry.quality",
             taskId: _taskId,
-            payload: new
-            {
-                role = message.Role.ToString().ToLowerInvariant(),
-                confidence = message.Confidence,
-                concern = message.Concern,
-                retryCount = _retryCount,
-            });
+            payload: new TelemetryQualityPayload(
+                message.Role.ToString().ToLowerInvariant(),
+                message.Confidence,
+                _retryCount,
+                message.Concern));
 
         // Adjust world state based on confidence level
         if (message.Confidence < QualityEvaluator.SelfRetryThreshold)

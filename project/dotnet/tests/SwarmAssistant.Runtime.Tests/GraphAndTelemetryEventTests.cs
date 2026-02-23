@@ -58,17 +58,9 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         _taskRegistry.Register(new TaskAssigned(parentTaskId, "Parent", "desc", DateTimeOffset.UtcNow));
         dispatcher.Tell(new SpawnSubTask(parentTaskId, childTaskId, "Child Task", "do work", 1), TestActor);
 
-        // Poll the recent event buffer until the link_created event appears
-        UiEventEnvelope? linkEvent = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            linkEvent = localUiEvents.GetRecent(50)
-                .FirstOrDefault(e => e.Type == "agui.graph.link_created"
-                    && e.TaskId == parentTaskId);
-            if (linkEvent != null) break;
-            Thread.Sleep(20);
-        }
+        var linkEvent = PollForEvent(localUiEvents,
+            e => e.Type == "agui.graph.link_created" && e.TaskId == parentTaskId,
+            TimeSpan.FromSeconds(10));
 
         Assert.NotNull(linkEvent);
         Assert.Equal(parentTaskId, linkEvent!.TaskId);
@@ -84,26 +76,17 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         _taskRegistry.Register(new TaskAssigned(parentTaskId, "Parent", "desc", DateTimeOffset.UtcNow));
         dispatcher.Tell(new SpawnSubTask(parentTaskId, childTaskId, "My Child", "desc", 2), TestActor);
 
-        UiEventEnvelope? linkEvent = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            linkEvent = localUiEvents.GetRecent(50)
-                .FirstOrDefault(e => e.Type == "agui.graph.link_created"
-                    && e.TaskId == parentTaskId);
-            if (linkEvent != null) break;
-            Thread.Sleep(20);
-        }
+        var linkEvent = PollForEvent(localUiEvents,
+            e => e.Type == "agui.graph.link_created" && e.TaskId == parentTaskId,
+            TimeSpan.FromSeconds(10));
 
         Assert.NotNull(linkEvent);
 
-        // Verify payload shape via anonymous type inspection
-        var payload = linkEvent!.Payload;
-        var payloadType = payload.GetType();
-        Assert.Equal(parentTaskId, payloadType.GetProperty("parentTaskId")?.GetValue(payload)?.ToString());
-        Assert.Equal(childTaskId, payloadType.GetProperty("childTaskId")?.GetValue(payload)?.ToString());
-        Assert.Equal("My Child", payloadType.GetProperty("title")?.GetValue(payload)?.ToString());
-        Assert.Equal(2, (int)(payloadType.GetProperty("depth")?.GetValue(payload) ?? -1));
+        var payload = (GraphLinkCreatedPayload)linkEvent!.Payload;
+        Assert.Equal(parentTaskId, payload.ParentTaskId);
+        Assert.Equal(childTaskId, payload.ChildTaskId);
+        Assert.Equal("My Child", payload.Title);
+        Assert.Equal(2, payload.Depth);
     }
 
     // ── graph.child_completed / child_failed ─────────────────────────────────
@@ -179,27 +162,16 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         coordinator.Tell(new RoleTaskSucceeded(
             taskId, SwarmRole.Planner, "plan output with no subtasks", DateTimeOffset.UtcNow, 0.85, null, "worker"));
 
-        // Poll for telemetry.quality event
-        UiEventEnvelope? evt = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            evt = uiEvents.GetRecent(100)
-                .FirstOrDefault(e => e.Type == "agui.telemetry.quality" && e.TaskId == taskId);
-            if (evt != null) break;
-            Thread.Sleep(20);
-        }
+        var evt = PollForEvent(uiEvents,
+            e => e.Type == "agui.telemetry.quality" && e.TaskId == taskId,
+            TimeSpan.FromSeconds(5));
 
         Assert.NotNull(evt);
         Assert.Equal(taskId, evt!.TaskId);
 
-        // Verify payload shape
-        var payload = evt.Payload;
-        var payloadType = payload.GetType();
-        var confidence = (double)(payloadType.GetProperty("confidence")?.GetValue(payload) ?? -1.0);
-        Assert.True(confidence > 0.0, "Confidence should be positive");
-        Assert.NotNull(payloadType.GetProperty("role")?.GetValue(payload));
-        Assert.NotNull(payloadType.GetProperty("retryCount")?.GetValue(payload));
+        var payload = (TelemetryQualityPayload)evt.Payload;
+        Assert.True(payload.Confidence > 0.0, "Confidence should be positive");
+        Assert.NotNull(payload.Role);
     }
 
     // ── telemetry.retry ───────────────────────────────────────────────────────
@@ -238,24 +210,16 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         // Simulate a supervisor-initiated retry for Planner
         coordinator.Tell(new RetryRole(taskId, SwarmRole.Planner, null, "test-retry-reason"));
 
-        // Poll for telemetry.retry event
-        UiEventEnvelope? evt = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            evt = uiEvents.GetRecent(100)
-                .FirstOrDefault(e => e.Type == "agui.telemetry.retry" && e.TaskId == taskId);
-            if (evt != null) break;
-            Thread.Sleep(20);
-        }
+        var evt = PollForEvent(uiEvents,
+            e => e.Type == "agui.telemetry.retry" && e.TaskId == taskId,
+            TimeSpan.FromSeconds(5));
 
         Assert.NotNull(evt);
         Assert.Equal(taskId, evt!.TaskId);
 
-        var payload = evt.Payload;
-        var payloadType = payload.GetType();
-        Assert.Equal("planner", payloadType.GetProperty("role")?.GetValue(payload)?.ToString());
-        Assert.Equal("test-retry-reason", payloadType.GetProperty("reason")?.GetValue(payload)?.ToString());
+        var payload = (TelemetryRetryPayload)evt.Payload;
+        Assert.Equal("planner", payload.Role);
+        Assert.Equal("test-retry-reason", payload.Reason);
     }
 
     // ── telemetry.consensus ───────────────────────────────────────────────────
@@ -291,24 +255,16 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         };
         coordinator.Tell(new ConsensusResult(taskId, true, votes));
 
-        // Poll for telemetry.consensus event
-        UiEventEnvelope? evt = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            evt = uiEvents.GetRecent(100)
-                .FirstOrDefault(e => e.Type == "agui.telemetry.consensus" && e.TaskId == taskId);
-            if (evt != null) break;
-            Thread.Sleep(20);
-        }
+        var evt = PollForEvent(uiEvents,
+            e => e.Type == "agui.telemetry.consensus" && e.TaskId == taskId,
+            TimeSpan.FromSeconds(5));
 
         Assert.NotNull(evt);
         Assert.Equal(taskId, evt!.TaskId);
 
-        var payload = evt.Payload;
-        var payloadType = payload.GetType();
-        Assert.Equal(true, payloadType.GetProperty("approved")?.GetValue(payload));
-        Assert.Equal(2, (int)(payloadType.GetProperty("voteCount")?.GetValue(payload) ?? -1));
+        var payload = (TelemetryConsensusPayload)evt.Payload;
+        Assert.True(payload.Approved);
+        Assert.Equal(2, payload.VoteCount);
     }
 
     // ── telemetry.circuit ─────────────────────────────────────────────────────
@@ -345,25 +301,16 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             GlobalBlackboardKeys.AdapterCircuitPrefix + "test-adapter",
             GlobalBlackboardKeys.CircuitStateOpen));
 
-        // Poll for telemetry.circuit event
-        UiEventEnvelope? evt = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            evt = uiEvents.GetRecent(100)
-                .FirstOrDefault(e => e.Type == "agui.telemetry.circuit" && e.TaskId == taskId);
-            if (evt != null) break;
-            Thread.Sleep(20);
-        }
+        var evt = PollForEvent(uiEvents,
+            e => e.Type == "agui.telemetry.circuit" && e.TaskId == taskId,
+            TimeSpan.FromSeconds(10));
 
         Assert.NotNull(evt);
         Assert.Equal(taskId, evt!.TaskId);
 
-        var payload = evt.Payload;
-        var payloadType = payload.GetType();
-        Assert.NotNull(payloadType.GetProperty("adapterCircuitKey")?.GetValue(payload));
-        Assert.Equal(GlobalBlackboardKeys.CircuitStateOpen,
-            payloadType.GetProperty("state")?.GetValue(payload)?.ToString());
+        var payload = (TelemetryCircuitPayload)evt.Payload;
+        Assert.NotNull(payload.AdapterCircuitKey);
+        Assert.Equal(GlobalBlackboardKeys.CircuitStateOpen, payload.State);
     }
 
     // ── telemetry.quality (OnQualityConcern) ─────────────────────────────────
@@ -399,32 +346,43 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         Sys.EventStream.Publish(new QualityConcern(
             taskId, SwarmRole.Builder, "Output quality too low", 0.3, "local-echo", DateTimeOffset.UtcNow));
 
-        // Poll for telemetry.quality event from OnQualityConcern (has a concern field)
-        UiEventEnvelope? evt = null;
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            evt = uiEvents.GetRecent(100)
-                .FirstOrDefault(e =>
-                    e.Type == "agui.telemetry.quality"
-                    && e.TaskId == taskId
-                    && e.Payload.GetType().GetProperty("concern") != null
-                    && e.Payload.GetType().GetProperty("concern")!.GetValue(e.Payload) != null);
-            if (evt != null) break;
-            Thread.Sleep(20);
-        }
+        // Poll for telemetry.quality event from OnQualityConcern (has a non-null Concern)
+        var evt = PollForEvent(uiEvents,
+            e => e.Type == "agui.telemetry.quality"
+                && e.TaskId == taskId
+                && e.Payload is TelemetryQualityPayload { Concern: not null },
+            TimeSpan.FromSeconds(10));
 
         Assert.NotNull(evt);
         Assert.Equal(taskId, evt!.TaskId);
 
-        var payload = evt.Payload;
-        var payloadType = payload.GetType();
-        Assert.Equal("builder", payloadType.GetProperty("role")?.GetValue(payload)?.ToString());
-        Assert.Equal(0.3, (double)(payloadType.GetProperty("confidence")?.GetValue(payload) ?? -1.0));
-        Assert.Equal("Output quality too low", payloadType.GetProperty("concern")?.GetValue(payload)?.ToString());
+        var payload = (TelemetryQualityPayload)evt.Payload;
+        Assert.Equal("builder", payload.Role);
+        Assert.Equal(0.3, payload.Confidence);
+        Assert.Equal("Output quality too low", payload.Concern);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Polls <paramref name="eventStream"/> until an event matching <paramref name="predicate"/>
+    /// is found or <paramref name="timeout"/> elapses.
+    /// </summary>
+    private static UiEventEnvelope? PollForEvent(
+        UiEventStream eventStream,
+        Func<UiEventEnvelope, bool> predicate,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var evt = eventStream.GetRecent(200).FirstOrDefault(predicate);
+            if (evt != null) return evt;
+            Thread.Sleep(20);
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Builds a dispatcher backed by test probes (no real workers), with its own

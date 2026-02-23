@@ -139,12 +139,7 @@ public sealed class DispatcherActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.task.submitted",
             taskId: message.TaskId,
-            payload: new
-            {
-                message.TaskId,
-                message.Title,
-                message.Description
-            });
+            payload: new TaskSubmittedPayload(message.TaskId, message.Title, message.Description));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
@@ -199,13 +194,11 @@ public sealed class DispatcherActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.graph.link_created",
             taskId: message.ParentTaskId,
-            payload: new
-            {
-                parentTaskId = message.ParentTaskId,
-                childTaskId = message.ChildTaskId,
-                depth = message.Depth,
-                title = message.Title,
-            });
+            payload: new GraphLinkCreatedPayload(
+                message.ParentTaskId,
+                message.ChildTaskId,
+                message.Depth,
+                message.Title));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
@@ -278,11 +271,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.graph.child_completed",
                     taskId: resolvedParentTaskId,
-                    payload: new
-                    {
-                        parentTaskId = resolvedParentTaskId,
-                        childTaskId = taskId,
-                    });
+                    payload: new GraphChildCompletedPayload(resolvedParentTaskId, taskId));
             }
             else
             {
@@ -295,12 +284,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _uiEvents.Publish(
                     type: "agui.graph.child_failed",
                     taskId: resolvedParentTaskId,
-                    payload: new
-                    {
-                        parentTaskId = resolvedParentTaskId,
-                        childTaskId = taskId,
-                        error,
-                    });
+                    payload: new GraphChildFailedPayload(resolvedParentTaskId, taskId, error));
             }
         }
 

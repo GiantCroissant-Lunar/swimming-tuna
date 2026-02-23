@@ -9,9 +9,9 @@ Emitted by `DispatcherActor` when a top-level task is dispatched.
 
 ```json
 {
-  "TaskId": "task-abc",
-  "Title": "Implement feature X",
-  "Description": "Full description of the task"
+  "taskId": "task-abc",
+  "title": "Implement feature X",
+  "description": "Full description of the task"
 }
 ```
 
