@@ -193,7 +193,7 @@ Actions are submitted as `POST /ag-ui/actions` with body `{ "actionId": "...", "
 |---|---|---|---|
 | `request_snapshot` | implemented | optional | Request runtime or per-task snapshot event. |
 | `refresh_surface` | implemented | required | Rebuild A2UI surface for the task. |
-| `submit_task` | implemented | optional | Submit a new task; payload requires `title`. |
+| `submit_task` | implemented | n/a (use `payload.taskId`) | Submit a new task; `payload` requires `title`. Optional `payload.taskId` sets the task ID (top-level `taskId` field is unused for this action). |
 | `load_memory` | implemented | optional | Fetch persisted task list from ArcadeDB. |
 | `approve_review` | planned | required | HITL: approve reviewer output, advance to Done. |
 | `reject_review` | planned | required | HITL: reject reviewer output, mark failed. |
