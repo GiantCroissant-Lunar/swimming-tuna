@@ -583,7 +583,7 @@
       }
     },
     "approve_review": {
-      "status": "planned",
+      "status": "implemented",
       "description": "HITL: Human approves the reviewer output for a task. Runtime should advance task to Done.",
       "request": {
         "type": "object",
@@ -606,7 +606,7 @@
       }
     },
     "reject_review": {
-      "status": "planned",
+      "status": "implemented",
       "description": "HITL: Human rejects the reviewer output. Runtime should mark the task as failed and publish agui.task.failed.",
       "request": {
         "type": "object",
@@ -630,7 +630,7 @@
       }
     },
     "request_rework": {
-      "status": "planned",
+      "status": "implemented",
       "description": "HITL: Human requests that the builder role re-executes with additional feedback.",
       "request": {
         "type": "object",
@@ -654,7 +654,7 @@
       }
     },
     "pause_task": {
-      "status": "planned",
+      "status": "implemented",
       "description": "Pause execution of a running task. Runtime should suspend role execution and publish agui.task.transition with current=Paused.",
       "request": {
         "type": "object",
@@ -672,7 +672,7 @@
       }
     },
     "resume_task": {
-      "status": "planned",
+      "status": "implemented",
       "description": "Resume a previously paused task. Runtime should re-enter the GOAP planning loop and publish agui.task.transition.",
       "request": {
         "type": "object",
@@ -690,7 +690,7 @@
       }
     },
     "set_subtask_depth": {
-      "status": "planned",
+      "status": "implemented",
       "description": "Override the maximum sub-task spawning depth for a specific task before it begins planning.",
       "request": {
         "type": "object",
@@ -702,14 +702,14 @@
             "type": "object",
             "required": ["depth"],
             "properties": {
-              "depth": { "type": "integer", "minimum": 0, "maximum": 3, "description": "New max sub-task depth (0–3). Default is 3." }
+                "depth": { "type": "integer", "minimum": 0, "maximum": 10, "description": "New max sub-task depth (0–10). Default comes from Runtime:DefaultMaxSubTaskDepth." }
             }
           }
         }
       },
       "httpResponses": {
         "202": "Accepted.",
-        "400": { "$ref": "#/$defs/errorResponse", "example": { "error": "depth must be between 0 and 3." } },
+        "400": { "$ref": "#/$defs/errorResponse", "example": { "error": "depth must be between 0 and 10." } },
         "404": { "$ref": "#/$defs/errorResponse", "example": { "error": "task not found", "taskId": "<id>" } }
       }
     }

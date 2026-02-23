@@ -1,4 +1,5 @@
 using Akka.Actor;
+using Akka.Pattern;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
@@ -74,6 +75,7 @@ public sealed class DispatcherActor : ReceiveActor
 
         Receive<TaskAssigned>(HandleTaskAssigned);
         Receive<SpawnSubTask>(HandleSpawnSubTask);
+        Receive<TaskInterventionCommand>(HandleTaskInterventionCommand);
         Receive<SpawnAgent>(HandleSpawnAgent);
         Receive<Terminated>(OnCoordinatorTerminated);
     }
@@ -139,12 +141,7 @@ public sealed class DispatcherActor : ReceiveActor
         _uiEvents.Publish(
             type: "agui.task.submitted",
             taskId: message.TaskId,
-            payload: new
-            {
-                message.TaskId,
-                message.Title,
-                message.Description
-            });
+            payload: new TaskSubmittedPayload(message.TaskId, message.Title, message.Description));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
     }
@@ -199,18 +196,43 @@ public sealed class DispatcherActor : ReceiveActor
         if (_options.GraphTelemetryEnabled)
         {
             _uiEvents.Publish(
-                type: "agui.task.graph.edge",
+                type: "agui.graph.link_created",
                 taskId: message.ParentTaskId,
-                payload: new
-                {
-                    parentTaskId = message.ParentTaskId,
-                    childTaskId = message.ChildTaskId,
-                    message.Title,
-                    message.Depth
-                });
+                payload: new GraphLinkCreatedPayload(
+                    message.ParentTaskId,
+                    message.ChildTaskId,
+                    message.Depth,
+                    message.Title));
         }
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
+    }
+
+    private void HandleTaskInterventionCommand(TaskInterventionCommand message)
+    {
+        if (!_coordinators.TryGetValue(message.TaskId, out var coordinator))
+        {
+            Sender.Tell(new TaskInterventionResult(
+                message.TaskId,
+                message.ActionId,
+                Accepted: false,
+                ReasonCode: "task_not_found",
+                Message: "Task coordinator not found."));
+            return;
+        }
+
+        coordinator
+            .Ask<TaskInterventionResult>(message, TimeSpan.FromSeconds(5))
+            .PipeTo(
+                Sender,
+                Self,
+                success: result => result,
+                failure: ex => new TaskInterventionResult(
+                    message.TaskId,
+                    message.ActionId,
+                    Accepted: false,
+                    ReasonCode: "dispatch_failed",
+                    Message: ex.Message));
     }
 
     private void HandleSpawnAgent(SpawnAgent message)
@@ -277,6 +299,11 @@ public sealed class DispatcherActor : ReceiveActor
                     resolvedParentTaskId,
                     taskId,
                     snapshot.Summary ?? string.Empty));
+
+                _uiEvents.Publish(
+                    type: "agui.graph.child_completed",
+                    taskId: resolvedParentTaskId,
+                    payload: new GraphChildCompletedPayload(resolvedParentTaskId, taskId));
             }
             else
             {
@@ -285,6 +312,11 @@ public sealed class DispatcherActor : ReceiveActor
                     resolvedParentTaskId,
                     taskId,
                     error));
+
+                _uiEvents.Publish(
+                    type: "agui.graph.child_failed",
+                    taskId: resolvedParentTaskId,
+                    payload: new GraphChildFailedPayload(resolvedParentTaskId, taskId, error));
             }
         }
 

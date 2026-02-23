@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Akka.Actor;
+using Akka.Pattern;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.A2A;
@@ -245,7 +246,90 @@ if (options.AgUiEnabled)
                 action.Payload
             });
 
-        switch (action.ActionId.Trim().ToLowerInvariant())
+        var normalizedActionId = action.ActionId.Trim().ToLowerInvariant();
+
+        IResult RejectAction(string reasonCode, string error, int statusCode)
+        {
+            stream.Publish(
+                type: "agui.action.rejected",
+                taskId: action.TaskId,
+                payload: new
+                {
+                    actionId = normalizedActionId,
+                    reasonCode,
+                    error
+                });
+
+            return Results.Json(
+                new
+                {
+                    error,
+                    actionId = normalizedActionId,
+                    taskId = action.TaskId,
+                    reasonCode
+                },
+                statusCode: statusCode);
+        }
+
+        async Task<IResult> DispatchInterventionAsync(TaskInterventionCommand command)
+        {
+            if (!actorRegistry.TryGetDispatcher(out var dispatcher) || dispatcher is null)
+            {
+                return RejectAction(
+                    reasonCode: "dispatcher_unavailable",
+                    error: "Task dispatcher is unavailable.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            TaskInterventionResult result;
+            try
+            {
+                result = await dispatcher.Ask<TaskInterventionResult>(command, TimeSpan.FromSeconds(5));
+            }
+            catch (Exception ex)
+            {
+                return RejectAction(
+                    reasonCode: "dispatch_failed",
+                    error: $"Failed to dispatch intervention: {ex.Message}",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            if (result.Accepted)
+            {
+                stream.Publish(
+                    type: "agui.action.acknowledged",
+                    taskId: action.TaskId,
+                    payload: new
+                    {
+                        actionId = normalizedActionId,
+                        reasonCode = result.ReasonCode
+                    });
+
+                return Results.Json(
+                    new
+                    {
+                        actionId = normalizedActionId,
+                        taskId = action.TaskId,
+                        reasonCode = result.ReasonCode
+                    },
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
+            var statusCode = result.ReasonCode switch
+            {
+                "task_not_found" => StatusCodes.Status404NotFound,
+                "invalid_state" => StatusCodes.Status409Conflict,
+                "payload_invalid" => StatusCodes.Status400BadRequest,
+                _ => StatusCodes.Status409Conflict
+            };
+
+            return RejectAction(
+                reasonCode: result.ReasonCode,
+                error: result.Message ?? "Action rejected.",
+                statusCode: statusCode);
+        }
+
+        switch (normalizedActionId)
         {
             case "request_snapshot":
                 if (!string.IsNullOrWhiteSpace(action.TaskId))
@@ -346,9 +430,55 @@ if (options.AgUiEnabled)
                     stream,
                     eventType: "agui.action.task.submitted");
 
+            case "approve_review":
+                if (string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    return RejectAction("task_id_required", "taskId is required for approve_review.", StatusCodes.Status400BadRequest);
+                }
+
+                return await DispatchInterventionAsync(new TaskInterventionCommand(
+                    TaskId: action.TaskId,
+                    ActionId: normalizedActionId,
+                    Comment: UiActionPayload.GetString(action.Payload, "comment")));
+
+            case "reject_review":
+                if (string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    return RejectAction("task_id_required", "taskId is required for reject_review.", StatusCodes.Status400BadRequest);
+                }
+
+                var rejectReason = UiActionPayload.GetString(action.Payload, "reason");
+                if (string.IsNullOrWhiteSpace(rejectReason))
+                {
+                    return RejectAction("payload_invalid", "payload.reason is required for reject_review.", StatusCodes.Status400BadRequest);
+                }
+
+                return await DispatchInterventionAsync(new TaskInterventionCommand(
+                    TaskId: action.TaskId,
+                    ActionId: normalizedActionId,
+                    Reason: rejectReason));
+
+            case "request_rework":
+                if (string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    return RejectAction("task_id_required", "taskId is required for request_rework.", StatusCodes.Status400BadRequest);
+                }
+
+                var reworkFeedback = UiActionPayload.GetString(action.Payload, "feedback");
+                if (string.IsNullOrWhiteSpace(reworkFeedback))
+                {
+                    return RejectAction("payload_invalid", "payload.feedback is required for request_rework.", StatusCodes.Status400BadRequest);
+                }
+
+                return await DispatchInterventionAsync(new TaskInterventionCommand(
+                    TaskId: action.TaskId,
+                    ActionId: normalizedActionId,
+                    Feedback: reworkFeedback));
+
             case "pause_task":
             case "approve_task":
             case "cancel_task":
+            case "resume_task":
                 if (!options.HitlEnabled)
                 {
                     stream.Publish(
@@ -368,18 +498,47 @@ if (options.AgUiEnabled)
                     });
                 }
 
-                stream.Publish(
-                    type: "agui.hitl.action.received",
-                    taskId: action.TaskId,
-                    payload: new { actionId = action.ActionId, action.Payload });
-                return Results.Accepted();
+                if (normalizedActionId is "approve_task" or "cancel_task")
+                {
+                    stream.Publish(
+                        type: "agui.hitl.action.received",
+                        taskId: action.TaskId,
+                        payload: new { actionId = action.ActionId, action.Payload });
+                    return Results.Accepted();
+                }
+
+                if (string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    return RejectAction("task_id_required", $"taskId is required for {normalizedActionId}.", StatusCodes.Status400BadRequest);
+                }
+
+                return await DispatchInterventionAsync(new TaskInterventionCommand(
+                    TaskId: action.TaskId,
+                    ActionId: normalizedActionId));
+
+            case "set_subtask_depth":
+                if (string.IsNullOrWhiteSpace(action.TaskId))
+                {
+                    return RejectAction("task_id_required", "taskId is required for set_subtask_depth.", StatusCodes.Status400BadRequest);
+                }
+
+                var depth = UiActionPayload.GetInt(action.Payload, "depth");
+                if (depth is null)
+                {
+                    return RejectAction("payload_invalid", "payload.depth is required for set_subtask_depth.", StatusCodes.Status400BadRequest);
+                }
+
+                return await DispatchInterventionAsync(new TaskInterventionCommand(
+                    TaskId: action.TaskId,
+                    ActionId: normalizedActionId,
+                    MaxSubTaskDepth: depth));
 
             default:
                 return Results.BadRequest(new
                 {
                     error = "Unsupported actionId.",
                     actionId = action.ActionId,
-                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory", "pause_task", "approve_task", "cancel_task" }
+                    supported = new[] { "request_snapshot", "refresh_surface", "submit_task", "load_memory", "approve_review", "reject_review", "request_rework", "pause_task", "resume_task", "set_subtask_depth", "approve_task", "cancel_task" }
                 });
         }
     }).AddEndpointFilter(requireApiKey);
