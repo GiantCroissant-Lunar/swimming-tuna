@@ -181,7 +181,7 @@ public partial class Main : Control
         var mainVSplit = new VSplitContainer();
         mainVSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         mainVSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        mainVSplit.SplitOffsets = new int[] { 550 };
+        mainVSplit.SplitOffset = 550;
         margin.AddChild(mainVSplit);
 
         // Top section with header and content
@@ -197,7 +197,7 @@ public partial class Main : Control
         var contentHSplit = new HSplitContainer();
         contentHSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         contentHSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        contentHSplit.SplitOffsets = new int[] { 350 };
+        contentHSplit.SplitOffset = 350;
         topVBox.AddChild(contentHSplit);
 
         // Left: Task tree and list
@@ -826,7 +826,11 @@ public partial class Main : Control
 
         state.Title = title;
         state.Status = status;
-        state.UpdatedAt = updatedAt is not null ? DateTime.Parse(updatedAt) : DateTime.UtcNow;
+        state.UpdatedAt = updatedAt is not null
+            && DateTime.TryParse(updatedAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal, out var parsedDate)
+            ? parsedDate
+            : DateTime.UtcNow;
 
         if (role is not null) state.Role = role;
         if (quality is not null) state.Quality = quality;
