@@ -92,21 +92,21 @@ public partial class Main : Control
     private DateTime _lastPollTime = DateTime.MinValue;
 
     // Task state model
-    private class TaskNodeState
+    private sealed record TaskNodeState
     {
-        public string TaskId { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
-        public string Status { get; set; } = "unknown";
-        public string? ParentId { get; set; }
-        public List<string> Children { get; set; } = [];
-        public string? Role { get; set; }
-        public string? LastMessage { get; set; }
-        public double Progress { get; set; }
-        public int Depth { get; set; }
-        public string? Quality { get; set; }
-        public int RetryCount { get; set; }
-        public string? Adapter { get; set; }
-        public DateTime UpdatedAt { get; set; }
+        public string TaskId { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string Status { get; init; } = "unknown";
+        public string? ParentId { get; init; }
+        public IReadOnlyList<string> Children { get; init; } = [];
+        public string? Role { get; init; }
+        public string? LastMessage { get; init; }
+        public double Progress { get; init; }
+        public int Depth { get; init; }
+        public string? Quality { get; init; }
+        public int RetryCount { get; init; }
+        public string? Adapter { get; init; }
+        public DateTime UpdatedAt { get; init; }
     }
 
     public override void _Notification(int what)
@@ -818,25 +818,25 @@ public partial class Main : Control
         string? role = null, string? quality = null, string? adapter = null,
         int retryCount = 0, double progress = 0.0)
     {
-        if (!_taskGraphState.TryGetValue(taskId, out var state))
-        {
-            state = new TaskNodeState { TaskId = taskId };
-            _taskGraphState[taskId] = state;
-        }
+        var existing = _taskGraphState.GetValueOrDefault(taskId) ?? new TaskNodeState { TaskId = taskId };
 
-        state.Title = title;
-        state.Status = status;
-        state.UpdatedAt = updatedAt is not null
+        var parsedDate = updatedAt is not null
             && DateTime.TryParse(updatedAt, System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.AdjustToUniversal, out var parsedDate)
-            ? parsedDate
+                System.Globalization.DateTimeStyles.AdjustToUniversal, out var d)
+            ? d
             : DateTime.UtcNow;
 
-        if (role is not null) state.Role = role;
-        if (quality is not null) state.Quality = quality;
-        if (adapter is not null) state.Adapter = adapter;
-        state.RetryCount = retryCount;
-        state.Progress = progress;
+        _taskGraphState[taskId] = existing with
+        {
+            Title = title,
+            Status = status,
+            UpdatedAt = parsedDate,
+            Role = role ?? existing.Role,
+            Quality = quality ?? existing.Quality,
+            Adapter = adapter ?? existing.Adapter,
+            RetryCount = retryCount,
+            Progress = progress
+        };
 
         RefreshTaskTree();
     }
