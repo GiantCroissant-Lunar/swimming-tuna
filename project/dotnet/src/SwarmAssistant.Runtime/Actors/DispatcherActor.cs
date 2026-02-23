@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -29,6 +30,8 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
     private readonly RuntimeOptions _options;
+    private readonly OutcomeTracker? _outcomeTracker;
+    private readonly IActorRef? _strategyAdvisorActor;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -50,7 +53,9 @@ public sealed class DispatcherActor : ReceiveActor
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
-        IOptions<RuntimeOptions> options)
+        IOptions<RuntimeOptions> options,
+        OutcomeTracker? outcomeTracker = null,
+        IActorRef? strategyAdvisorActor = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -63,6 +68,8 @@ public sealed class DispatcherActor : ReceiveActor
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
         _options = options.Value;
+        _outcomeTracker = outcomeTracker;
+        _strategyAdvisorActor = strategyAdvisorActor;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -115,6 +122,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _uiEvents,
                 _taskRegistry,
                 _options,
+                _outcomeTracker,
+                _strategyAdvisorActor,
                 DefaultMaxRetries,
                 0)),
             $"task-{message.TaskId}");
@@ -171,6 +180,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _uiEvents,
                 _taskRegistry,
                 _options,
+                _outcomeTracker,
+                _strategyAdvisorActor,
                 DefaultMaxRetries,
                 message.Depth)),
             $"task-{message.ChildTaskId}");

@@ -9,15 +9,18 @@ namespace SwarmAssistant.Runtime.Actors;
 
 public sealed class SwarmAgentActor : ReceiveActor
 {
+    private const int MaxConcurrentAgentTasks = 1;
+    private const int EstimatedTimePerCostMs = 1_000;
+
     private readonly RuntimeOptions _options;
     private readonly AgentFrameworkRoleEngine _agentFrameworkRoleEngine;
     private readonly RuntimeTelemetry _telemetry;
     private readonly IActorRef _capabilityRegistry;
     private readonly IReadOnlyList<SwarmRole> _capabilities;
     private readonly ILogger _logger;
+    private readonly Dictionary<string, int> _reservedContractCounts = new(StringComparer.Ordinal);
 
     private int _currentLoad;
-
     private readonly TimeSpan _idleTtl;
 
     public SwarmAgentActor(
@@ -39,6 +42,13 @@ public sealed class SwarmAgentActor : ReceiveActor
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
         Receive<HealthCheckRequest>(HandleHealthCheck);
+        Receive<NegotiationOffer>(HandleNegotiationOffer);
+        Receive<HelpRequest>(HandleHelpRequest);
+        Receive<NegotiationAccept>(_ => { });
+        Receive<NegotiationReject>(_ => { });
+        Receive<HelpResponse>(_ => { });
+        Receive<ContractNetBidRequest>(HandleContractNetBidRequest);
+        Receive<ContractNetAward>(HandleContractNetAward);
         if (idleTtl > TimeSpan.Zero)
         {
             Receive<ReceiveTimeout>(_ => OnIdleTimeout());
@@ -78,8 +88,14 @@ public sealed class SwarmAgentActor : ReceiveActor
                 ["engine"] = "microsoft-agent-framework",
             });
 
-        _currentLoad++;
-        AdvertiseCapability();
+        // Contract awards reserve capacity before the execute message arrives.
+        // If this execution consumes a reservation, avoid incrementing load again.
+        var reserved = TryConsumeReservedContract(command.TaskId);
+        if (!reserved)
+        {
+            _currentLoad++;
+            AdvertiseCapability();
+        }
         try
         {
             if (!_capabilities.Contains(command.Role))
@@ -118,8 +134,8 @@ public sealed class SwarmAgentActor : ReceiveActor
                 return;
             }
 
-            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
-            activity?.SetTag("output.length", output.Length);
+            var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            activity?.SetTag("output.length", result.Output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
@@ -128,7 +144,13 @@ public sealed class SwarmAgentActor : ReceiveActor
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode);
 
-            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow, Self.Path.Name));
+            replyTo.Tell(new RoleTaskSucceeded(
+                command.TaskId,
+                command.Role,
+                result.Output,
+                DateTimeOffset.UtcNow,
+                AdapterId: result.AdapterId,
+                ActorName: Self.Path.Name));
         }
         catch (Exception exception)
         {
@@ -151,6 +173,85 @@ public sealed class SwarmAgentActor : ReceiveActor
             _currentLoad = Math.Max(0, _currentLoad - 1);
             AdvertiseCapability();
         }
+    }
+
+    private void HandleNegotiationOffer(NegotiationOffer offer)
+    {
+        if (_currentLoad >= MaxConcurrentAgentTasks)
+        {
+            Sender.Tell(new NegotiationReject(
+                offer.TaskId,
+                "Agent overloaded",
+                Self.Path.ToStringWithoutAddress()));
+            return;
+        }
+
+        if (_capabilities.Contains(offer.Role))
+        {
+            Sender.Tell(new NegotiationAccept(offer.TaskId, Self.Path.ToStringWithoutAddress()));
+            return;
+        }
+
+        Sender.Tell(new NegotiationReject(
+            offer.TaskId,
+            $"Role {offer.Role} not supported",
+            Self.Path.ToStringWithoutAddress()));
+    }
+
+    private void HandleHelpRequest(HelpRequest request)
+    {
+        var output = $"Help acknowledged for '{request.TaskId}' by {Self.Path.Name}: {request.Description}";
+        Sender.Tell(new HelpResponse(request.TaskId, output, Self.Path.ToStringWithoutAddress()));
+    }
+
+    private void HandleContractNetBidRequest(ContractNetBidRequest request)
+    {
+        if (!_capabilities.Contains(request.Role) || DateTimeOffset.UtcNow > request.DeadlineUtc)
+        {
+            return;
+        }
+
+        var estimatedCost = _currentLoad + 1;
+        var estimatedTimeMs = estimatedCost * EstimatedTimePerCostMs;
+        Sender.Tell(new ContractNetBid(
+            request.AuctionId,
+            request.TaskId,
+            request.Role,
+            Self.Path.ToStringWithoutAddress(),
+            estimatedCost,
+            estimatedTimeMs));
+    }
+
+    private void HandleContractNetAward(ContractNetAward award)
+    {
+        _reservedContractCounts.TryGetValue(award.TaskId, out var reservedCount);
+        _reservedContractCounts[award.TaskId] = reservedCount + 1;
+        _currentLoad++;
+        AdvertiseCapability();
+
+        _logger.LogInformation(
+            "Won contract for task {TaskId} role {Role}; awaiting execution message.",
+            award.TaskId,
+            award.Role);
+    }
+
+    private bool TryConsumeReservedContract(string taskId)
+    {
+        if (!_reservedContractCounts.TryGetValue(taskId, out var reservedCount) || reservedCount <= 0)
+        {
+            return false;
+        }
+
+        if (reservedCount == 1)
+        {
+            _reservedContractCounts.Remove(taskId);
+        }
+        else
+        {
+            _reservedContractCounts[taskId] = reservedCount - 1;
+        }
+
+        return true;
     }
 
     private void OnIdleTimeout()

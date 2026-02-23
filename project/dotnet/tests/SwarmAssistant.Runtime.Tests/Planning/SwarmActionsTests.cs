@@ -8,7 +8,7 @@ public sealed class SwarmActionsTests
     [Fact]
     public void All_ContainsEightActions()
     {
-        Assert.Equal(8, SwarmActions.All.Count);
+        Assert.Equal(9, SwarmActions.All.Count);
     }
 
     [Theory]
@@ -20,9 +20,18 @@ public sealed class SwarmActionsTests
     [InlineData("Escalate")]
     [InlineData("Finalize")]
     [InlineData("WaitForSubTasks")]
+    [InlineData("Negotiate")]
     public void All_ContainsAction(string actionName)
     {
         Assert.Contains(SwarmActions.All, a => a.Name == actionName);
+    }
+
+    [Fact]
+    public void Negotiate_HasCorrectPreconditionsAndEffects()
+    {
+        Assert.True(SwarmActions.Negotiate.Preconditions[WorldKey.TaskExists]);
+        Assert.True(SwarmActions.Negotiate.Preconditions[WorldKey.AgentsAvailable]);
+        Assert.True(SwarmActions.Negotiate.Effects[WorldKey.NegotiationComplete]);
     }
 
     [Fact]

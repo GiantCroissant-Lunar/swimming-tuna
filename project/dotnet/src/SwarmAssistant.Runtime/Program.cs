@@ -11,6 +11,8 @@ using SwarmAssistant.Runtime.Ui;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 var bootstrapOptions = builder.Configuration
     .GetSection(RuntimeOptions.SectionName)
     .Get<RuntimeOptions>() ?? new RuntimeOptions();
@@ -27,6 +29,9 @@ builder.Services.AddSingleton<RuntimeActorRegistry>();
 builder.Services.AddHttpClient("arcadedb");
 builder.Services.AddSingleton<ITaskMemoryWriter, ArcadeDbTaskMemoryWriter>();
 builder.Services.AddSingleton<ITaskMemoryReader, ArcadeDbTaskMemoryReader>();
+builder.Services.AddSingleton<IOutcomeWriter, ArcadeDbOutcomeWriter>();
+builder.Services.AddSingleton<IOutcomeReader, ArcadeDbOutcomeReader>();
+builder.Services.AddSingleton<OutcomeTracker>();
 builder.Services.AddSingleton<TaskRegistry>();
 builder.Services.AddSingleton<StartupMemoryBootstrapper>();
 builder.Services.AddHostedService<Worker>();
@@ -44,6 +49,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
 app.UseCors("DefaultCorsPolicy");
 
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");

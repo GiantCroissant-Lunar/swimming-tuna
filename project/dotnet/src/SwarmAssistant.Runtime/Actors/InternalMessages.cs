@@ -11,7 +11,9 @@ internal sealed record ExecuteRoleTask(
     string Description,
     string? PlanningOutput,
     string? BuildOutput,
-    string? OrchestratorPrompt = null
+    string? OrchestratorPrompt = null,
+    string? PreferredAdapter = null,
+    double? PreviousConfidence = null
 );
 
 internal sealed record RoleTaskSucceeded(
@@ -19,7 +21,9 @@ internal sealed record RoleTaskSucceeded(
     SwarmRole Role,
     string Output,
     DateTimeOffset CompletedAt,
-    string ActorName
+    double Confidence = 1.0,
+    string? AdapterId = null,
+    string ActorName = ""
 );
 
 internal sealed record RoleTaskFailed(
@@ -35,7 +39,8 @@ internal sealed record SupervisorSnapshot(
     int Started,
     int Completed,
     int Failed,
-    int Escalations
+    int Escalations,
+    int TotalQualityConcerns = 0
 );
 
 // Orchestrator decision from CLI agent — reserved for future phases where the
@@ -183,6 +188,17 @@ internal sealed record SubTaskFailed(
     string ParentTaskId,
     string ChildTaskId,
     string Error
+);
+
+// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
+// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
+internal sealed record QualityConcern(
+    string TaskId,
+    SwarmRole Role,
+    string Concern,
+    double Confidence,
+    string? AdapterId,
+    DateTimeOffset At
 );
 
 // Dynamic topology: on-demand agent spawning

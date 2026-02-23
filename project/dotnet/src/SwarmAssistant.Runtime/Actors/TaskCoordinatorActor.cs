@@ -19,6 +19,7 @@ namespace SwarmAssistant.Runtime.Actors;
 /// Per-task coordinator that uses GOAP planning as a skill for the CLI orchestrator agent.
 /// At each decision point: update world state → run GOAP → build prompt → call CLI → parse → execute.
 /// Falls back to GOAP recommendation directly if CLI orchestrator fails.
+/// Integrates learning and adaptation via StrategyAdvisorActor and OutcomeTracker.
 /// </summary>
 public sealed class TaskCoordinatorActor : ReceiveActor
 {
@@ -44,12 +45,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly IActorRef _supervisorActor;
     private readonly IActorRef _blackboardActor;
     private readonly IActorRef _consensusActor;
+    private readonly IActorRef? _strategyAdvisorActor;
     private readonly AgentFrameworkRoleEngine _roleEngine;
     private readonly IGoapPlanner _goapPlanner;
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
     private readonly RuntimeOptions _options;
+    private readonly OutcomeTracker? _outcomeTracker;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -72,6 +75,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     // Stigmergy: local cache of global blackboard signals, kept in sync via EventStream subscription
     private readonly Dictionary<string, string> _globalBlackboardCache = new(StringComparer.Ordinal);
 
+    // Learning: cached strategy advice for this task
+    private StrategyAdvice? _strategyAdvice;
+
     public TaskCoordinatorActor(
         string taskId,
         string title,
@@ -88,6 +94,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
         RuntimeOptions options,
+        OutcomeTracker? outcomeTracker = null,
+        IActorRef? strategyAdvisorActor = null,
         int maxRetries = 2,
         int subTaskDepth = 0)
     {
@@ -96,12 +104,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _supervisorActor = supervisorActor;
         _blackboardActor = blackboardActor;
         _consensusActor = consensusActor;
+        _strategyAdvisorActor = strategyAdvisorActor;
         _roleEngine = roleEngine;
         _goapPlanner = goapPlanner;
         _telemetry = telemetry;
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
         _options = options;
+        _outcomeTracker = outcomeTracker;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -115,6 +125,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             .With(WorldKey.AdapterAvailable, true);
 
         Receive<StartCoordination>(_ => OnStart());
+        Receive<StrategyAdvice>(OnStrategyAdviceReceived);
         Receive<RoleTaskSucceeded>(OnRoleSucceeded);
         Receive<RoleTaskFailed>(OnRoleFailed);
         Receive<SubTaskCompleted>(OnSubTaskCompleted);
@@ -122,18 +133,22 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<RetryRole>(OnRetryRole);
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
         Receive<ConsensusResult>(OnConsensusResult);
+        Receive<QualityConcern>(OnQualityConcern);
     }
 
     protected override void PreStart()
     {
         // Subscribe to global blackboard changes for stigmergy signals
         Context.System.EventStream.Subscribe(Self, typeof(GlobalBlackboardChanged));
+        // Subscribe to quality concerns from agent actors
+        Context.System.EventStream.Subscribe(Self, typeof(QualityConcern));
         base.PreStart();
     }
 
     protected override void PostStop()
     {
         Context.System.EventStream.Unsubscribe(Self, typeof(GlobalBlackboardChanged));
+        Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
         _blackboardActor.Tell(new RemoveBlackboard(_taskId));
         base.PostStop();
     }
@@ -222,6 +237,52 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _taskId, _title, _description, TaskState.Queued)
             });
 
+        // Request strategy advice from learning system if available
+        if (_strategyAdvisorActor is not null)
+        {
+            _logger.LogInformation(
+                "Requesting strategy advice taskId={TaskId}",
+                _taskId);
+
+            _strategyAdvisorActor.Tell(new StrategyAdviceRequest
+            {
+                TaskId = _taskId,
+                Title = _title,
+                Description = _description
+            });
+
+            // DecideAndExecute will be called when StrategyAdvice is received
+        }
+        else
+        {
+            DecideAndExecute();
+        }
+    }
+
+    /// <summary>
+    /// Handles strategy advice received from the StrategyAdvisorActor.
+    /// Integrates learning insights into the task planning process.
+    /// </summary>
+    private void OnStrategyAdviceReceived(StrategyAdvice advice)
+    {
+        _strategyAdvice = advice;
+
+        _logger.LogInformation(
+            "Strategy advice received taskId={TaskId} similarTasks={Count} successRate={Rate:P0}",
+            _taskId, advice.SimilarTaskCount, advice.SimilarTaskSuccessRate);
+
+        // Store advice in blackboard for context
+        if (advice.Insights is { Count: > 0 })
+        {
+            StoreBlackboard("strategy_insights", string.Join("; ", advice.Insights));
+        }
+
+        if (advice.SimilarTaskCount > 0)
+        {
+            StoreBlackboard("historical_success_rate", advice.SimilarTaskSuccessRate.ToString("P0"));
+        }
+
+        // Proceed with planning, potentially using cost adjustments
         DecideAndExecute();
     }
 
@@ -231,6 +292,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             "task-coordinator.role.succeeded",
             taskId: _taskId,
             role: message.Role.ToString().ToLowerInvariant());
+
+        // Track confidence in activity for telemetry
+        activity?.SetTag("quality.confidence", message.Confidence);
 
         switch (message.Role)
         {
@@ -243,6 +307,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _worldState = (WorldState)_worldState.With(WorldKey.PlanExists, true);
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("planner_output", message.Output);
+                StoreBlackboard("planner_confidence", message.Confidence.ToString("F2"));
                 SpawnSubTasksIfPresent(message.Output);
                 break;
 
@@ -251,14 +316,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _worldState = (WorldState)_worldState.With(WorldKey.BuildExists, true);
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("builder_output", message.Output);
+                StoreBlackboard("builder_confidence", message.Confidence.ToString("F2"));
                 break;
 
             case SwarmRole.Reviewer:
                 _reviewOutput = message.Output;
-                var passed = !ContainsRejection(message.Output);
+                var passed = !ContainsRejection(message.Output) && message.Confidence >= QualityEvaluator.QualityConcernThreshold;
 
                 // Single reviewer backward compatibility
-                if (_options.ReviewConsensusCount == 1)
+                if (_options.ReviewConsensusCount <= 1)
                 {
                     if (passed)
                     {
@@ -271,20 +337,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                         _worldState = (WorldState)_worldState
                             .With(WorldKey.ReviewPassed, false)
                             .With(WorldKey.ReviewRejected, true);
-                        _retryCount++;
-                        if (_retryCount >= _maxRetries)
-                        {
-                            _worldState = (WorldState)_worldState
-                                .With(WorldKey.RetryLimitReached, true);
-                        }
                     }
 
-                    _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
-                    StoreBlackboard("reviewer_output", message.Output);
-                    StoreBlackboard("review_passed", passed.ToString());
-
                     _uiEvents.Publish(
-                        type: "agui.task.transition",
+                        type: "agui.task.decision",
                         taskId: _taskId,
                         payload: new
                         {
@@ -293,16 +349,25 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                             decidedBy = "reviewer",
                         });
 
+                    _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
+                    StoreBlackboard("reviewer_output", message.Output);
+                    StoreBlackboard("review_passed", passed.ToString());
+                    StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
+
                     DecideAndExecute();
                 }
                 else
                 {
+                    _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
+                    StoreBlackboard("reviewer_output", message.Output);
+                    StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
+
                     // Forward vote to consensus actor
                     _consensusActor.Tell(new ConsensusVote(
                         TaskId: _taskId,
-                        VoterId: message.ActorName, // Assuming the message sender or name can be used as ID
+                        VoterId: message.ActorName,
                         Approved: passed,
-                        Confidence: 1.0, // Default confidence
+                        Confidence: message.Confidence,
                         Feedback: message.Output
                     ));
                     // Don't call DecideAndExecute() yet, wait for consensus
@@ -454,7 +519,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private void DecideAndExecute()
     {
-        var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask);
+        var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask, _strategyAdvice?.RecommendedCostAdjustments);
         _lastGoapPlan = planResult;
 
         _logger.LogInformation(
@@ -645,6 +710,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _blackboardActor.Tell(new UpdateGlobalBlackboard(
             GlobalBlackboardKeys.TaskSucceeded(_taskId),
             _title));
+
+        // Learning: record successful outcome
+        RecordOutcome(TaskState.Done, summary: summary);
 
         _uiEvents.Publish(
             type: "agui.task.done",
@@ -904,6 +972,74 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _ => TaskState.Queued
     };
 
+    /// <summary>
+    /// Records the task outcome for learning and adaptation.
+    /// Called when task reaches a terminal state (Done or Blocked).
+    /// </summary>
+    private void RecordOutcome(TaskState finalStatus, string? failureReason = null, string? summary = null)
+    {
+        if (_outcomeTracker is null)
+        {
+            return;
+        }
+
+        // Record role completions for outcome tracking
+        _outcomeTracker.RecordRoleCompletion(_taskId, SwarmRole.Planner, !string.IsNullOrEmpty(_planningOutput));
+        _outcomeTracker.RecordRoleCompletion(_taskId, SwarmRole.Builder, !string.IsNullOrEmpty(_buildOutput));
+        _outcomeTracker.RecordRoleCompletion(_taskId, SwarmRole.Reviewer,
+            !string.IsNullOrEmpty(_reviewOutput) && !ContainsRejection(_reviewOutput));
+
+        // Finalize and persist the outcome
+        _ = _outcomeTracker.FinalizeOutcomeAsync(_taskId, finalStatus, failureReason, summary);
+    }
+
     // Trigger message to start the coordination loop after actor creation
     internal sealed record StartCoordination;
+
+    private void OnQualityConcern(QualityConcern message)
+    {
+        // Only process quality concerns for this task
+        if (!message.TaskId.Equals(_taskId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        using var activity = _telemetry.StartActivity(
+            "task-coordinator.quality.concern",
+            taskId: _taskId,
+            role: message.Role.ToString().ToLowerInvariant());
+
+        activity?.SetTag("quality.confidence", message.Confidence);
+        activity?.SetTag("quality.concern", message.Concern);
+
+        _logger.LogWarning(
+            "TaskCoordinator received quality concern taskId={TaskId} role={Role} confidence={Confidence:F2}",
+            _taskId,
+            message.Role,
+            message.Confidence);
+
+        // Store quality concern in blackboard for context
+        StoreBlackboard($"quality_concern_{message.Role.ToString().ToLowerInvariant()}",
+            $"{message.Concern} (confidence: {message.Confidence:F2})");
+
+        // Adjust world state based on confidence level
+        if (message.Confidence < QualityEvaluator.SelfRetryThreshold)
+        {
+            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, true);
+            _logger.LogWarning(
+                "Low confidence detected taskId={TaskId} role={Role} - marking high failure risk",
+                _taskId,
+                message.Role);
+        }
+        else if (_worldState.Get(WorldKey.HighFailureRateDetected) && !HasOpenCircuits())
+        {
+            // Clear stale high-failure flag when confidence recovers and no circuits are open
+            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, false);
+            _logger.LogInformation(
+                "Quality recovered taskId={TaskId} role={Role} confidence={Confidence:F2} - clearing high failure risk",
+                _taskId,
+                message.Role,
+                message.Confidence);
+        }
+    }
 }

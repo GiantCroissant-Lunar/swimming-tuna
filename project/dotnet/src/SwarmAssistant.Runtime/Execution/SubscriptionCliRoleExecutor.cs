@@ -73,13 +73,48 @@ internal sealed class SubscriptionCliRoleExecutor
         }
     }
 
+    private string[] BuildAdapterOrder(string? preferredAdapter)
+    {
+        var baseOrder = _options.CliAdapterOrder.Length > 0 ? _options.CliAdapterOrder : DefaultAdapterOrder;
+
+        // If a preferred adapter is specified and exists, prioritize it
+        if (!string.IsNullOrWhiteSpace(preferredAdapter) &&
+            AdapterDefinitions.ContainsKey(preferredAdapter))
+        {
+            // Return preferred adapter first, then the rest (excluding preferred to avoid duplication)
+            return [preferredAdapter, ..baseOrder.Where(a => !a.Equals(preferredAdapter, StringComparison.OrdinalIgnoreCase))];
+        }
+
+        return baseOrder;
+    }
+
     private async Task<CliRoleExecutionResult> ExecuteCoreAsync(ExecuteRoleTask command, CancellationToken cancellationToken)
     {
         var timeout = TimeSpan.FromSeconds(Math.Clamp(_options.RoleExecutionTimeoutSeconds, 5, 900));
         var errors = new List<string>();
         var prompt = RolePromptFactory.BuildPrompt(command);
 
-        var adapterOrder = _options.CliAdapterOrder.Length > 0 ? _options.CliAdapterOrder : DefaultAdapterOrder;
+        var adapterOrder = BuildAdapterOrder(command.PreferredAdapter);
+
+        // Log if preferred adapter is being honored (only when the adapter is actually available)
+        if (!string.IsNullOrWhiteSpace(command.PreferredAdapter) &&
+            AdapterDefinitions.ContainsKey(command.PreferredAdapter))
+        {
+            _logger.LogInformation(
+                "Using preferred adapter={PreferredAdapter} for role={Role} taskId={TaskId}",
+                command.PreferredAdapter,
+                command.Role,
+                command.TaskId);
+        }
+        else if (!string.IsNullOrWhiteSpace(command.PreferredAdapter))
+        {
+            _logger.LogWarning(
+                "Preferred adapter={PreferredAdapter} not found, using default order for role={Role} taskId={TaskId}",
+                command.PreferredAdapter,
+                command.Role,
+                command.TaskId);
+        }
+
         foreach (var adapterId in adapterOrder)
         {
             if (!AdapterDefinitions.TryGetValue(adapterId, out var adapter))

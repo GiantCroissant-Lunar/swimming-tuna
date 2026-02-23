@@ -7,6 +7,11 @@ using SwarmAssistant.Runtime.Telemetry;
 
 namespace SwarmAssistant.Runtime.Actors;
 
+/// <summary>
+/// Reviewer actor that executes review tasks.
+/// Includes autonomous quality evaluation: after receiving CLI output, it evaluates
+/// quality locally, calculates confidence, and can raise QualityConcern for borderline cases.
+/// </summary>
 public sealed class ReviewerActor : ReceiveActor
 {
     private readonly RuntimeOptions _options;
@@ -68,15 +73,91 @@ public sealed class ReviewerActor : ReceiveActor
 
         try
         {
-            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            var output = result.Output;
+            var adapterId = result.AdapterId;
+            var confidence = EvaluateQuality(output, adapterId);
+
             activity?.SetTag("output.length", output.Length);
+            activity?.SetTag("quality.confidence", confidence);
+            activity?.SetTag("agent.framework.cli.adapter", adapterId);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
-                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode}",
+                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode} adapter={AdapterId} confidence={Confidence}",
                 command.TaskId,
-                _options.AgentFrameworkExecutionMode);
-            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow, Self.Path.Name));
+                _options.AgentFrameworkExecutionMode,
+                adapterId,
+                confidence);
+
+            // Self-retry if confidence is very low (unless already retried).
+            // Retry BEFORE publishing the concern so the supervisor sees the
+            // final confidence rather than a stale pre-retry value.
+            if (confidence < QualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
+            {
+                _logger.LogInformation(
+                    "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
+                    command.TaskId,
+                    confidence);
+
+                activity?.SetTag("quality.self_retry", true);
+
+                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
+                var adjustedCommand = command with
+                {
+                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId),
+                    PreviousConfidence = confidence
+                };
+
+                var retryResult = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
+                var retryConfidence = EvaluateQuality(retryResult.Output, retryResult.AdapterId);
+
+                _logger.LogInformation(
+                    "Reviewer self-retry completed taskId={TaskId} oldConfidence={OldConfidence} newConfidence={NewConfidence}",
+                    command.TaskId,
+                    confidence,
+                    retryConfidence);
+
+                // Keep the retry if it's better, otherwise fallback to the original
+                if (retryConfidence > confidence)
+                {
+                    output = retryResult.Output;
+                    adapterId = retryResult.AdapterId;
+                    confidence = retryConfidence;
+                }
+            }
+
+            // Raise QualityConcern for borderline cases
+            if (confidence < QualityEvaluator.QualityConcernThreshold)
+            {
+                var concern = QualityEvaluator.BuildQualityConcern(output, confidence, "Review quality concern");
+
+                _logger.LogWarning(
+                    "Reviewer quality concern taskId={TaskId} confidence={Confidence} concern={Concern}",
+                    command.TaskId,
+                    confidence,
+                    concern);
+
+                // Notify supervisor of quality concern
+                Context.System.EventStream.Publish(new QualityConcern(
+                    command.TaskId,
+                    command.Role,
+                    concern,
+                    confidence,
+                    adapterId,
+                    DateTimeOffset.UtcNow));
+
+                activity?.SetTag("quality.concern", concern);
+            }
+
+            replyTo.Tell(new RoleTaskSucceeded(
+                command.TaskId,
+                command.Role,
+                output,
+                DateTimeOffset.UtcNow,
+                confidence,
+                adapterId,
+                Self.Path.Name));
         }
         catch (Exception exception)
         {
@@ -93,5 +174,76 @@ public sealed class ReviewerActor : ReceiveActor
                 $"Agent Framework execution failed: {exception.Message}",
                 DateTimeOffset.UtcNow));
         }
+    }
+
+    /// <summary>
+    /// Evaluates output quality and returns a confidence score between 0.0 and 1.0.
+    /// Uses shared helpers from <see cref="QualityEvaluator"/> plus reviewer-specific keyword scoring.
+    /// </summary>
+    private static double EvaluateQuality(string output, string? adapterId)
+    {
+        var scores = new List<double>();
+
+        // Factor 1: Output length (normalized — reviewers are typically shorter)
+        var lengthScore = Math.Min(output.Length / 300.0, 1.0);
+        scores.Add(lengthScore);
+
+        // Factor 2: Review-specific keyword presence
+        var keywordScore = EvaluateReviewerKeywords(output);
+        scores.Add(keywordScore);
+
+        // Factor 3: Adapter reliability bonus (shared)
+        var adapterScore = QualityEvaluator.GetAdapterReliabilityScore(adapterId);
+        scores.Add(adapterScore);
+
+        // Factor 4: Structural indicators (shared)
+        var structureScore = QualityEvaluator.EvaluateStructure(output, SwarmRole.Reviewer);
+        scores.Add(structureScore);
+
+        // Factor 5: Review comprehensiveness (pass/fail indicators)
+        var comprehensivenessScore = EvaluateReviewComprehensiveness(output);
+        scores.Add(comprehensivenessScore);
+
+        // Weighted average
+        var weights = new[] { 0.20, 0.25, 0.15, 0.20, 0.20 };
+        var confidence = scores.Zip(weights, (s, w) => s * w).Sum();
+
+        return Math.Clamp(confidence, 0.0, 1.0);
+    }
+
+    private static double EvaluateReviewerKeywords(string output)
+    {
+        var lowerOutput = output.ToLowerInvariant();
+        var keywords = new[]
+        {
+            "review", "check", "test", "pass", "fail",
+            "issue", "concern", "suggestion", "improvement",
+            "correct", "incorrect", "valid", "invalid"
+        };
+
+        var matches = keywords.Count(k => lowerOutput.Contains(k));
+        return (double)matches / keywords.Length;
+    }
+
+    private static double EvaluateReviewComprehensiveness(string output)
+    {
+        var lowerOutput = output.ToLowerInvariant();
+        var scores = new List<double>();
+
+        // Has explicit pass/fail verdict
+        if (lowerOutput.Contains("pass") || lowerOutput.Contains("fail") ||
+            lowerOutput.Contains("approve") || lowerOutput.Contains("reject"))
+            scores.Add(1.0);
+        else
+            scores.Add(0.3);
+
+        // Has actionable feedback
+        if (lowerOutput.Contains("should") || lowerOutput.Contains("recommend") ||
+            lowerOutput.Contains("suggest") || lowerOutput.Contains("consider"))
+            scores.Add(1.0);
+        else
+            scores.Add(0.5);
+
+        return scores.Average();
     }
 }

@@ -256,7 +256,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, 2, 0)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -267,7 +267,7 @@ public sealed class SubTaskTests : TestKit
 
         // Reply: orchestrator says Plan
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow, "test-probe"));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         // Coordinator dispatches Plan action
         var plannerTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
@@ -282,7 +282,7 @@ public sealed class SubTaskTests : TestKit
             "SUBTASK: Data Layer|Set up database schema and repositories";
 
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow, "test-probe"));
+            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         // Assert: two SpawnSubTask messages are forwarded to the parent (parentProbe)
         var spawn1 = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -335,20 +335,20 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
         // Drive through orchestrator and planner phases
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, "test-probe"));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
             taskId, SwarmRole.Planner,
             "SUBTASK: Critical Step|This must succeed",
-            DateTimeOffset.UtcNow, "test-probe"));
+            DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         // Capture the spawned sub-task ID
         var spawn = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -465,7 +465,7 @@ public sealed class SubTaskTests : TestKit
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
 
         var supervisorActor = Sys.ActorOf(
-            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, default)),
+            Props.Create(() => new SupervisorActor(_loggerFactory, _telemetry, null, null)),
             $"supervisor-{suffix}");
 
         var blackboardActor = Sys.ActorOf(
@@ -484,7 +484,7 @@ public sealed class SubTaskTests : TestKit
 
         var agent = Sys.ActorOf(
             Props.Create(() => new SwarmAgentActor(
-                _options,
+                new RuntimeOptions(),
                 _loggerFactory,
                 roleEngine,
                 _telemetry,
@@ -505,7 +505,9 @@ public sealed class SubTaskTests : TestKit
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                Options.Create(_options))),
+                Microsoft.Extensions.Options.Options.Create(_options),
+                null,
+                null)),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);

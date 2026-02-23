@@ -97,9 +97,6 @@ public sealed class RuntimeOptions
         init => _maxCliConcurrency = Math.Clamp(value, 1, 32);
     }
 
-    public bool SimulateBuilderFailure { get; init; } = false;
-    public bool SimulateReviewerFailure { get; init; } = false;
-
     /// <summary>
     /// When true, enables dynamic agent spawning based on observed task load.
     /// </summary>
@@ -124,6 +121,21 @@ public sealed class RuntimeOptions
     /// Active task count below which idle dynamic agents are allowed to retire.
     /// </summary>
     public int ScaleDownThreshold { get; init; } = 1;
+
+    /// <summary>
+    /// TTL in minutes for the <see cref="StrategyAdvisorActor"/> advice cache.
+    /// Values are clamped to [1, 1440].
+    /// </summary>
+    // Default must be within [1, 1440]; the backing field bypasses the init setter.
+    private int _strategyAdvisorCacheTtlMinutes = 5;
+    public int StrategyAdvisorCacheTtlMinutes
+    {
+        get => _strategyAdvisorCacheTtlMinutes;
+        init => _strategyAdvisorCacheTtlMinutes = Math.Clamp(value, 1, 1440);
+    }
+
+    public bool SimulateBuilderFailure { get; init; } = false;
+    public bool SimulateReviewerFailure { get; init; } = false;
 
     /// <summary>
     /// Optional API key for protecting A2A and AG-UI action endpoints.
