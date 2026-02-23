@@ -73,11 +73,10 @@ public sealed class OutcomeTracker : IAsyncDisposable
         var adapterUsed = _adapterAssignments.TryGetValue(key, out var adapter) ? adapter : null;
 
         // Track retries
-        var retryKey = $"{taskId}:{role}";
         if (!succeeded)
         {
-            _retryCounts.TryGetValue(retryKey, out var currentRetries);
-            _retryCounts[retryKey] = currentRetries + 1;
+            _retryCounts.TryGetValue(key, out var currentRetries);
+            _retryCounts[key] = currentRetries + 1;
         }
 
         // Track confidence
@@ -89,7 +88,7 @@ public sealed class OutcomeTracker : IAsyncDisposable
             TaskId = taskId,
             Role = role,
             AdapterUsed = adapterUsed,
-            RetryCount = _retryCounts.TryGetValue(retryKey, out var retries) ? retries : 0,
+            RetryCount = _retryCounts.TryGetValue(key, out var retries) ? retries : 0,
             StartedAt = startedAt,
             CompletedAt = DateTimeOffset.UtcNow,
             Succeeded = succeeded,
