@@ -47,9 +47,13 @@ def main() -> None:
         },
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:
-        result = json.loads(resp.read())
-        print(f"Saved memory: {result.get('id', 'ok')}")
+    try:
+        with urllib.request.urlopen(req) as resp:  # noqa: S310
+            result = json.loads(resp.read())
+            print(f"Saved memory: {result.get('id', 'ok')}")
+    except Exception as e:
+        print(f"Error: API request failed: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

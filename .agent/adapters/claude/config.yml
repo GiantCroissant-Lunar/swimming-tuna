@@ -33,4 +33,4 @@ sync:
     mapping:
       session_start.py: SessionStart
       session_end.py: Stop
-      pre_tool_use.py: PreToolUse
+      pre_tool_use.py: PreCompact

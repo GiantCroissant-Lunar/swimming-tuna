@@ -314,7 +314,7 @@ class TestMergeAction:
                 "SessionStart": [
                     {
                         "type": "command",
-                        "command": f'python "{hook_path}"',
+                        "command": f'python3 "{hook_path}"',
                     }
                 ]
             }

@@ -2,7 +2,7 @@ name: copilot-cli
 description: GitHub Copilot CLI adapter
 
 capabilities:
-  hooks: [sessionStart, sessionEnd, preToolUse, postToolUse]
+  hooks: [sessionStart, sessionEnd, preToolUse]
   mcp: true
   skills: false
   rules: true
