@@ -27,11 +27,14 @@ public sealed class Worker : BackgroundService
 
     private readonly ILogger<Worker> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IOptions<RuntimeOptions> _optionsInstance;
     private readonly RuntimeOptions _options;
     private readonly UiEventStream _uiEvents;
     private readonly RuntimeActorRegistry _actorRegistry;
     private readonly TaskRegistry _taskRegistry;
     private readonly StartupMemoryBootstrapper _startupMemoryBootstrapper;
+    private readonly OutcomeTracker _outcomeTracker;
+    private readonly IOutcomeReader _outcomeReader;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -47,15 +50,20 @@ public sealed class Worker : BackgroundService
         UiEventStream uiEvents,
         RuntimeActorRegistry actorRegistry,
         TaskRegistry taskRegistry,
-        StartupMemoryBootstrapper startupMemoryBootstrapper)
+        StartupMemoryBootstrapper startupMemoryBootstrapper,
+        OutcomeTracker outcomeTracker,
+        IOutcomeReader outcomeReader)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
+        _optionsInstance = options;
         _options = options.Value;
         _uiEvents = uiEvents;
         _actorRegistry = actorRegistry;
         _taskRegistry = taskRegistry;
         _startupMemoryBootstrapper = startupMemoryBootstrapper;
+        _outcomeTracker = outcomeTracker;
+        _outcomeReader = outcomeReader;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -156,6 +164,22 @@ public sealed class Worker : BackgroundService
                 _telemetry,
                 monitorTickSeconds)),
             "monitor");
+
+        IActorRef? strategyAdvisorActor = null;
+        if (_options.ArcadeDbEnabled)
+        {
+            var reader = _outcomeReader;
+            var opts = _optionsInstance;
+            var logFactory = _loggerFactory;
+            strategyAdvisorActor = _actorSystem.ActorOf(
+                Props.Create(() => new StrategyAdvisorActor(
+                    reader,
+                    logFactory,
+                    opts)),
+                "strategy-advisor");
+        }
+
+        var tracker = _options.ArcadeDbEnabled ? _outcomeTracker : null;
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -167,7 +191,9 @@ public sealed class Worker : BackgroundService
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                _options,
+                tracker,
+                strategyAdvisorActor)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

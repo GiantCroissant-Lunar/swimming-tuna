@@ -18,6 +18,7 @@ namespace SwarmAssistant.Runtime.Actors;
 /// Per-task coordinator that uses GOAP planning as a skill for the CLI orchestrator agent.
 /// At each decision point: update world state → run GOAP → build prompt → call CLI → parse → execute.
 /// Falls back to GOAP recommendation directly if CLI orchestrator fails.
+/// Integrates learning and adaptation via StrategyAdvisorActor and OutcomeTracker.
 /// </summary>
 public sealed class TaskCoordinatorActor : ReceiveActor
 {
@@ -42,11 +43,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
     private readonly IActorRef _blackboardActor;
+    private readonly IActorRef? _strategyAdvisorActor;
     private readonly AgentFrameworkRoleEngine _roleEngine;
     private readonly IGoapPlanner _goapPlanner;
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
+    private readonly OutcomeTracker? _outcomeTracker;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -68,6 +71,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     // Stigmergy: local cache of global blackboard signals, kept in sync via EventStream subscription
     private readonly Dictionary<string, string> _globalBlackboardCache = new(StringComparer.Ordinal);
 
+    // Learning: cached strategy advice for this task
+    private StrategyAdvice? _strategyAdvice;
+
     public TaskCoordinatorActor(
         string taskId,
         string title,
@@ -82,6 +88,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
+        OutcomeTracker? outcomeTracker = null,
+        IActorRef? strategyAdvisorActor = null,
         int maxRetries = 2,
         int subTaskDepth = 0)
     {
@@ -89,11 +97,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
         _blackboardActor = blackboardActor;
+        _strategyAdvisorActor = strategyAdvisorActor;
         _roleEngine = roleEngine;
         _goapPlanner = goapPlanner;
         _telemetry = telemetry;
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
+        _outcomeTracker = outcomeTracker;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -107,6 +117,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             .With(WorldKey.AdapterAvailable, true);
 
         Receive<StartCoordination>(_ => OnStart());
+        Receive<StrategyAdvice>(OnStrategyAdviceReceived);
         Receive<RoleTaskSucceeded>(OnRoleSucceeded);
         Receive<RoleTaskFailed>(OnRoleFailed);
         Receive<SubTaskCompleted>(OnSubTaskCompleted);
@@ -169,6 +180,52 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _taskId, _title, _description, TaskState.Queued)
             });
 
+        // Request strategy advice from learning system if available
+        if (_strategyAdvisorActor is not null)
+        {
+            _logger.LogInformation(
+                "Requesting strategy advice taskId={TaskId}",
+                _taskId);
+
+            _strategyAdvisorActor.Tell(new StrategyAdviceRequest
+            {
+                TaskId = _taskId,
+                Title = _title,
+                Description = _description
+            });
+
+            // DecideAndExecute will be called when StrategyAdvice is received
+        }
+        else
+        {
+            DecideAndExecute();
+        }
+    }
+
+    /// <summary>
+    /// Handles strategy advice received from the StrategyAdvisorActor.
+    /// Integrates learning insights into the task planning process.
+    /// </summary>
+    private void OnStrategyAdviceReceived(StrategyAdvice advice)
+    {
+        _strategyAdvice = advice;
+
+        _logger.LogInformation(
+            "Strategy advice received taskId={TaskId} similarTasks={Count} successRate={Rate:P0}",
+            _taskId, advice.SimilarTaskCount, advice.SimilarTaskSuccessRate);
+
+        // Store advice in blackboard for context
+        if (advice.Insights is { Count: > 0 })
+        {
+            StoreBlackboard("strategy_insights", string.Join("; ", advice.Insights));
+        }
+
+        if (advice.SimilarTaskCount > 0)
+        {
+            StoreBlackboard("historical_success_rate", advice.SimilarTaskSuccessRate.ToString("P0"));
+        }
+
+        // Proceed with planning, potentially using cost adjustments
         DecideAndExecute();
     }
 
@@ -374,7 +431,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private void DecideAndExecute()
     {
-        var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask);
+        var planResult = _goapPlanner.Plan(_worldState, SwarmActions.CompleteTask, _strategyAdvice?.RecommendedCostAdjustments);
         _lastGoapPlan = planResult;
 
         _logger.LogInformation(
@@ -531,6 +588,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _blackboardActor.Tell(new UpdateGlobalBlackboard(
             GlobalBlackboardKeys.TaskSucceeded(_taskId),
             _title));
+
+        // Learning: record successful outcome
+        RecordOutcome(TaskState.Done, summary: summary);
 
         _uiEvents.Publish(
             type: "agui.task.done",
@@ -789,6 +849,27 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         SwarmRole.Reviewer => TaskState.Reviewing,
         _ => TaskState.Queued
     };
+
+    /// <summary>
+    /// Records the task outcome for learning and adaptation.
+    /// Called when task reaches a terminal state (Done or Blocked).
+    /// </summary>
+    private void RecordOutcome(TaskState finalStatus, string? failureReason = null, string? summary = null)
+    {
+        if (_outcomeTracker is null)
+        {
+            return;
+        }
+
+        // Record role completions for outcome tracking
+        _outcomeTracker.RecordRoleCompletion(_taskId, SwarmRole.Planner, !string.IsNullOrEmpty(_planningOutput));
+        _outcomeTracker.RecordRoleCompletion(_taskId, SwarmRole.Builder, !string.IsNullOrEmpty(_buildOutput));
+        _outcomeTracker.RecordRoleCompletion(_taskId, SwarmRole.Reviewer,
+            !string.IsNullOrEmpty(_reviewOutput) && !ContainsRejection(_reviewOutput));
+
+        // Finalize and persist the outcome
+        _ = _outcomeTracker.FinalizeOutcomeAsync(_taskId, finalStatus, failureReason, summary);
+    }
 
     // Trigger message to start the coordination loop after actor creation
     internal sealed record StartCoordination;

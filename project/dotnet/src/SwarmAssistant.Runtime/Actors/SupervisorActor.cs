@@ -288,7 +288,7 @@ public sealed class SupervisorActor : ReceiveActor
                 coordinator.Tell(new RetryRole(
                     message.TaskId,
                     message.Role,
-                    SkipAdapter: null,
+                    SkipAdapter: message.AdapterId,
                     reason));
 
                 activity?.SetTag("supervisor.decision", "quality_retry");

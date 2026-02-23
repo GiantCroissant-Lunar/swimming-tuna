@@ -2,6 +2,9 @@ using SwarmAssistant.Contracts.Planning;
 
 namespace SwarmAssistant.Runtime.Planning;
 
+/// <summary>
+/// GOAP planner that supports dynamic cost adjustment based on learning data.
+/// </summary>
 public sealed class GoapPlanner : IGoapPlanner
 {
     private readonly IReadOnlyList<IGoapAction> _actions;
@@ -11,7 +14,31 @@ public sealed class GoapPlanner : IGoapPlanner
         _actions = actions;
     }
 
+    /// <summary>
+    /// Plans a sequence of actions to achieve the goal from the current world state.
+    /// </summary>
+    /// <param name="current">The current world state.</param>
+    /// <param name="goal">The goal to achieve.</param>
+    /// <returns>The planning result with recommended and alternative plans.</returns>
     public GoapPlanResult Plan(IWorldState current, IGoal goal)
+    {
+        return Plan(current, goal, costAdjustments: null);
+    }
+
+    /// <summary>
+    /// Plans a sequence of actions to achieve the goal with dynamically adjusted costs.
+    /// </summary>
+    /// <param name="current">The current world state.</param>
+    /// <param name="goal">The goal to achieve.</param>
+    /// <param name="costAdjustments">
+    /// Optional dictionary mapping action names to cost multipliers.
+    /// Higher values make actions less preferred. A value of 1.0 means no change.
+    /// </param>
+    /// <returns>The planning result with recommended and alternative plans.</returns>
+    public GoapPlanResult Plan(
+        IWorldState current,
+        IGoal goal,
+        IReadOnlyDictionary<string, double>? costAdjustments)
     {
         var currentState = ToWorldState(current);
 
@@ -23,7 +50,12 @@ public sealed class GoapPlanner : IGoapPlanner
                 DeadEnd: false);
         }
 
-        var plans = FindAllPlans(currentState, goal, limit: 2);
+        // Use adjusted actions if cost overrides are provided
+        var actions = costAdjustments is { Count: > 0 }
+            ? GetAdjustedActions(costAdjustments)
+            : _actions;
+
+        var plans = FindAllPlans(currentState, goal, actions, limit: 2);
 
         return plans.Count switch
         {
@@ -33,7 +65,39 @@ public sealed class GoapPlanner : IGoapPlanner
         };
     }
 
-    private List<IReadOnlyList<IGoapAction>> FindAllPlans(WorldState start, IGoal goal, int limit)
+    /// <summary>
+    /// Creates a set of actions with adjusted costs based on learning data.
+    /// </summary>
+    private IReadOnlyList<IGoapAction> GetAdjustedActions(
+        IReadOnlyDictionary<string, double> costAdjustments)
+    {
+        var adjusted = new List<IGoapAction>();
+
+        foreach (var action in _actions)
+        {
+            if (costAdjustments.TryGetValue(action.Name, out var multiplier))
+            {
+                var adjustedCost = Math.Max(1, (int)Math.Round(action.Cost * multiplier));
+                adjusted.Add(new GoapAction(
+                    name: action.Name,
+                    preconditions: action.Preconditions,
+                    effects: action.Effects,
+                    cost: adjustedCost));
+            }
+            else
+            {
+                adjusted.Add(action);
+            }
+        }
+
+        return adjusted;
+    }
+
+    private List<IReadOnlyList<IGoapAction>> FindAllPlans(
+        WorldState start,
+        IGoal goal,
+        IReadOnlyList<IGoapAction> actions,
+        int limit)
     {
         var results = new List<IReadOnlyList<IGoapAction>>();
         var open = new PriorityQueue<SearchNode, int>();
@@ -58,7 +122,7 @@ public sealed class GoapPlanner : IGoapPlanner
                 continue;
             }
 
-            foreach (var action in _actions)
+            foreach (var action in actions)
             {
                 if (!node.State.Satisfies(action.Preconditions))
                 {

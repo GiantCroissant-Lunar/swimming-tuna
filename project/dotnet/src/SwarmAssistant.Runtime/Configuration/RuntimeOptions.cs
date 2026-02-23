@@ -110,6 +110,18 @@ public sealed class RuntimeOptions
     /// </summary>
     public int ScaleDownThreshold { get; init; } = 1;
 
+    /// <summary>
+    /// TTL in minutes for the <see cref="StrategyAdvisorActor"/> advice cache.
+    /// Values are clamped to [1, 1440].
+    /// </summary>
+    // Default must be within [1, 1440]; the backing field bypasses the init setter.
+    private int _strategyAdvisorCacheTtlMinutes = 5;
+    public int StrategyAdvisorCacheTtlMinutes
+    {
+        get => _strategyAdvisorCacheTtlMinutes;
+        init => _strategyAdvisorCacheTtlMinutes = Math.Clamp(value, 1, 1440);
+    }
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
