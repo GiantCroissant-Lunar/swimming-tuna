@@ -198,7 +198,7 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
             Error: GetString(item, "taskError") ?? GetString(item, "error"),
             ParentTaskId: parentTaskId,
             ChildTaskIds: childTaskIds,
-            RunId: GetString(item, "runId"));
+            RunId: LegacyRunId.Resolve(GetString(item, "runId"), taskId));
     }
 
     private static string? GetString(JsonElement item, string propertyName)

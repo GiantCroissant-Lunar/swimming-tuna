@@ -348,11 +348,12 @@ public sealed class ArcadeDbTaskExecutionEventRepository
 
         var taskSequence = GetLong(item, "taskSequence");
         var runSequence = GetLong(item, "runSequence");
+        var taskId = GetString(item, "taskId") ?? string.Empty;
 
         return new TaskExecutionEvent(
             EventId: eventId,
-            RunId: GetString(item, "runId") ?? string.Empty,
-            TaskId: GetString(item, "taskId") ?? string.Empty,
+            RunId: LegacyRunId.Resolve(GetString(item, "runId"), taskId),
+            TaskId: taskId,
             EventType: GetString(item, "eventType") ?? string.Empty,
             Payload: GetString(item, "payload"),
             OccurredAt: occurredAt ?? DateTimeOffset.UtcNow,
