@@ -117,13 +117,15 @@ def execute_copy_file(source: Path, target: Path) -> str:
     Returns:
         Description of what was done.
     """
+    if not source.exists():
+        return f"skip (missing source): {source}"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
     return f"copy_file: {source.name} -> {target}"
 
 
 def execute_merge_claude_hooks(
-    settings_path: Path, hooks_dir: Path, mapping: dict
+    settings_path: Path, hooks_dir: Path, mapping: dict, project_root: Path | None = None
 ) -> str:
     """Merge hook entries into Claude settings.json.
 
@@ -135,6 +137,7 @@ def execute_merge_claude_hooks(
         settings_path: Path to .claude/settings.json (created if missing).
         hooks_dir: Directory containing hook scripts.
         mapping: Dict mapping hook filenames to Claude hook event names.
+        project_root: If provided, hook paths are written relative to this root.
 
     Returns:
         Description of what was done.
@@ -159,7 +162,14 @@ def execute_merge_claude_hooks(
         hook_path = (hooks_dir / hook_file).resolve()
         if not hook_path.exists():
             continue
-        command = f'python3 "{hook_path}"'
+        if project_root is not None:
+            try:
+                rel = hook_path.relative_to(project_root.resolve())
+                command = f'python3 "{rel}"'
+            except ValueError:
+                command = f'python3 "{hook_path}"'
+        else:
+            command = f'python3 "{hook_path}"'
         entry = {"type": "command", "command": command}
 
         if event_name not in settings["hooks"]:
@@ -175,6 +185,65 @@ def execute_merge_claude_hooks(
 
     hook_names = list(mapping.values())
     return f"merge: updated {settings_path} with hooks {hook_names}"
+
+
+def execute_merge_copilot_hooks(
+    target_dir: Path, hooks_dir: Path, mapping: dict, project_root: Path
+) -> str:
+    """Generate Copilot hook JSON wrapper files and copy hook scripts.
+
+    For each mapping entry (e.g., ``pre_tool_use.py: preToolUse``):
+    - Copies the hook script from hooks_dir to target_dir.
+    - Generates a ``{eventName}.json`` config file in target_dir with the
+      required Copilot format referencing the script via a repo-relative path.
+
+    Args:
+        target_dir: Target directory (e.g., .github/hooks/).
+        hooks_dir: Directory containing hook scripts (e.g., .agent/hooks/).
+        mapping: Dict mapping hook filenames to Copilot hook event names.
+        project_root: Root of the repository for computing relative paths.
+
+    Returns:
+        Description of what was done.
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+
+    for hook_file, event_name in mapping.items():
+        src = hooks_dir / hook_file
+        if not src.exists():
+            continue
+
+        # Copy the script to target_dir
+        dest_script = target_dir / hook_file
+        shutil.copy2(src, dest_script)
+
+        # Build repo-relative path for the bash field
+        try:
+            rel_path = dest_script.resolve().relative_to(project_root.resolve())
+        except ValueError:
+            rel_path = dest_script
+
+        # Write per-hook JSON wrapper
+        # "bash" is the field name required by the Copilot hooks JSON schema
+        hook_config = {
+            "version": 1,
+            "hooks": {
+                event_name: [
+                    {
+                        "type": "command",
+                        "bash": str(rel_path),
+                        "timeoutSec": 15,
+                    }
+                ]
+            },
+        }
+        json_path = target_dir / f"{event_name}.json"
+        with open(json_path, "w") as f:
+            json.dump(hook_config, f, indent=2)
+        written.append(event_name)
+
+    return f"merge (copilot-hooks-json): wrote {written} in {target_dir}"
 
 
 def execute_concatenate(source: Path, target: Path, glob: str) -> str:
@@ -245,6 +314,9 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
 
         elif action == "copy":
             source_rel = entry.get("source", "")
+            if not source_rel:
+                results.append(f"skip (missing source): {entry_name}")
+                continue
             source = project_root / source_rel
             target = project_root / target_rel
             glob_pattern = entry.get("glob")
@@ -269,13 +341,23 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
                 mapping = entry.get("mapping", {})
                 settings_path = project_root / target_rel
                 hooks_dir = project_root / ".agent" / "hooks"
-                result = execute_merge_claude_hooks(settings_path, hooks_dir, mapping)
+                result = execute_merge_claude_hooks(settings_path, hooks_dir, mapping, project_root)
+                results.append(result)
+            elif fmt == "copilot-hooks-json":
+                mapping = entry.get("mapping", {})
+                source_rel = entry.get("source", ".agent/hooks")
+                target_dir = project_root / target_rel
+                hooks_dir = project_root / source_rel
+                result = execute_merge_copilot_hooks(target_dir, hooks_dir, mapping, project_root)
                 results.append(result)
             else:
                 results.append(f"skip: unknown merge format '{fmt}'")
 
         elif action == "concatenate":
             source_rel = entry.get("source", "")
+            if not source_rel:
+                results.append(f"skip (missing source): {entry_name}")
+                continue
             source = project_root / source_rel
             target = project_root / target_rel
             glob_pattern = entry.get("glob", "*")

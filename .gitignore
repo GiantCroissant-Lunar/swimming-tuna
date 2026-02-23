@@ -28,6 +28,7 @@ repomix-output.*
 .agent/local/
 .agent/secrets/
 .agent/cache/
+.claude/
 
 # Python
 __pycache__/

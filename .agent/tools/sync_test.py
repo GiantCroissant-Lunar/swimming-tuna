@@ -21,6 +21,7 @@ from sync import (
     execute_copy,
     execute_copy_file,
     execute_merge_claude_hooks,
+    execute_merge_copilot_hooks,
     execute_pointer,
     load_adapter_config,
     sync_adapter,
@@ -235,6 +236,15 @@ class TestCopyFileAction:
         execute_copy_file(source, target)
         assert target.read_text() == "new"
 
+    def test_returns_skip_when_source_missing(self):
+        """Return a skip message when source file does not exist."""
+        source = self.tmpdir / "nonexistent.md"
+        target = self.tmpdir / "dest" / "target.md"
+
+        result = execute_copy_file(source, target)
+        assert "skip" in result.lower()
+        assert not target.exists()
+
 
 class TestMergeAction:
     """Test execute_merge_claude_hooks: merge hooks into settings.json."""
@@ -270,7 +280,7 @@ class TestMergeAction:
         commands = data["hooks"]["SessionStart"]
         assert len(commands) == 1
         assert commands[0]["type"] == "command"
-        hook_path = str(self.hooks_dir / "session_start.py")
+        hook_path = str((self.hooks_dir / "session_start.py").resolve())
         assert hook_path in commands[0]["command"]
 
     def test_preserves_existing_settings(self):
@@ -502,3 +512,92 @@ class TestSyncAdapter:
         sync_adapter(adapter_dir, self.project_root)
         assert (self.project_root / ".test" / "hooks" / "start.py").exists()
         assert (self.project_root / ".test" / "hooks" / "end.py").exists()
+
+    def test_sync_copy_skips_when_source_missing(self):
+        """sync_adapter skips copy action when source key is absent."""
+        adapter_dir = self._make_adapter(
+            "test",
+            "name: test\n"
+            "sync:\n"
+            "  rules:\n"
+            "    target: .test/rules/\n"
+            "    action: copy\n",
+        )
+        results = sync_adapter(adapter_dir, self.project_root)
+        assert any("skip" in r.lower() for r in results)
+        assert not (self.project_root / ".test" / "rules").exists()
+
+    def test_sync_concatenate_skips_when_source_missing(self):
+        """sync_adapter skips concatenate action when source key is absent."""
+        adapter_dir = self._make_adapter(
+            "test",
+            "name: test\n"
+            "sync:\n"
+            "  combined:\n"
+            "    target: .test/combined.md\n"
+            "    action: concatenate\n",
+        )
+        results = sync_adapter(adapter_dir, self.project_root)
+        assert any("skip" in r.lower() for r in results)
+        assert not (self.project_root / ".test" / "combined.md").exists()
+
+
+class TestMergeCopilotHooks:
+    """Test execute_merge_copilot_hooks: generate Copilot JSON wrapper files."""
+
+    def setup_method(self):
+        self.tmpdir = Path(tempfile.mkdtemp())
+        self.hooks_dir = self.tmpdir / "hooks"
+        self.hooks_dir.mkdir()
+        (self.hooks_dir / "session_start.py").write_text("# session start")
+        (self.hooks_dir / "pre_tool_use.py").write_text("# pre tool use")
+        self.target_dir = self.tmpdir / ".github" / "hooks"
+        self.project_root = self.tmpdir
+
+    def teardown_method(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_generates_json_wrapper_per_hook(self):
+        """Generate one JSON file per hook event with correct structure."""
+        mapping = {
+            "session_start.py": "sessionStart",
+            "pre_tool_use.py": "preToolUse",
+        }
+        execute_merge_copilot_hooks(self.target_dir, self.hooks_dir, mapping, self.project_root)
+
+        for event_name in ["sessionStart", "preToolUse"]:
+            json_path = self.target_dir / f"{event_name}.json"
+            assert json_path.exists()
+            data = json.loads(json_path.read_text())
+            assert data["version"] == 1
+            assert event_name in data["hooks"]
+            assert data["hooks"][event_name][0]["type"] == "command"
+            assert "bash" in data["hooks"][event_name][0]
+
+    def test_copies_scripts_to_target_dir(self):
+        """Hook scripts are copied alongside the JSON wrappers."""
+        mapping = {"session_start.py": "sessionStart"}
+        execute_merge_copilot_hooks(self.target_dir, self.hooks_dir, mapping, self.project_root)
+        assert (self.target_dir / "session_start.py").exists()
+
+    def test_skips_missing_hook_files(self):
+        """Missing hook scripts are silently skipped."""
+        mapping = {"missing.py": "missingHook", "session_start.py": "sessionStart"}
+        execute_merge_copilot_hooks(self.target_dir, self.hooks_dir, mapping, self.project_root)
+        assert not (self.target_dir / "missingHook.json").exists()
+        assert (self.target_dir / "sessionStart.json").exists()
+
+    def test_bash_path_is_repo_relative(self):
+        """The bash path in JSON uses a repo-relative path, not absolute."""
+        mapping = {"session_start.py": "sessionStart"}
+        execute_merge_copilot_hooks(self.target_dir, self.hooks_dir, mapping, self.project_root)
+        data = json.loads((self.target_dir / "sessionStart.json").read_text())
+        hook_path = data["hooks"]["sessionStart"][0]["bash"]
+        assert not hook_path.startswith("/")
+
+    def test_creates_target_directory(self):
+        """Target directory is created if it does not exist."""
+        new_target = self.tmpdir / "new" / "hooks"
+        mapping = {"session_start.py": "sessionStart"}
+        execute_merge_copilot_hooks(new_target, self.hooks_dir, mapping, self.project_root)
+        assert new_target.exists()
