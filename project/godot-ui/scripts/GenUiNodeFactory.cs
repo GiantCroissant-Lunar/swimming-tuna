@@ -229,7 +229,7 @@ public static class GenUiNodeFactory
     {
         var split = new SplitContainer();
         if (TryGetInt(props, "offset", out var offset))
-            split.SplitOffset = offset;
+            split.SplitOffsets = [offset];
         return split;
     }
 

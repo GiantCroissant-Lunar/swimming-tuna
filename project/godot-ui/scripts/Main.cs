@@ -181,7 +181,7 @@ public partial class Main : Control
         var mainVSplit = new VSplitContainer();
         mainVSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         mainVSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        mainVSplit.SplitOffset = 550;
+        mainVSplit.SplitOffsets = [550];
         margin.AddChild(mainVSplit);
 
         // Top section with header and content
@@ -197,7 +197,7 @@ public partial class Main : Control
         var contentHSplit = new HSplitContainer();
         contentHSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         contentHSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        contentHSplit.SplitOffset = 350;
+        contentHSplit.SplitOffsets = [350];
         topVBox.AddChild(contentHSplit);
 
         // Left: Task tree and list
