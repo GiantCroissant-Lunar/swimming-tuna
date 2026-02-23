@@ -28,3 +28,8 @@ repomix-output.*
 .agent/local/
 .agent/secrets/
 .agent/cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
