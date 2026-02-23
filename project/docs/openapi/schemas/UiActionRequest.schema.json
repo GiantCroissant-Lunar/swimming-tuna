@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UiActionRequest",
+  "definitions": {
+    "UiActionRequest": {
+      "type": "object",
+      "description": "Action submitted by a UI client via the AG-UI actions gateway.",
+      "required": [
+        "actionId"
+      ],
+      "properties": {
+        "taskId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Target task identifier, required for task-scoped actions."
+        },
+        "actionId": {
+          "type": "string",
+          "description": "Action to perform. Supported values: `request_snapshot`, `refresh_surface`, `submit_task`, `load_memory`, `approve_review`, `reject_review`, `request_rework`, `pause_task`, `resume_task`, `approve_task`, `cancel_task`, `set_subtask_depth`.\n",
+          "enum": [
+            "request_snapshot",
+            "refresh_surface",
+            "submit_task",
+            "load_memory",
+            "approve_review",
+            "reject_review",
+            "request_rework",
+            "pause_task",
+            "resume_task",
+            "approve_task",
+            "cancel_task",
+            "set_subtask_depth"
+          ]
+        },
+        "payload": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true,
+          "description": "Action-specific payload. For `submit_task`, provide `title` and optional `description` / `taskId` keys. For `set_subtask_depth`, provide `depth` (integer). For `load_memory`, provide optional `limit` (integer).\n"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "description": "Action submitted by a UI client via the AG-UI actions gateway.",
+  "required": [
+    "actionId"
+  ],
+  "properties": {
+    "taskId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Target task identifier, required for task-scoped actions."
+    },
+    "actionId": {
+      "type": "string",
+      "description": "Action to perform. Supported values: `request_snapshot`, `refresh_surface`, `submit_task`, `load_memory`, `approve_review`, `reject_review`, `request_rework`, `pause_task`, `resume_task`, `approve_task`, `cancel_task`, `set_subtask_depth`.\n",
+      "enum": [
+        "request_snapshot",
+        "refresh_surface",
+        "submit_task",
+        "load_memory",
+        "approve_review",
+        "reject_review",
+        "request_rework",
+        "pause_task",
+        "resume_task",
+        "approve_task",
+        "cancel_task",
+        "set_subtask_depth"
+      ]
+    },
+    "payload": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": true,
+      "description": "Action-specific payload. For `submit_task`, provide `title` and optional `description` / `taskId` keys. For `set_subtask_depth`, provide `depth` (integer). For `load_memory`, provide optional `limit` (integer).\n"
+    }
+  }
+}

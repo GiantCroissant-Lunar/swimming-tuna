@@ -41,8 +41,22 @@ builder.Services.AddSingleton<ITaskExecutionEventWriter>(serviceProvider => serv
 builder.Services.AddSingleton<ITaskExecutionEventReader>(serviceProvider => serviceProvider.GetRequiredService<ArcadeDbTaskExecutionEventRepository>());
 builder.Services.AddSingleton<OutcomeTracker>();
 builder.Services.AddSingleton<TaskRegistry>();
+builder.Services.AddSingleton<RunRegistry>();
 builder.Services.AddSingleton<StartupMemoryBootstrapper>();
 builder.Services.AddHostedService<Worker>();
+
+if (bootstrapOptions.SwaggerEnabled)
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(c =>
+    {
+        c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "SwarmAssistant API",
+            Version = "v1"
+        });
+    });
+}
 
 builder.Services.AddCors(options =>
 {
@@ -59,6 +73,16 @@ var app = builder.Build();
 
 app.MapDefaultEndpoints();
 app.UseCors("DefaultCorsPolicy");
+
+if (bootstrapOptions.SwaggerEnabled)
+{
+    app.UseSwagger(c => c.RouteTemplate = "openapi/{documentName}.json");
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/openapi/v1.json", "SwarmAssistant API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Bootstrap");
 var options = app.Services.GetRequiredService<IOptions<RuntimeOptions>>().Value;
@@ -561,7 +585,10 @@ if (options.A2AEnabled)
                 getMemoryTask = "/memory/tasks/{taskId}",
                 submitTask = "/a2a/tasks",
                 getTask = "/a2a/tasks/{taskId}",
-                listTasks = "/a2a/tasks"
+                listTasks = "/a2a/tasks",
+                createRun = "/runs",
+                getRun = "/runs/{runId}",
+                listRunTasks = "/runs/{runId}/tasks"
             }
         });
     });
@@ -600,6 +627,82 @@ if (options.A2AEnabled)
         var snapshots = taskRegistry.GetTasks(limit ?? 50);
         var items = snapshots.Select(TaskSnapshotMapper.ToSummaryDto);
         return Results.Ok(items);
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapPost("/runs", (RunCreateRequest? req, RunRegistry runRegistry) =>
+    {
+        var run = runRegistry.CreateRun(req?.RunId, req?.Title);
+        return Results.Created($"/runs/{run.RunId}", new
+        {
+            runId = run.RunId,
+            title = run.Title,
+            createdAt = run.CreatedAt
+        });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/runs/{runId}", (
+        string runId,
+        RunRegistry runRegistry,
+        TaskRegistry taskRegistry) =>
+    {
+        var run = runRegistry.GetRun(runId);
+        var tasks = taskRegistry.GetTasksByRunId(runId);
+
+        if (run is null && tasks.Count == 0)
+        {
+            return Results.NotFound(new { error = "run not found", runId });
+        }
+
+        var createdAt = run is not null
+            ? run.CreatedAt
+            : tasks.Min(t => t.CreatedAt);
+        var updatedAt = tasks.Count > 0
+            ? tasks.Max(t => t.UpdatedAt)
+            : createdAt;
+
+        return Results.Ok(new
+        {
+            runId,
+            title = run?.Title,
+            createdAt,
+            updatedAt,
+            taskCount = tasks.Count
+        });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/runs/{runId}/tasks", async (
+        string runId,
+        int? limit,
+        RunRegistry runRegistry,
+        TaskRegistry taskRegistry,
+        ITaskMemoryReader memoryReader,
+        CancellationToken cancellationToken) =>
+    {
+        var requestedLimit = Math.Clamp(limit ?? 50, 1, 500);
+        var registryTasks = taskRegistry.GetTasksByRunId(runId, requestedLimit);
+        if (registryTasks.Count > 0)
+        {
+            return Results.Ok(new
+            {
+                runId,
+                source = "registry",
+                items = registryTasks.Select(MapTaskSummary)
+            });
+        }
+
+        var run = runRegistry.GetRun(runId);
+        var memoryTasks = await memoryReader.ListByRunIdAsync(runId, requestedLimit, cancellationToken);
+        if (memoryTasks.Count == 0 && run is null)
+        {
+            return Results.NotFound(new { error = "run not found", runId });
+        }
+
+        return Results.Ok(new
+        {
+            runId,
+            source = "arcadedb",
+            items = memoryTasks.Select(MapTaskSummary)
+        });
     }).AddEndpointFilter(requireApiKey);
 }
 

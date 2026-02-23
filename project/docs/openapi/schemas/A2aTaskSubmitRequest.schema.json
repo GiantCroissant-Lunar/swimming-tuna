@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "A2aTaskSubmitRequest",
+  "definitions": {
+    "A2aTaskSubmitRequest": {
+      "type": "object",
+      "description": "Payload for submitting a new agent-to-agent task.",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "taskId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional caller-supplied task identifier. Auto-generated if omitted."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short human-readable task title."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Full task description."
+        },
+        "metadata": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true,
+          "description": "Arbitrary caller-supplied metadata attached to the task."
+        }
+      }
+    }
+  },
+  "type": "object",
+  "description": "Payload for submitting a new agent-to-agent task.",
+  "required": [
+    "title"
+  ],
+  "properties": {
+    "taskId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional caller-supplied task identifier. Auto-generated if omitted."
+    },
+    "title": {
+      "type": "string",
+      "description": "Short human-readable task title."
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Full task description."
+    },
+    "metadata": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": true,
+      "description": "Arbitrary caller-supplied metadata attached to the task."
+    }
+  }
+}

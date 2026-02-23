@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HealthResponse",
+  "definitions": {
+    "HealthResponse": {
+      "type": "object",
+      "description": "Response body for the `/healthz` health check endpoint.",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "description": "Always `true` when the runtime is reachable.",
+          "examples": [
+            true
+          ]
+        }
+      }
+    }
+  },
+  "type": "object",
+  "description": "Response body for the `/healthz` health check endpoint.",
+  "required": [
+    "ok"
+  ],
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "description": "Always `true` when the runtime is reachable.",
+      "examples": [
+        true
+      ]
+    }
+  }
+}

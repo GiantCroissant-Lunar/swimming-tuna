@@ -9,6 +9,9 @@
     "run": "node src/index.mjs run",
     "status": "node src/index.mjs status"
   },
+  "devDependencies": {
+    "quicktype": "23.2.6"
+  },
   "engines": {
     "node": ">=20"
   }

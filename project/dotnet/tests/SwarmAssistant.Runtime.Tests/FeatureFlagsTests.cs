@@ -159,4 +159,21 @@ public sealed class FeatureFlagsTests
         Assert.Single(recent);
         Assert.Equal("agui.feature.disabled", recent[0].Type);
     }
+
+    // --- SwaggerEnabled feature flag ---
+
+    [Fact]
+    public void RuntimeOptions_SwaggerEnabled_DefaultsToFalse()
+    {
+        var options = new RuntimeOptions();
+        Assert.False(options.SwaggerEnabled);
+    }
+
+    [Fact]
+    public void RuntimeOptions_SwaggerEnabled_CanBeSetToTrue()
+    {
+        var options = new RuntimeOptions { SwaggerEnabled = true };
+        Assert.True(options.SwaggerEnabled);
+    }
+
 }

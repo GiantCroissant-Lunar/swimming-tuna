@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UiActionResponse",
+  "definitions": {
+    "UiActionResponse": {
+      "type": "object",
+      "description": "Acknowledgement returned after a UI action is enqueued.",
+      "required": [
+        "actionId",
+        "reasonCode"
+      ],
+      "properties": {
+        "actionId": {
+          "type": "string",
+          "description": "Echoes the submitted `actionId`."
+        },
+        "taskId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Target task identifier, when applicable."
+        },
+        "reasonCode": {
+          "type": "string",
+          "description": "Machine-readable outcome code (e.g. `accepted`)."
+        }
+      }
+    }
+  },
+  "type": "object",
+  "description": "Acknowledgement returned after a UI action is enqueued.",
+  "required": [
+    "actionId",
+    "reasonCode"
+  ],
+  "properties": {
+    "actionId": {
+      "type": "string",
+      "description": "Echoes the submitted `actionId`."
+    },
+    "taskId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Target task identifier, when applicable."
+    },
+    "reasonCode": {
+      "type": "string",
+      "description": "Machine-readable outcome code (e.g. `accepted`)."
+    }
+  }
+}

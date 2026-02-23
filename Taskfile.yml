@@ -204,6 +204,17 @@ tasks:
     requires:
       vars: [SKILL]
 
+  # Model generation tasks (quicktype)
+  models:generate:
+    desc: Regenerate C# and TypeScript models from the OpenAPI schema
+    cmds:
+      - bash scripts/generate-models.sh
+
+  models:verify:
+    desc: Fail if generated model files are stale (used in CI)
+    cmds:
+      - bash scripts/verify-models.sh
+
   # OpenAPI tasks
   openapi:lint:
     desc: Validate OpenAPI spec with vacuum linter
