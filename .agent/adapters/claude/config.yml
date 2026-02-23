@@ -26,6 +26,12 @@ sync:
     source: .agent/rules/
     glob: "*.md"
 
+  hooks_config:
+    target: .agent/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "claude", "supermemory": {"enabled": false}}
+
   hooks:
     target: .claude/settings.json
     action: merge

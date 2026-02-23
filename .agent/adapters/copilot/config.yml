@@ -18,6 +18,12 @@ sync:
     source: .agent/rules/
     glob: "*.md"
 
+  hooks_config:
+    target: .github/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "copilot", "supermemory": {"enabled": true}}
+
   hooks:
     target: .github/hooks/
     action: copy
@@ -27,3 +33,9 @@ sync:
       session_start.py: sessionStart
       session_end.py: sessionEnd
       pre_tool_use.py: preToolUse
+
+  lib:
+    target: .github/lib/
+    action: copy
+    source: .agent/lib/
+    glob: "*.py"

@@ -19,6 +19,12 @@ sync:
     source: .agent/rules/
     glob: "*.md"
 
+  hooks_config:
+    target: .clinerules/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "cline", "supermemory": {"enabled": true}}
+
   hooks:
     target: .clinerules/hooks/
     action: copy
@@ -28,3 +34,9 @@ sync:
       session_start.py: TaskStart
       session_end.py: TaskCancel  # Cline treats session end as task cancel (no separate TaskStop event)
       pre_tool_use.py: PreToolUse
+
+  lib:
+    target: .clinerules/lib/
+    action: copy
+    source: .agent/lib/
+    glob: "*.py"
