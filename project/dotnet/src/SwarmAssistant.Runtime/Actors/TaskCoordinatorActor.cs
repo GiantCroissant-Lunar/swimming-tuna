@@ -828,5 +828,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId,
                 message.Role);
         }
+        else if (_worldState.Get(WorldKey.HighFailureRateDetected) && !HasOpenCircuits())
+        {
+            // Clear stale high-failure flag when confidence recovers and no circuits are open
+            _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, false);
+            _logger.LogInformation(
+                "Quality recovered taskId={TaskId} role={Role} confidence={Confidence:F2} - clearing high failure risk",
+                _taskId,
+                message.Role,
+                message.Confidence);
+        }
     }
 }

@@ -91,9 +91,10 @@ public sealed class WorkerActor : ReceiveActor
                 adapterId,
                 confidence);
 
-            // Self-retry if confidence is very low (unless already retried); publish concern after
-            // retry so the concern reflects the final confidence, not the pre-retry value.
-            if (confidence < QualityEvaluator.SelfRetryThreshold && command.MaxConfidence is null)
+            // Self-retry if confidence is very low (unless already retried).
+            // Retry BEFORE publishing the concern so the supervisor sees the
+            // final confidence rather than a stale pre-retry value.
+            if (confidence < QualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
             {
                 _logger.LogInformation(
                     "Worker self-retry triggered taskId={TaskId} role={Role} confidence={Confidence}",
@@ -103,39 +104,45 @@ public sealed class WorkerActor : ReceiveActor
 
                 activity?.SetTag("quality.self_retry", true);
 
+                // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
                     PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId),
-                    MaxConfidence = confidence
+                    PreviousConfidence = confidence
                 };
 
                 var retryResult = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
-                output = retryResult.Output;
-                adapterId = retryResult.AdapterId;
-                confidence = EvaluateQuality(output, command.Role, adapterId);
+                var retryConfidence = EvaluateQuality(retryResult.Output, command.Role, retryResult.AdapterId);
 
                 _logger.LogInformation(
-                    "Worker self-retry completed taskId={TaskId} role={Role} adapter={AdapterId} newConfidence={Confidence}",
+                    "Worker self-retry completed taskId={TaskId} role={Role} oldConfidence={OldConfidence} newConfidence={NewConfidence}",
                     command.TaskId,
                     command.Role,
-                    adapterId,
-                    confidence);
+                    confidence,
+                    retryConfidence);
 
-                activity?.SetTag("quality.confidence_after_retry", confidence);
+                // Keep the retry if it's better, otherwise fallback to the original
+                if (retryConfidence > confidence)
+                {
+                    output = retryResult.Output;
+                    adapterId = retryResult.AdapterId;
+                    confidence = retryConfidence;
+                }
             }
 
-            // Raise QualityConcern for borderline cases (after any self-retry, so confidence is final)
+            // Raise QualityConcern for borderline cases
             if (confidence < QualityEvaluator.QualityConcernThreshold)
             {
-                var concern = BuildQualityConcern(output, confidence);
+                var concern = QualityEvaluator.BuildQualityConcern(output, confidence, $"Worker ({command.Role}) quality concern");
+
                 _logger.LogWarning(
-                    "Worker quality concern taskId={TaskId} role={Role} adapter={AdapterId} confidence={Confidence} concern={Concern}",
+                    "Worker quality concern taskId={TaskId} role={Role} confidence={Confidence} concern={Concern}",
                     command.TaskId,
                     command.Role,
-                    adapterId,
                     confidence,
                     concern);
 
+                // Notify supervisor of quality concern
                 Context.System.EventStream.Publish(new QualityConcern(
                     command.TaskId,
                     command.Role,
@@ -175,7 +182,7 @@ public sealed class WorkerActor : ReceiveActor
 
     /// <summary>
     /// Evaluates output quality and returns a confidence score between 0.0 and 1.0.
-    /// Confidence is derived from output length, keyword presence, and adapter type.
+    /// Uses shared helpers from <see cref="QualityEvaluator"/> plus role-specific keyword scoring.
     /// </summary>
     private static double EvaluateQuality(string output, SwarmRole role, string? adapterId)
     {
@@ -189,15 +196,15 @@ public sealed class WorkerActor : ReceiveActor
         var keywordScore = EvaluateRoleKeywords(output, role);
         scores.Add(keywordScore);
 
-        // Factor 3: Adapter reliability bonus (uses actual adapter ID from execution)
+        // Factor 3: Adapter reliability bonus (shared)
         var adapterScore = QualityEvaluator.GetAdapterReliabilityScore(adapterId);
         scores.Add(adapterScore);
 
-        // Factor 4: Structural indicators — skipped (neutralised) for Orchestrator
+        // Factor 4: Structural indicators (shared)
         var structureScore = QualityEvaluator.EvaluateStructure(output, role);
         scores.Add(structureScore);
 
-        // Weighted average (can be tuned)
+        // Weighted average
         var weights = new[] { 0.25, 0.35, 0.15, 0.25 };
         var confidence = scores.Zip(weights, (s, w) => s * w).Sum();
 
@@ -220,24 +227,4 @@ public sealed class WorkerActor : ReceiveActor
         var matches = keywords.Count(k => lowerOutput.Contains(k));
         return (double)matches / keywords.Length;
     }
-
-    private static string BuildQualityConcern(string output, double confidence)
-    {
-        var concerns = new List<string>();
-
-        if (output.Length < 100)
-            concerns.Add("output too short");
-
-        if (output.Length > 10000)
-            concerns.Add("output excessively long");
-
-        if (!output.Contains("```") && !output.Contains("- ") && !output.Contains("1. "))
-            concerns.Add("lacks structure");
-
-        if (concerns.Count == 0)
-            concerns.Add("low confidence score");
-
-        return $"Quality concern ({confidence:F2}): {string.Join(", ", concerns)}";
-    }
 }
-

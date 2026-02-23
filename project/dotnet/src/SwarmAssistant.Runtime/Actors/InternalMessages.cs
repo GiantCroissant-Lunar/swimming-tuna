@@ -13,7 +13,7 @@ internal sealed record ExecuteRoleTask(
     string? BuildOutput,
     string? OrchestratorPrompt = null,
     string? PreferredAdapter = null,
-    double? MaxConfidence = null
+    double? PreviousConfidence = null
 );
 
 internal sealed record RoleTaskSucceeded(
@@ -165,17 +165,6 @@ internal sealed record TaskEscalated(
     DateTimeOffset At
 );
 
-// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
-// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
-internal sealed record QualityConcern(
-    string TaskId,
-    SwarmRole Role,
-    string Concern,
-    double Confidence,
-    string? AdapterId,
-    DateTimeOffset At
-);
-
 // Monitor self-scheduling tick
 internal sealed record MonitorTick;
 
@@ -198,6 +187,17 @@ internal sealed record SubTaskFailed(
     string ParentTaskId,
     string ChildTaskId,
     string Error
+);
+
+// Quality concern raised by agent actors when output confidence is below threshold (Phase 15)
+// Producer: WorkerActor, ReviewerActor; Consumer: SupervisorActor
+internal sealed record QualityConcern(
+    string TaskId,
+    SwarmRole Role,
+    string Concern,
+    double Confidence,
+    string? AdapterId,
+    DateTimeOffset At
 );
 
 // Dynamic topology: on-demand agent spawning

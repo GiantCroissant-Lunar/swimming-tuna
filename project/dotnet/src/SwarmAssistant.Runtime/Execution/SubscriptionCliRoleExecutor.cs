@@ -199,7 +199,7 @@ internal sealed class SubscriptionCliRoleExecutor
         }
 
         throw new InvalidOperationException(
-            $"No CLI adapter succeeded for role {command.Role}. {string.Join(" | ",errors)}");
+            $"No CLI adapter succeeded for role {command.Role}. {string.Join(" | ", errors)}");
     }
 
     private static string BuildInternalEcho(ExecuteRoleTask command)
