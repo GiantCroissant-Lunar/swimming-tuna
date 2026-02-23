@@ -155,17 +155,17 @@ public sealed class OutcomeTracker : IAsyncDisposable
             _logger.LogInformation(
                 "Outcome finalized taskId={TaskId} status={Status} retries={Retries} keywords={Keywords}",
                 taskId, finalStatus, outcome.TotalRetries, string.Join(", ", keywords));
+
+            // Clear tracking state only after successful persistence to avoid data loss on failure
+            ClearTaskTracking(taskId);
         }
         catch (Exception exception)
         {
             _logger.LogError(
                 exception,
-                "Failed to persist outcome taskId={TaskId}",
+                "Failed to persist outcome taskId={TaskId} - tracking state retained for retry",
                 taskId);
         }
-
-        // Clear tracking state for this task
-        ClearTaskTracking(taskId);
     }
 
     /// <summary>

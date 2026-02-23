@@ -110,6 +110,11 @@ public sealed class RuntimeOptions
     /// </summary>
     public int ScaleDownThreshold { get; init; } = 1;
 
+    /// <summary>
+    /// TTL in minutes for the <see cref="StrategyAdvisorActor"/> advice cache.
+    /// </summary>
+    public int StrategyAdvisorCacheTtlMinutes { get; init; } = 5;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
