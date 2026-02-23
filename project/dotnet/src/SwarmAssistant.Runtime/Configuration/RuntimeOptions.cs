@@ -168,6 +168,14 @@ public sealed class RuntimeOptions
     /// Defaults to <c>false</c> for safe rollout; enable explicitly in profiles that support it.
     /// </summary>
     public bool GraphTelemetryEnabled { get; init; } = false;
+
+    /// <summary>
+    /// When true, serves the OpenAPI JSON document at <c>/openapi/v1.json</c> and
+    /// the Swagger UI at <c>/swagger</c>. Should be enabled only in non-production
+    /// profiles (<c>Local</c>, <c>Development</c>). Set to <c>false</c> in
+    /// <c>SecureLocal</c> and <c>CI</c> profiles to avoid exposing the API schema.
+    /// </summary>
+    public bool SwaggerEnabled { get; init; } = false;
 }
 
 public sealed class SandboxWrapperOptions
