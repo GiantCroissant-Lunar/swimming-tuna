@@ -175,6 +175,29 @@ Priority is subscription-backed local CLIs (no direct API keys in MVP):
 Adapter probes validate command availability; execution can still fail on auth or
 environment restrictions, triggering fallback to the next adapter.
 
+## CI/CD Workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `auto-merge-non-main.yml` | PR opened/synced | Auto-squash-merge PRs to non-main branches |
+| `doc-sync.md` (gh-aw) | Weekly (Sun 9am UTC) | Documentation freshness audit |
+| `phase11-health.md` (gh-aw) | Weekly (Mon 9:30am UTC) | Repository hygiene audit |
+| `review-resolve.yml` | `pull_request_review` submitted | Forward bot review comments to Copilot Coding Agent |
+
+### Review Comment Resolver
+
+When an automated reviewer submits a `changes_requested` review, the `review-resolve`
+workflow:
+
+1. Checks for an existing open `review-fix` issue for the same PR (dedup)
+2. Collects all bot-authored inline review comments
+3. Creates a structured GitHub issue assigned to `copilot-swe-agent`
+4. Posts a tracking comment on the original PR
+
+Copilot Coding Agent then autonomously creates a follow-up PR resolving the comments.
+
+**Prerequisites:** Copilot Coding Agent enabled on the repo, `copilot-swe-agent` has access.
+
 ## Key References
 
 - `project/ARCHITECTURE.md` - Full phase-by-phase architecture history
