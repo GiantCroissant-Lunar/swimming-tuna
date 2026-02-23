@@ -59,6 +59,21 @@ public static class SwarmActions
         },
         cost: BaseCosts.Review);
 
+    public static readonly IGoapAction SecondOpinion = new GoapAction(
+        name: "SecondOpinion",
+        preconditions: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.ReviewRejected] = true,
+            [WorldKey.ConsensusDisputed] = true,
+        },
+        effects: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.ConsensusReached] = true,
+            [WorldKey.ReviewRejected] = false,
+            [WorldKey.ConsensusDisputed] = false,
+        },
+        cost: 3);
+
     public static readonly IGoapAction Rework = new GoapAction(
         name: "Rework",
         preconditions: new Dictionary<WorldKey, bool>
@@ -125,7 +140,7 @@ public static class SwarmActions
         },
         cost: 1);
 
-    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, Rework, Escalate, Finalize, WaitForSubTasks, Negotiate];
+    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, SecondOpinion, Rework, Escalate, Finalize, WaitForSubTasks, Negotiate];
 
     /// <summary>
     /// Creates a new set of actions with adjusted costs based on learning data.

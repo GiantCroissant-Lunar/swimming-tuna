@@ -49,7 +49,6 @@ public sealed class SwarmAgentActor : ReceiveActor
         Receive<HelpResponse>(_ => { });
         Receive<ContractNetBidRequest>(HandleContractNetBidRequest);
         Receive<ContractNetAward>(HandleContractNetAward);
-
         if (idleTtl > TimeSpan.Zero)
         {
             Receive<ReceiveTimeout>(_ => OnIdleTimeout());
@@ -145,7 +144,13 @@ public sealed class SwarmAgentActor : ReceiveActor
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode);
 
-            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, result.Output, DateTimeOffset.UtcNow, AdapterId: result.AdapterId));
+            replyTo.Tell(new RoleTaskSucceeded(
+                command.TaskId,
+                command.Role,
+                result.Output,
+                DateTimeOffset.UtcNow,
+                AdapterId: result.AdapterId,
+                ActorName: Self.Path.Name));
         }
         catch (Exception exception)
         {

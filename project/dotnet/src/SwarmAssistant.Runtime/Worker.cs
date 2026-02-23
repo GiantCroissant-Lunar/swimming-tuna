@@ -102,6 +102,12 @@ public sealed class Worker : BackgroundService
 
         _actorSystem = ActorSystem.Create("swarm-assistant-system", config);
 
+        // Subscribe to AgentRetired events to keep the auto-scale budget counter accurate
+        var retiredListener = _actorSystem.ActorOf(
+            Props.Create(() => new AgentRetiredListener(this)),
+            "agent-scale-tracker");
+        _actorSystem.EventStream.Subscribe(retiredListener, typeof(AgentRetired));
+
         _uiEvents.Publish(
             type: "agui.runtime.started",
             taskId: null,
@@ -164,6 +170,9 @@ public sealed class Worker : BackgroundService
                 _telemetry,
                 monitorTickSeconds)),
             "monitor");
+        var consensusActor = _actorSystem.ActorOf(
+            Props.Create(() => new ConsensusActor(_loggerFactory.CreateLogger<ConsensusActor>())),
+            "consensus");
 
         IActorRef? strategyAdvisorActor = null;
         if (_options.ArcadeDbEnabled)
@@ -186,18 +195,18 @@ public sealed class Worker : BackgroundService
                 capabilityRegistry,
                 supervisor,
                 blackboardActor,
+                consensusActor,
                 agentFrameworkRoleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options,
+                Microsoft.Extensions.Options.Options.Create(_options),
                 tracker,
                 strategyAdvisorActor)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;
-
         _supervisor = supervisor;
         await _startupMemoryBootstrapper.RestoreAsync(
             _options.MemoryBootstrapEnabled,
@@ -282,7 +291,7 @@ public sealed class Worker : BackgroundService
 
         if (_options.AutoScaleEnabled && _dispatcher is not null)
         {
-            var activeTasks = snapshot.Started - snapshot.Completed - snapshot.Failed;
+            var activeTasks = Math.Max(0, snapshot.Started - snapshot.Completed - snapshot.Failed);
             var totalAgents = _fixedPoolSize + _dynamicAgentCount;
             if (activeTasks > _options.ScaleUpThreshold && totalAgents < _options.MaxPoolSize)
             {
@@ -294,6 +303,17 @@ public sealed class Worker : BackgroundService
                     _options.ScaleUpThreshold,
                     totalAgents + 1);
             }
+        }
+    }
+
+    /// <summary>
+    /// Minimal actor that decrements the auto-scale budget counter each time a dynamic agent retires.
+    /// </summary>
+    private sealed class AgentRetiredListener : ReceiveActor
+    {
+        public AgentRetiredListener(Worker owner)
+        {
+            Receive<AgentRetired>(_ => Interlocked.Decrement(ref owner._dynamicAgentCount));
         }
     }
 }

@@ -156,7 +156,8 @@ public sealed class ReviewerActor : ReceiveActor
                 output,
                 DateTimeOffset.UtcNow,
                 confidence,
-                adapterId));
+                adapterId,
+                Self.Path.Name));
         }
         catch (Exception exception)
         {

@@ -22,7 +22,8 @@ internal sealed record RoleTaskSucceeded(
     string Output,
     DateTimeOffset CompletedAt,
     double Confidence = 1.0,
-    string? AdapterId = null
+    string? AdapterId = null,
+    string ActorName = ""
 );
 
 internal sealed record RoleTaskFailed(

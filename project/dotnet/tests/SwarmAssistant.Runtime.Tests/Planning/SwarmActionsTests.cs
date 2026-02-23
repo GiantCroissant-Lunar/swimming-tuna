@@ -8,13 +8,14 @@ public sealed class SwarmActionsTests
     [Fact]
     public void All_ContainsEightActions()
     {
-        Assert.Equal(8, SwarmActions.All.Count);
+        Assert.Equal(9, SwarmActions.All.Count);
     }
 
     [Theory]
     [InlineData("Plan")]
     [InlineData("Build")]
     [InlineData("Review")]
+    [InlineData("SecondOpinion")]
     [InlineData("Rework")]
     [InlineData("Escalate")]
     [InlineData("Finalize")]

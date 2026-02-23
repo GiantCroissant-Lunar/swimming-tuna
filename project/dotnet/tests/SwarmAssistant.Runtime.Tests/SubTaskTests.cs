@@ -3,6 +3,7 @@ using Akka.Routing;
 using Akka.TestKit.Xunit2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
@@ -255,12 +256,10 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, 2, 0)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
-
-        // Coordinator first requests an orchestrator decision
         var orchestratorTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
             m => m.Role == SwarmRole.Orchestrator,
             ActorResponseTimeout,
@@ -268,7 +267,7 @@ public sealed class SubTaskTests : TestKit
 
         // Reply: orchestrator says Plan
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan\nREASON: Starting plan phase.", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         // Coordinator dispatches Plan action
         var plannerTask = workerProbe.ExpectMsg<ExecuteRoleTask>(
@@ -283,7 +282,7 @@ public sealed class SubTaskTests : TestKit
             "SUBTASK: Data Layer|Set up database schema and repositories";
 
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Planner, plannerOutput, DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         // Assert: two SpawnSubTask messages are forwarded to the parent (parentProbe)
         var spawn1 = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -336,20 +335,20 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
         // Drive through orchestrator and planner phases
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
-            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow));
+            taskId, SwarmRole.Orchestrator, "ACTION: Plan", DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Planner, ActorResponseTimeout);
         coordinator.Tell(new RoleTaskSucceeded(
             taskId, SwarmRole.Planner,
             "SUBTASK: Critical Step|This must succeed",
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow, 1.0, null, "test-probe"));
 
         // Capture the spawned sub-task ID
         var spawn = parentProbe.ExpectMsg<SpawnSubTask>(ActorResponseTimeout);
@@ -483,18 +482,25 @@ public sealed class SubTaskTests : TestKit
                 .WithRouter(new SmallestMailboxPool(_options.ReviewerPoolSize)),
             $"reviewer-{suffix}");
 
+        var consensusActor = Sys.ActorOf(
+            Props.Create(() => new ConsensusActor(NullLogger<ConsensusActor>.Instance)),
+            $"consensus-{suffix}");
+
         var dispatcherActor = Sys.ActorOf(
             Props.Create(() => new DispatcherActor(
                 workerActor,
                 reviewerActor,
                 supervisorActor,
                 blackboardActor,
+                consensusActor,
                 roleEngine,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
-                _options)),
+                Microsoft.Extensions.Options.Options.Create(_options),
+                null,
+                null)),
             $"dispatcher-{suffix}");
 
         return (workerActor, reviewerActor, dispatcherActor);

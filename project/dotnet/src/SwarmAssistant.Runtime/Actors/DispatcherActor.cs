@@ -1,8 +1,10 @@
 using Akka.Actor;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -13,28 +15,21 @@ namespace SwarmAssistant.Runtime.Actors;
 
 /// <summary>
 /// Routes incoming tasks to per-task <see cref="TaskCoordinatorActor"/> instances.
-/// Each task gets its own coordinator actor that manages the full GOAP lifecycle.
-/// Tier 0 supervision: automatically restarts crashed coordinator children.
+/// Maintains task registry state before coordination begins.
 /// </summary>
 public sealed class DispatcherActor : ReceiveActor
 {
-    private static readonly SupervisorStrategy Strategy = new OneForOneStrategy(
-        maxNrOfRetries: 3,
-        withinTimeRange: TimeSpan.FromMinutes(1),
-        localOnlyDecider: ex => Directive.Stop);
-
-    protected override SupervisorStrategy SupervisorStrategy() => Strategy;
-
     private readonly IActorRef _workerActor;
     private readonly IActorRef _reviewerActor;
     private readonly IActorRef _supervisorActor;
     private readonly IActorRef _blackboardActor;
+    private readonly IActorRef _consensusActor;
     private readonly AgentFrameworkRoleEngine _roleEngine;
     private readonly ILoggerFactory _loggerFactory;
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
-    private readonly RuntimeOptions _runtimeOptions;
+    private readonly RuntimeOptions _options;
     private readonly OutcomeTracker? _outcomeTracker;
     private readonly IActorRef? _strategyAdvisorActor;
     private readonly ILogger _logger;
@@ -52,12 +47,13 @@ public sealed class DispatcherActor : ReceiveActor
         IActorRef reviewerActor,
         IActorRef supervisorActor,
         IActorRef blackboardActor,
+        IActorRef consensusActor,
         AgentFrameworkRoleEngine roleEngine,
         ILoggerFactory loggerFactory,
         RuntimeTelemetry telemetry,
         UiEventStream uiEvents,
         TaskRegistry taskRegistry,
-        RuntimeOptions runtimeOptions,
+        IOptions<RuntimeOptions> options,
         OutcomeTracker? outcomeTracker = null,
         IActorRef? strategyAdvisorActor = null)
     {
@@ -65,12 +61,13 @@ public sealed class DispatcherActor : ReceiveActor
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
         _blackboardActor = blackboardActor;
+        _consensusActor = consensusActor;
         _roleEngine = roleEngine;
         _loggerFactory = loggerFactory;
         _telemetry = telemetry;
         _uiEvents = uiEvents;
         _taskRegistry = taskRegistry;
-        _runtimeOptions = runtimeOptions;
+        _options = options.Value;
         _outcomeTracker = outcomeTracker;
         _strategyAdvisorActor = strategyAdvisorActor;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
@@ -79,6 +76,11 @@ public sealed class DispatcherActor : ReceiveActor
         Receive<SpawnSubTask>(HandleSpawnSubTask);
         Receive<SpawnAgent>(HandleSpawnAgent);
         Receive<Terminated>(OnCoordinatorTerminated);
+    }
+
+    protected override SupervisorStrategy SupervisorStrategy()
+    {
+        return new OneForOneStrategy(ex => Directive.Stop);
     }
 
     private void HandleTaskAssigned(TaskAssigned message)
@@ -112,12 +114,14 @@ public sealed class DispatcherActor : ReceiveActor
                 _reviewerActor,
                 _supervisorActor,
                 _blackboardActor,
+                _consensusActor,
                 _roleEngine,
                 goapPlanner,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
+                _options,
                 _outcomeTracker,
                 _strategyAdvisorActor,
                 DefaultMaxRetries,
@@ -168,12 +172,14 @@ public sealed class DispatcherActor : ReceiveActor
                 _reviewerActor,
                 _supervisorActor,
                 _blackboardActor,
+                _consensusActor,
                 _roleEngine,
                 goapPlanner,
                 _loggerFactory,
                 _telemetry,
                 _uiEvents,
                 _taskRegistry,
+                _options,
                 _outcomeTracker,
                 _strategyAdvisorActor,
                 DefaultMaxRetries,
@@ -201,7 +207,7 @@ public sealed class DispatcherActor : ReceiveActor
 
         var agent = Context.ActorOf(
             Props.Create(() => new SwarmAgentActor(
-                _runtimeOptions,
+                _options,
                 _loggerFactory,
                 _roleEngine,
                 _telemetry,
@@ -230,6 +236,7 @@ public sealed class DispatcherActor : ReceiveActor
             _spawnedAgentIds.Remove(message.ActorRef);
             _logger.LogInformation(
                 "Dynamic agent retired agentId={AgentId}", retiredAgentId);
+            Context.System.EventStream.Publish(new AgentRetired(retiredAgentId, "idle-timeout"));
             return;
         }
 

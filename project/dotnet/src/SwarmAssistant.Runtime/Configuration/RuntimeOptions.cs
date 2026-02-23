@@ -73,6 +73,18 @@ public sealed class RuntimeOptions
     }
 
     /// <summary>
+    /// Number of independent reviews required to reach consensus.
+    /// Default: 1 (backward compatible single reviewer).
+    /// Values are clamped to [1, 5].
+    /// </summary>
+    private int _reviewConsensusCount = 1;
+    public int ReviewConsensusCount
+    {
+        get => _reviewConsensusCount;
+        init => _reviewConsensusCount = Math.Clamp(value, 1, 5);
+    }
+
+    /// <summary>
     /// Maximum number of concurrent CLI subprocess executions across all actors.
     /// Prevents resource exhaustion when multiple pool instances run simultaneously.
     /// Values are clamped to [1, 32].

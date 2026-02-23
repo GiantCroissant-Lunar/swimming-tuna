@@ -91,6 +91,14 @@ public sealed class WorkerActor : ReceiveActor
                 adapterId,
                 confidence);
 
+            _logger.LogInformation(
+                "Worker role={Role} completed taskId={TaskId} executionMode={ExecutionMode} adapter={AdapterId} confidence={Confidence}",
+                command.Role,
+                command.TaskId,
+                _options.AgentFrameworkExecutionMode,
+                adapterId,
+                confidence);
+
             // Self-retry if confidence is very low (unless already retried).
             // Retry BEFORE publishing the concern so the supervisor sees the
             // final confidence rather than a stale pre-retry value.
@@ -160,7 +168,8 @@ public sealed class WorkerActor : ReceiveActor
                 output,
                 DateTimeOffset.UtcNow,
                 confidence,
-                adapterId));
+                adapterId,
+                Self.Path.Name));
         }
         catch (Exception exception)
         {

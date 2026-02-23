@@ -84,12 +84,15 @@ public sealed class DynamicTopologyTests : TestKit
                 capabilityRegistry,
                 TestActor,
                 TestActor,
+                TestActor,
                 engine,
                 _loggerFactory,
                 telemetry,
                 uiEvents,
                 taskRegistry,
-                options)),
+                Microsoft.Extensions.Options.Options.Create(options),
+                null,
+                null)),
             "dispatcher-spawn-test");
 
         var caps = new[] { SwarmRole.Planner, SwarmRole.Researcher };
@@ -119,12 +122,15 @@ public sealed class DynamicTopologyTests : TestKit
                 capabilityRegistry,
                 TestActor,
                 TestActor,
+                TestActor,
                 engine,
                 _loggerFactory,
                 telemetry,
                 uiEvents,
                 taskRegistry,
-                options)),
+                Microsoft.Extensions.Options.Options.Create(options),
+                null,
+                null)),
             "dispatcher-register-test");
 
         var caps = new[] { SwarmRole.Tester, SwarmRole.Debugger };
