@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
 
@@ -11,6 +12,20 @@ namespace SwarmAssistant.Runtime.Tasks;
 public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReader
 {
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
+    private static readonly string[] SchemaCommands =
+    [
+        "CREATE DOCUMENT TYPE SwarmRun IF NOT EXISTS",
+        "CREATE PROPERTY SwarmRun.runId IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.taskId IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.role IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.adapter IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.status IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.createdAt IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.updatedAt IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.output IF NOT EXISTS STRING",
+        "CREATE PROPERTY SwarmRun.runError IF NOT EXISTS STRING",
+        "CREATE INDEX ON SwarmRun (runId) UNIQUE IF NOT EXISTS"
+    ];
 
     private readonly RuntimeOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -149,17 +164,10 @@ public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReade
             }
 
             var allSucceeded = true;
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE DOCUMENT TYPE SwarmRun IF NOT EXISTS", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.runId IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.taskId IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.role IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.adapter IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.status IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.createdAt IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.updatedAt IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.output IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmRun.runError IF NOT EXISTS STRING", cancellationToken);
-            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmRun (runId) UNIQUE IF NOT EXISTS", cancellationToken);
+            foreach (var command in SchemaCommands)
+            {
+                allSucceeded &= await TryExecuteSchemaCommandAsync(client, command, cancellationToken);
+            }
 
             _schemaEnsured = allSucceeded;
         }
@@ -281,6 +289,7 @@ public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReade
 
         var createdAt = ParseTimestamp(GetString(item, "createdAt"));
         var updatedAt = ParseTimestamp(GetString(item, "updatedAt"));
+        var error = GetString(item, "runError") ?? GetString(item, "error");
 
         return new SwarmRun(
             RunId: runId,
@@ -291,7 +300,7 @@ public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReade
             CreatedAt: createdAt ?? DateTimeOffset.UtcNow,
             UpdatedAt: updatedAt ?? createdAt ?? DateTimeOffset.UtcNow,
             Output: GetString(item, "output"),
-            Error: GetString(item, "runError") ?? GetString(item, "error"));
+            Error: error);
     }
 
     private static string? GetString(JsonElement item, string propertyName)
