@@ -182,23 +182,21 @@ environment restrictions, triggering fallback to the next adapter.
 | `auto-merge-non-main.yml` | PR opened/synced | Auto-squash-merge PRs to non-main branches |
 | `doc-sync.md` (gh-aw)¹ | Weekly (Sun 9am UTC) | Documentation freshness audit |
 | `phase11-health.md` (gh-aw)¹ | Weekly (Mon 9:30am UTC) | Repository hygiene audit |
-| `review-resolve.yml` | `pull_request_review` submitted | Forward bot review comments to Copilot Coding Agent |
+| `review-resolve.md` (gh-aw)¹ | `pull_request_review` submitted | Fix bot review comments and create follow-up PR |
 
-> ¹ `gh-aw` entries are markdown-driven workflow specs, not GitHub Actions YAML files.
+> ¹ `gh-aw` entries are markdown-driven workflow specs compiled via `gh aw compile`.
 
 ### Review Comment Resolver
 
-When an automated reviewer submits a `changes_requested` review, the `review-resolve`
-workflow:
+When an automated reviewer (`gemini-code-assist[bot]`, `coderabbitai[bot]`) submits a
+review, the `review-resolve` gh-aw workflow spawns a Copilot CLI agent that:
 
-1. Checks for an existing open issue with the `review-fix` label for the same PR (dedup)
-2. Collects all bot-authored inline review comments
-3. Creates a structured GitHub issue assigned to `copilot-swe-agent` and applies the `review-fix` and `automated` labels
-4. Posts a tracking comment on the original PR
+1. Filters to bot-authored inline review comments only
+2. Reads affected files and understands each comment
+3. Applies minimal code fixes addressing the feedback
+4. Creates a single follow-up PR via `create-pull-request` safe output
 
-Copilot Coding Agent then autonomously creates a follow-up PR resolving the comments.
-
-**Prerequisites:** Copilot Coding Agent enabled on the repo, `copilot-swe-agent` has access.
+Recompile after editing: `gh aw compile .github/workflows/review-resolve.md`
 
 ## Key References
 
