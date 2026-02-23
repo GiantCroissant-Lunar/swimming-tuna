@@ -754,12 +754,17 @@ public partial class Main : Control
                                        progressElement.ValueKind == JsonValueKind.Number
                             ? progressElement.GetDouble()
                             : 0.0;
+                        var parentTaskId = ReadOptionalString(taskElement, "parentTaskId")
+                            ?? ReadOptionalString(taskElement, "parentId");
+                        var childTaskIds = ReadOptionalStringArray(taskElement, "childTaskIds")
+                            ?? ReadOptionalStringArray(taskElement, "children");
 
                         if (!string.IsNullOrWhiteSpace(_activeTaskId))
                         {
                             UpsertTaskListItem(_activeTaskId!, title, status, updatedAt);
                             SelectTaskInList(_activeTaskId!);
-                            UpdateTaskGraphState(_activeTaskId!, title, status, updatedAt, role, quality, adapter, retryCount, progress);
+                            UpdateTaskGraphState(_activeTaskId!, title, status, updatedAt, role, quality, adapter, retryCount,
+                                progress, parentTaskId, childTaskIds);
 
                             if (_activeTaskId == _selectedTaskId)
                             {
@@ -816,7 +821,8 @@ public partial class Main : Control
 
     private void UpdateTaskGraphState(string taskId, string title, string status, string? updatedAt,
         string? role = null, string? quality = null, string? adapter = null,
-        int retryCount = 0, double progress = 0.0)
+        int retryCount = 0, double progress = 0.0, string? parentId = null,
+        IReadOnlyList<string>? children = null)
     {
         var existing = _taskGraphState.GetValueOrDefault(taskId) ?? new TaskNodeState { TaskId = taskId };
 
@@ -835,7 +841,9 @@ public partial class Main : Control
             Quality = quality ?? existing.Quality,
             Adapter = adapter ?? existing.Adapter,
             RetryCount = retryCount,
-            Progress = progress
+            Progress = progress,
+            ParentId = parentId ?? existing.ParentId,
+            Children = children ?? existing.Children
         };
 
         RefreshTaskTree();
@@ -847,12 +855,29 @@ public partial class Main : Control
 
         _taskTree.Clear();
         var root = _taskTree.CreateItem();
+        var treeItemsByTaskId = new Dictionary<string, TreeItem>();
 
-        foreach (var kvp in _taskGraphState)
+        TreeItem EnsureTreeItem(string taskId)
         {
-            var state = kvp.Value;
-            var item = _taskTree.CreateItem(root);
-            var shortId = state.TaskId.Length > 8 ? state.TaskId[..8] : state.TaskId;
+            if (treeItemsByTaskId.TryGetValue(taskId, out var existingItem))
+            {
+                return existingItem;
+            }
+
+            if (!_taskGraphState.TryGetValue(taskId, out var state))
+            {
+                return root;
+            }
+
+            var parentItem = root;
+            if (!string.IsNullOrWhiteSpace(state.ParentId) &&
+                !string.Equals(state.ParentId, state.TaskId, StringComparison.Ordinal))
+            {
+                parentItem = EnsureTreeItem(state.ParentId);
+            }
+
+            var item = _taskTree.CreateItem(parentItem);
+            var shortId = state.TaskId.Length > TaskIdShortLength ? state.TaskId[..TaskIdShortLength] : state.TaskId;
             item.SetText(0, $"[{state.Status}] {shortId} - {state.Title}");
 
             var color = state.Status switch
@@ -866,6 +891,13 @@ public partial class Main : Control
             };
             item.SetCustomColor(0, color);
             item.SetMetadata(0, state.TaskId);
+            treeItemsByTaskId[state.TaskId] = item;
+            return item;
+        }
+
+        foreach (var taskId in _taskGraphState.Keys)
+        {
+            EnsureTreeItem(taskId);
         }
     }
 
@@ -1262,13 +1294,17 @@ public partial class Main : Control
             var updatedAt = item.TryGetProperty("updatedAt", out var updatedAtElement)
                 ? updatedAtElement.ToString()
                 : null;
+            var parentTaskId = ReadOptionalString(item, "parentTaskId")
+                ?? ReadOptionalString(item, "parentId");
+            var childTaskIds = ReadOptionalStringArray(item, "childTaskIds")
+                ?? ReadOptionalStringArray(item, "children");
 
             var idx = _taskList.ItemCount;
             _taskListTaskIds[taskId] = idx;
             _taskListByIndex[idx] = taskId;
             _taskList.AddItem(FormatTaskListItem(taskId, title, status, updatedAt));
 
-            UpdateTaskGraphState(taskId, title, status, updatedAt);
+            UpdateTaskGraphState(taskId, title, status, updatedAt, parentId: parentTaskId, children: childTaskIds);
 
             if (string.IsNullOrWhiteSpace(_activeTaskId))
             {
@@ -1317,6 +1353,48 @@ public partial class Main : Control
         }
 
         _taskList.Select(index);
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement arrayElement)
+    {
+        var values = new List<string>();
+        foreach (var element in arrayElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = element.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
+    }
+
+    private static string? ReadOptionalString(JsonElement objectElement, string propertyName)
+    {
+        if (objectElement.TryGetProperty(propertyName, out var propertyElement) &&
+            propertyElement.ValueKind == JsonValueKind.String)
+        {
+            return propertyElement.GetString();
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<string>? ReadOptionalStringArray(JsonElement objectElement, string propertyName)
+    {
+        if (objectElement.TryGetProperty(propertyName, out var propertyElement) &&
+            propertyElement.ValueKind == JsonValueKind.Array)
+        {
+            return ReadStringArray(propertyElement);
+        }
+
+        return null;
     }
 
     private static string FormatTaskListItem(string taskId, string title, string status, string? updatedAt)
