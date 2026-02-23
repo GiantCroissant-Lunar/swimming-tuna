@@ -85,6 +85,35 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
         }
     }
 
+    public async Task<IReadOnlyList<TaskSnapshot>> ListByRunIdAsync(string runId, int limit = 50, CancellationToken cancellationToken = default)
+    {
+        if (!_options.ArcadeDbEnabled || string.IsNullOrWhiteSpace(runId))
+        {
+            return [];
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("arcadedb");
+            var body = await ExecuteCommandAsync(
+                client,
+                "SELECT FROM SwarmTask WHERE runId = :runId ORDER BY updatedAt DESC LIMIT :limit",
+                new Dictionary<string, object?>
+                {
+                    ["runId"] = runId,
+                    ["limit"] = Math.Clamp(limit, 1, 500)
+                },
+                cancellationToken);
+
+            return ParseSnapshots(body);
+        }
+        catch (Exception exception)
+        {
+            LogArcadeDbFailure(exception);
+            return [];
+        }
+    }
+
     private async Task<string> ExecuteCommandAsync(
         HttpClient client,
         string command,

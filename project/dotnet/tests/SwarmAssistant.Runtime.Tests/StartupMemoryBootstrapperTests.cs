@@ -112,6 +112,12 @@ public sealed class StartupMemoryBootstrapperTests
         {
             return Task.FromResult(_snapshots.FirstOrDefault(snapshot => snapshot.TaskId == taskId));
         }
+
+        public Task<IReadOnlyList<TaskSnapshot>> ListByRunIdAsync(string runId, int limit = 50, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<TaskSnapshot>>(
+                _snapshots.Where(s => s.RunId == runId).Take(limit).ToList());
+        }
     }
 
     private sealed class ThrowingReader : ITaskMemoryReader
@@ -122,6 +128,11 @@ public sealed class StartupMemoryBootstrapperTests
         }
 
         public Task<TaskSnapshot?> GetAsync(string taskId, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("ArcadeDB unavailable");
+        }
+
+        public Task<IReadOnlyList<TaskSnapshot>> ListByRunIdAsync(string runId, int limit = 50, CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException("ArcadeDB unavailable");
         }
