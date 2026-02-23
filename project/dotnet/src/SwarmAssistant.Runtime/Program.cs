@@ -164,8 +164,8 @@ static IResult SubmitTask(
         description?.Trim() ?? string.Empty,
         DateTimeOffset.UtcNow);
 
-    coordinator.Tell(task, ActorRefs.NoSender);
     taskRegistry.Register(task, runId);
+    coordinator.Tell(task, ActorRefs.NoSender);
 
     uiEvents.Publish(
         type: eventType,

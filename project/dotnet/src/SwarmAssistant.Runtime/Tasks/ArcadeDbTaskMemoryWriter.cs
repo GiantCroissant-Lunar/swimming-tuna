@@ -121,6 +121,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.childTaskIds IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.runId IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (runId) IF NOT EXISTS", cancellationToken);
 
             _schemaEnsured = allSucceeded;
         }
