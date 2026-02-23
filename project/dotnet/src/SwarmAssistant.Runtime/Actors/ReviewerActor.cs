@@ -19,10 +19,6 @@ public sealed class ReviewerActor : ReceiveActor
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
-    // Quality thresholds sourced from shared QualityEvaluator constants
-    private const double QualityConcernThreshold = QualityEvaluator.QualityConcernThreshold;
-    private const double SelfRetryThreshold = QualityEvaluator.SelfRetryThreshold;
-
     public ReviewerActor(
         RuntimeOptions options,
         ILoggerFactory loggerFactory,
@@ -77,23 +73,27 @@ public sealed class ReviewerActor : ReceiveActor
 
         try
         {
-            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
-            var confidence = EvaluateQuality(output, command.PreferredAdapter);
+            var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            var output = result.Output;
+            var adapterId = result.AdapterId;
+            var confidence = EvaluateQuality(output, adapterId);
 
             activity?.SetTag("output.length", output.Length);
             activity?.SetTag("quality.confidence", confidence);
+            activity?.SetTag("agent.framework.cli.adapter", adapterId);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
-                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode} confidence={Confidence}",
+                "Reviewer completed taskId={TaskId} executionMode={ExecutionMode} adapter={AdapterId} confidence={Confidence}",
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode,
+                adapterId,
                 confidence);
 
             // Self-retry if confidence is very low (unless already retried).
             // Retry BEFORE publishing the concern so the supervisor sees the
             // final confidence rather than a stale pre-retry value.
-            if (confidence < SelfRetryThreshold && command.MaxConfidence is null)
+            if (confidence < QualityEvaluator.SelfRetryThreshold && command.PreviousConfidence is null)
             {
                 _logger.LogInformation(
                     "Reviewer self-retry triggered taskId={TaskId} confidence={Confidence}",
@@ -105,25 +105,33 @@ public sealed class ReviewerActor : ReceiveActor
                 // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
-                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
-                    MaxConfidence = confidence
+                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId),
+                    PreviousConfidence = confidence
                 };
 
-                output = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
-                confidence = EvaluateQuality(output, adjustedCommand.PreferredAdapter);
+                var retryResult = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
+                var retryConfidence = EvaluateQuality(retryResult.Output, retryResult.AdapterId);
 
                 _logger.LogInformation(
-                    "Reviewer self-retry completed taskId={TaskId} newConfidence={Confidence}",
+                    "Reviewer self-retry completed taskId={TaskId} oldConfidence={OldConfidence} newConfidence={NewConfidence}",
                     command.TaskId,
-                    confidence);
+                    confidence,
+                    retryConfidence);
 
-                activity?.SetTag("quality.confidence_after_retry", confidence);
+                // Keep the retry if it's better, otherwise fallback to the original
+                if (retryConfidence > confidence)
+                {
+                    output = retryResult.Output;
+                    adapterId = retryResult.AdapterId;
+                    confidence = retryConfidence;
+                }
             }
 
-            // Raise QualityConcern AFTER any self-retry so the confidence is up-to-date
-            if (confidence < QualityConcernThreshold)
+            // Raise QualityConcern for borderline cases
+            if (confidence < QualityEvaluator.QualityConcernThreshold)
             {
                 var concern = QualityEvaluator.BuildQualityConcern(output, confidence, "Review quality concern");
+
                 _logger.LogWarning(
                     "Reviewer quality concern taskId={TaskId} confidence={Confidence} concern={Concern}",
                     command.TaskId,
@@ -136,6 +144,7 @@ public sealed class ReviewerActor : ReceiveActor
                     command.Role,
                     concern,
                     confidence,
+                    adapterId,
                     DateTimeOffset.UtcNow));
 
                 activity?.SetTag("quality.concern", concern);
@@ -146,7 +155,8 @@ public sealed class ReviewerActor : ReceiveActor
                 command.Role,
                 output,
                 DateTimeOffset.UtcNow,
-                confidence));
+                confidence,
+                adapterId));
         }
         catch (Exception exception)
         {
@@ -186,7 +196,7 @@ public sealed class ReviewerActor : ReceiveActor
         scores.Add(adapterScore);
 
         // Factor 4: Structural indicators (shared)
-        var structureScore = QualityEvaluator.EvaluateStructure(output);
+        var structureScore = QualityEvaluator.EvaluateStructure(output, SwarmRole.Reviewer);
         scores.Add(structureScore);
 
         // Factor 5: Review comprehensiveness (pass/fail indicators)

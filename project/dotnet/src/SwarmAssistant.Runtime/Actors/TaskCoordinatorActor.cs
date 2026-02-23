@@ -828,7 +828,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId,
                 message.Role);
         }
-        else if (_worldState[WorldKey.HighFailureRateDetected] && !HasOpenCircuits())
+        else if (_worldState.Get(WorldKey.HighFailureRateDetected) && !HasOpenCircuits())
         {
             // Clear stale high-failure flag when confidence recovers and no circuits are open
             _worldState = (WorldState)_worldState.With(WorldKey.HighFailureRateDetected, false);

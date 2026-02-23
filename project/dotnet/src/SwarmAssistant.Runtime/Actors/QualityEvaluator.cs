@@ -1,3 +1,5 @@
+using SwarmAssistant.Contracts.Messaging;
+
 namespace SwarmAssistant.Runtime.Actors;
 
 /// <summary>
@@ -36,8 +38,15 @@ internal static class QualityEvaluator
     }
 
     // ── Structural evaluation ───────────────────────────────────────────
-    public static double EvaluateStructure(string output)
+    public static double EvaluateStructure(string output, SwarmRole role)
     {
+        // Orchestrator output is intentionally short (ACTION / REASON lines) — structural
+        // indicators don't apply and would unfairly lower the confidence score.
+        if (role == SwarmRole.Orchestrator)
+        {
+            return 0.5;
+        }
+
         var scores = new List<double>();
 
         // Has code blocks
@@ -77,6 +86,13 @@ internal static class QualityEvaluator
 
     public static string? GetAlternativeAdapter(string? currentAdapter)
     {
-        return Adapters.FirstOrDefault(a => !a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
+        var index = Array.FindIndex(
+            Adapters,
+            a => a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
+
+        // When the current adapter is not found (index == -1) start from index 0;
+        // otherwise advance to the next position in the round-robin.
+        var nextIndex = index < 0 ? 0 : (index + 1) % Adapters.Length;
+        return Adapters[nextIndex];
     }
 }
