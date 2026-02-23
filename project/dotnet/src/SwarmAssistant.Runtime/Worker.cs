@@ -103,9 +103,8 @@ public sealed class Worker : BackgroundService
         _actorSystem = ActorSystem.Create("swarm-assistant-system", config);
 
         // Subscribe to AgentRetired events to keep the auto-scale budget counter accurate
-        var selfRef = this;
         var retiredListener = _actorSystem.ActorOf(
-            Props.Create(() => new AgentRetiredListener(selfRef)),
+            Props.Create(() => new AgentRetiredListener(this)),
             "agent-scale-tracker");
         _actorSystem.EventStream.Subscribe(retiredListener, typeof(AgentRetired));
 

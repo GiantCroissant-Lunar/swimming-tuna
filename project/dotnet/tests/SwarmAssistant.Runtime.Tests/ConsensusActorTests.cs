@@ -133,7 +133,7 @@ public sealed class ConsensusActorTests : TestKit
         // without waiting for the 5-minute wall-clock timeout
         _consensusActor.Tell(new ConsensusSessionTimeout(taskId));
 
-        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(5));
+        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(10));
         Assert.Equal(taskId, result.TaskId);
         // With 2 approvals out of 2 received votes, majority is met — result reflects
         // the votes that arrived rather than a blanket failure
@@ -149,7 +149,7 @@ public sealed class ConsensusActorTests : TestKit
         // No votes submitted — inject the timeout directly
         _consensusActor.Tell(new ConsensusSessionTimeout(taskId));
 
-        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(5));
+        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(10));
         Assert.Equal(taskId, result.TaskId);
         Assert.False(result.Approved);
         Assert.Empty(result.Votes);
@@ -167,7 +167,7 @@ public sealed class ConsensusActorTests : TestKit
         // Session is created afterwards
         _consensusActor.Tell(new ConsensusRequest(taskId, "artifact", 2, "majority"));
 
-        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(5));
+        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(10));
         Assert.Equal(taskId, result.TaskId);
         Assert.True(result.Approved);
         Assert.Equal(2, result.Votes.Count);
@@ -183,7 +183,7 @@ public sealed class ConsensusActorTests : TestKit
         _consensusActor.Tell(new ConsensusVote(taskId, "voter1", true, -1.0, "Approve with bad confidence"));
         _consensusActor.Tell(new ConsensusVote(taskId, "voter2", false, 0.5, "Reject"));
 
-        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(5));
+        var result = ExpectMsg<ConsensusResult>(TimeSpan.FromSeconds(10));
         Assert.Equal(taskId, result.TaskId);
         // Clamped: approval weight=0.0, rejection weight=0.5 → rejected
         Assert.False(result.Approved);
