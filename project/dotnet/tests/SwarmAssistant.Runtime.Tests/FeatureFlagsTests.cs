@@ -176,11 +176,4 @@ public sealed class FeatureFlagsTests
         Assert.True(options.SwaggerEnabled);
     }
 
-    [Fact]
-    public void RuntimeOptions_SwaggerEnabled_SecureProfile_RemainsDisabled()
-    {
-        // Secure profiles must not enable Swagger to avoid exposing the API schema.
-        var options = new RuntimeOptions { Profile = "secure-local", SwaggerEnabled = false };
-        Assert.False(options.SwaggerEnabled);
-    }
 }
