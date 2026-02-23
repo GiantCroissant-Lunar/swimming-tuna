@@ -73,18 +73,22 @@ public sealed class WorkerActor : ReceiveActor
 
         try
         {
-            var output = await _agentFrameworkRoleEngine.ExecuteAsync(command);
-            var confidence = EvaluateQuality(output, command.Role, command.PreferredAdapter);
+            var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            var output = result.Output;
+            var adapterId = result.AdapterId;
+            var confidence = EvaluateQuality(output, command.Role, adapterId);
 
             activity?.SetTag("output.length", output.Length);
             activity?.SetTag("quality.confidence", confidence);
+            activity?.SetTag("agent.framework.cli.adapter", adapterId);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
             _logger.LogInformation(
-                "Worker role={Role} completed taskId={TaskId} executionMode={ExecutionMode} confidence={Confidence}",
+                "Worker role={Role} completed taskId={TaskId} executionMode={ExecutionMode} adapter={AdapterId} confidence={Confidence}",
                 command.Role,
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode,
+                adapterId,
                 confidence);
 
             // Self-retry if confidence is very low (unless already retried).
@@ -103,12 +107,12 @@ public sealed class WorkerActor : ReceiveActor
                 // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
-                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(command.PreferredAdapter),
+                    PreferredAdapter = AgentQualityEvaluator.GetAlternativeAdapter(adapterId),
                     PreviousConfidence = confidence
                 };
 
-                var retryOutput = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
-                var retryConfidence = EvaluateQuality(retryOutput, command.Role, adjustedCommand.PreferredAdapter);
+                var retryResult = await _agentFrameworkRoleEngine.ExecuteAsync(adjustedCommand);
+                var retryConfidence = EvaluateQuality(retryResult.Output, command.Role, retryResult.AdapterId);
 
                 _logger.LogInformation(
                     "Worker self-retry completed taskId={TaskId} role={Role} oldConfidence={OldConfidence} newConfidence={NewConfidence}",
@@ -120,7 +124,8 @@ public sealed class WorkerActor : ReceiveActor
                 // Keep the retry if it's better, otherwise fallback to the original
                 if (retryConfidence > confidence)
                 {
-                    output = retryOutput;
+                    output = retryResult.Output;
+                    adapterId = retryResult.AdapterId;
                     confidence = retryConfidence;
                 }
             }
@@ -148,7 +153,12 @@ public sealed class WorkerActor : ReceiveActor
                 activity?.SetTag("quality.concern", concern);
             }
 
-            replyTo.Tell(new RoleTaskSucceeded(command.TaskId, command.Role, output, DateTimeOffset.UtcNow, confidence));
+            replyTo.Tell(new RoleTaskSucceeded(
+                command.TaskId,
+                command.Role,
+                output,
+                DateTimeOffset.UtcNow,
+                Self.Path.Name));
         }
         catch (Exception exception)
         {
