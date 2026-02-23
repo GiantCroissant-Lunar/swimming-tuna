@@ -146,7 +146,7 @@ def execute_merge_claude_hooks(
     settings_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load existing settings or start fresh
-    if settings_path.exists():
+    if settings_path.exists() and settings_path.stat().st_size > 0:
         try:
             with open(settings_path) as f:
                 settings = json.load(f)
