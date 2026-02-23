@@ -34,6 +34,7 @@ jobs:
               ...context.repo,
               labels: 'review-fix',
               state: 'open',
+              per_page: 100,
             });
             const existing = issues.find(i =>
               i.title.includes(`PR #${prNumber}`)
@@ -52,16 +53,18 @@ jobs:
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
+            const reviewId = context.payload.review.id;
 
-            const { data: comments } = await github.rest.pulls.listReviewComments({
-              ...context.repo,
-              pull_number: prNumber,
-            });
+            const comments = await github.paginate(
+              github.rest.pulls.listReviewComments,
+              { ...context.repo, pull_number: prNumber, per_page: 100 }
+            );
 
-            // Filter to bot-authored comments only
+            // Filter to bot-authored comments from the triggering review only
             const botComments = comments.filter(c =>
-              c.user.type === 'Bot'
-              || ['github-actions[bot]', 'copilot[bot]'].includes(c.user.login)
+              c.pull_request_review_id === reviewId
+              && (c.user.type === 'Bot'
+                || ['github-actions[bot]', 'copilot[bot]'].includes(c.user.login))
             );
 
             if (botComments.length === 0) {

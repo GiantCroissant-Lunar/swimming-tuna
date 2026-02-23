@@ -180,18 +180,20 @@ environment restrictions, triggering fallback to the next adapter.
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `auto-merge-non-main.yml` | PR opened/synced | Auto-squash-merge PRs to non-main branches |
-| `doc-sync.md` (gh-aw) | Weekly (Sun 9am UTC) | Documentation freshness audit |
-| `phase11-health.md` (gh-aw) | Weekly (Mon 9:30am UTC) | Repository hygiene audit |
+| `doc-sync.md` (gh-aw)¹ | Weekly (Sun 9am UTC) | Documentation freshness audit |
+| `phase11-health.md` (gh-aw)¹ | Weekly (Mon 9:30am UTC) | Repository hygiene audit |
 | `review-resolve.yml` | `pull_request_review` submitted | Forward bot review comments to Copilot Coding Agent |
+
+> ¹ `gh-aw` entries are markdown-driven workflow specs, not GitHub Actions YAML files.
 
 ### Review Comment Resolver
 
 When an automated reviewer submits a `changes_requested` review, the `review-resolve`
 workflow:
 
-1. Checks for an existing open `review-fix` issue for the same PR (dedup)
+1. Checks for an existing open issue with the `review-fix` label for the same PR (dedup)
 2. Collects all bot-authored inline review comments
-3. Creates a structured GitHub issue assigned to `copilot-swe-agent`
+3. Creates a structured GitHub issue assigned to `copilot-swe-agent` and applies the `review-fix` and `automated` labels
 4. Posts a tracking comment on the original PR
 
 Copilot Coding Agent then autonomously creates a follow-up PR resolving the comments.
