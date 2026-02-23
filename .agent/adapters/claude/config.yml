@@ -1,0 +1,42 @@
+name: claude-code
+description: Claude Code CLI adapter
+
+capabilities:
+  hooks: [SessionStart, Stop, PreCompact]
+  mcp: true
+  skills: true
+  rules: true
+
+sync:
+  agents_md:
+    target: CLAUDE.md
+    action: pointer
+    content: |
+      # Claude Code
+
+      See [AGENTS.md](AGENTS.md) for all project guidance.
+
+  skills:
+    target: .agent/skills/
+    action: none
+
+  rules:
+    target: .claude/rules/
+    action: copy
+    source: .agent/rules/
+    glob: "*.md"
+
+  hooks_config:
+    target: .agent/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "claude", "supermemory": {"enabled": false}}
+
+  hooks:
+    target: .claude/settings.json
+    action: merge
+    format: claude-settings-json
+    mapping:
+      session_start.py: SessionStart
+      session_end.py: Stop
+      pre_tool_use.py: PreCompact
