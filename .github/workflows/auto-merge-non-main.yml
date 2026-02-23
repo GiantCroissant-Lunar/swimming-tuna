@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   enable-automerge:
-    if: github.event.pull_request.base.ref != 'main' && !github.event.pull_request.draft
+    # Skip forks (GITHUB_TOKEN is read-only for fork PRs) and drafts
+    if: >-
+      github.event.pull_request.base.ref != 'main'
+      && !github.event.pull_request.draft
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Enable auto-merge (squash)

@@ -37,7 +37,8 @@ public sealed class SupervisorActor : ReceiveActor
 
     // Quality concern tracking for agent autonomy (Phase 15)
     private readonly Dictionary<string, List<QualityConcern>> _qualityConcerns = new(StringComparer.Ordinal);
-    private int _totalQualityConcerns;
+    // Tracks which task+role combos have already triggered a quality-retry to avoid compounding
+    private readonly HashSet<string> _qualityRetryTriggered = new(StringComparer.Ordinal);
 
     public SupervisorActor(
         ILoggerFactory loggerFactory,
@@ -105,6 +106,8 @@ public sealed class SupervisorActor : ReceiveActor
             _taskCoordinators.Remove(message.TaskId);
             _taskRetryCounts.Remove(message.TaskId);
             _startedTaskIds.Remove(message.TaskId);
+            _qualityConcerns.Remove(message.TaskId);
+            _qualityRetryTriggered.RemoveWhere(k => k.StartsWith(message.TaskId, StringComparison.Ordinal));
         }
 
         _logger.LogInformation(
@@ -132,6 +135,8 @@ public sealed class SupervisorActor : ReceiveActor
         _taskCoordinators.Remove(message.TaskId);
         _taskRetryCounts.Remove(message.TaskId);
         _startedTaskIds.Remove(message.TaskId);
+        _qualityConcerns.Remove(message.TaskId);
+        _qualityRetryTriggered.RemoveWhere(k => k.StartsWith(message.TaskId, StringComparison.Ordinal));
         _logger.LogWarning(
             "Task failed taskId={TaskId} status={Status} actor={ActorName} error={Error}",
             message.TaskId,
@@ -233,7 +238,6 @@ public sealed class SupervisorActor : ReceiveActor
             _qualityConcerns[message.TaskId] = concerns;
         }
         concerns.Add(message);
-        _totalQualityConcerns++;
 
         _logger.LogWarning(
             "Quality concern received taskId={TaskId} role={Role} confidence={Confidence:F2} concern={Concern}",
@@ -244,8 +248,12 @@ public sealed class SupervisorActor : ReceiveActor
 
         activity?.SetTag("quality.total_concerns_for_task", concerns.Count);
 
-        // If multiple quality concerns for the same task, consider escalating or retrying
-        if (concerns.Count >= 2 && _taskCoordinators.TryGetValue(message.TaskId, out var coordinator))
+        // If multiple quality concerns for the same task+role, trigger ONE retry (not repeated).
+        // Use a composite key to ensure each task+role only triggers a single quality-retry.
+        var retryKey = $"{message.TaskId}|{message.Role}";
+        if (concerns.Count >= 2
+            && !_qualityRetryTriggered.Contains(retryKey)
+            && _taskCoordinators.TryGetValue(message.TaskId, out var coordinator))
         {
             _logger.LogWarning(
                 "Multiple quality concerns detected taskId={TaskId} count={Count} - initiating retry",
@@ -257,6 +265,7 @@ public sealed class SupervisorActor : ReceiveActor
             if (retryCount < MaxRetriesPerTask)
             {
                 _taskRetryCounts[message.TaskId] = retryCount + 1;
+                _qualityRetryTriggered.Add(retryKey);
                 var reason = $"Quality concern retry ({concerns.Count} concerns): {message.Concern}";
                 coordinator.Tell(new RetryRole(
                     message.TaskId,
