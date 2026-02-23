@@ -202,3 +202,29 @@ tasks:
         echo "Edit $SKILL_PATH/SKILL.md to customize"
     requires:
       vars: [SKILL]
+
+  # Agent sync tasks
+  agent:sync:
+    desc: Sync agent skills/rules/hooks to all configured tools
+    cmds:
+      - python .agent/tools/sync.py --all
+
+  agent:sync:claude:
+    desc: Sync agent config to Claude Code
+    cmds:
+      - python .agent/tools/sync.py --adapter claude
+
+  agent:sync:codex:
+    desc: Sync agent config to Codex CLI
+    cmds:
+      - python .agent/tools/sync.py --adapter codex
+
+  agent:sync:cline:
+    desc: Sync agent config to Cline CLI
+    cmds:
+      - python .agent/tools/sync.py --adapter cline
+
+  agent:sync:copilot:
+    desc: Sync agent config to Copilot CLI
+    cmds:
+      - python .agent/tools/sync.py --adapter copilot
