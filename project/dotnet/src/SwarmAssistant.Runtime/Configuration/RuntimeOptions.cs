@@ -85,6 +85,31 @@ public sealed class RuntimeOptions
         init => _maxCliConcurrency = Math.Clamp(value, 1, 32);
     }
 
+    /// <summary>
+    /// When true, enables dynamic agent spawning based on observed task load.
+    /// </summary>
+    public bool AutoScaleEnabled { get; init; } = false;
+
+    /// <summary>
+    /// Minimum number of swarm agent actors kept alive when auto-scaling is enabled.
+    /// </summary>
+    public int MinPoolSize { get; init; } = 1;
+
+    /// <summary>
+    /// Maximum total number of swarm agent actors (fixed pool + dynamic) when auto-scaling is enabled.
+    /// </summary>
+    public int MaxPoolSize { get; init; } = 16;
+
+    /// <summary>
+    /// Active task count above which a new dynamic agent is spawned.
+    /// </summary>
+    public int ScaleUpThreshold { get; init; } = 5;
+
+    /// <summary>
+    /// Active task count below which idle dynamic agents are allowed to retire.
+    /// </summary>
+    public int ScaleDownThreshold { get; init; } = 1;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
