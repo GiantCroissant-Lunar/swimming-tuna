@@ -201,6 +201,50 @@ public sealed class SwarmAgentActorTests : TestKit
         Assert.Equal(fastBidder.Ref.Path.ToStringWithoutAddress(), award.AwardedAgent);
     }
 
+    [Fact]
+    public void ContractNet_FinalizesEarlyWhenAllBidsArrive()
+    {
+        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var firstBidder = CreateTestProbe("first-bidder");
+        var secondBidder = CreateTestProbe("second-bidder");
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            firstBidder.Ref.Path.ToStringWithoutAddress(),
+            new[] { SwarmRole.Builder },
+            CurrentLoad: 0), firstBidder.Ref);
+        registry.Tell(new AgentCapabilityAdvertisement(
+            secondBidder.Ref.Path.ToStringWithoutAddress(),
+            new[] { SwarmRole.Builder },
+            CurrentLoad: 0), secondBidder.Ref);
+
+        registry.Tell(new ContractNetCallForProposals(
+            "task-cnp-early",
+            SwarmRole.Builder,
+            "Implement feature",
+            TimeSpan.FromSeconds(10)));
+
+        var firstRequest = firstBidder.ExpectMsg<ContractNetBidRequest>();
+        var secondRequest = secondBidder.ExpectMsg<ContractNetBidRequest>();
+
+        firstBidder.Reply(new ContractNetBid(
+            firstRequest.AuctionId,
+            firstRequest.TaskId,
+            firstRequest.Role,
+            firstBidder.Ref.Path.ToStringWithoutAddress(),
+            EstimatedCost: 1,
+            EstimatedTimeMs: 100));
+        secondBidder.Reply(new ContractNetBid(
+            secondRequest.AuctionId,
+            secondRequest.TaskId,
+            secondRequest.Role,
+            secondBidder.Ref.Path.ToStringWithoutAddress(),
+            EstimatedCost: 2,
+            EstimatedTimeMs: 200));
+
+        var award = ExpectMsg<ContractNetAward>(TimeSpan.FromSeconds(1));
+        Assert.Equal(firstBidder.Ref.Path.ToStringWithoutAddress(), award.AwardedAgent);
+    }
+
     private void AwaitAgentRegistration(IActorRef registry)
     {
         AwaitAssert(() =>

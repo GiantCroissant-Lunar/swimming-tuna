@@ -7,6 +7,7 @@ namespace SwarmAssistant.Runtime.Actors;
 public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
 {
     private const int DefaultContractNetTimeoutMs = 500;
+    private const string ContractNetTimerPrefix = "contract-net-";
 
     private readonly ILogger _logger;
     private readonly Dictionary<IActorRef, AgentCapabilityAdvertisement> _agents = new();
@@ -86,6 +87,8 @@ public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
 
         var state = new ContractNetAuctionState(
             Sender,
+            message.TaskId,
+            message.Role,
             candidates.ToHashSet());
         _auctions[auctionId] = state;
 
@@ -100,7 +103,7 @@ public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
                 deadline), Self);
         }
 
-        Timers.StartSingleTimer($"contract-net-{auctionId}", new ContractNetFinalize(auctionId, message.TaskId, message.Role), timeout);
+        Timers.StartSingleTimer(ContractNetTimerPrefix + auctionId, new ContractNetFinalize(auctionId, message.TaskId, message.Role), timeout);
     }
 
     private void HandleContractNetBid(ContractNetBid bid)
@@ -116,6 +119,11 @@ public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
         }
 
         state.Bids[Sender] = bid;
+        if (state.Bids.Count == state.Candidates.Count)
+        {
+            Timers.Cancel(ContractNetTimerPrefix + bid.AuctionId);
+            HandleContractNetFinalize(new ContractNetFinalize(bid.AuctionId, state.TaskId, state.Role));
+        }
     }
 
     private void HandleContractNetFinalize(ContractNetFinalize finalize)
@@ -167,9 +175,13 @@ public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
 
     private sealed class ContractNetAuctionState(
         IActorRef requester,
+        string taskId,
+        SwarmRole role,
         HashSet<IActorRef> candidates)
     {
         public IActorRef Requester { get; } = requester;
+        public string TaskId { get; } = taskId;
+        public SwarmRole Role { get; } = role;
 
         public HashSet<IActorRef> Candidates { get; } = candidates;
 
