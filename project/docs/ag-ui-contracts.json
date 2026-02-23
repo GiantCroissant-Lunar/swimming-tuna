@@ -1,0 +1,609 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "AG-UI / A2UI / HITL canonical contract definitions for SwarmAssistant.Runtime v0.1.\nEdit this file whenever an event type, action ID, or payload field is added, renamed, or removed.\nSee /project/ARCHITECTURE.md §Protocol Contracts for evolution guidance.",
+  "contractVersion": "0.1",
+  "a2uiProtocolVersion": "a2ui/v0.8",
+  "eventEnvelope": {
+    "description": "Every AG-UI event is wrapped in this envelope before being sent over SSE or buffered in /ag-ui/recent.",
+    "properties": {
+      "sequence": {
+        "type": "integer",
+        "description": "Monotonically increasing, server-assigned sequence number. Gaps indicate dropped events; consumers should log but not error.",
+        "required": true
+      },
+      "type": {
+        "type": "string",
+        "description": "Dot-separated event type string. See 'events' below for all defined types.",
+        "required": true
+      },
+      "taskId": {
+        "type": ["string", "null"],
+        "description": "Identifier of the task this event relates to. Null for runtime-scoped events.",
+        "required": true
+      },
+      "at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO-8601 UTC timestamp at which the event was published.",
+        "required": true
+      },
+      "payload": {
+        "type": "object",
+        "description": "Event-specific payload. Shape depends on 'type'. See per-event payload tables below.",
+        "required": true
+      }
+    }
+  },
+  "events": {
+    "agui.runtime.started": {
+      "scope": "runtime",
+      "description": "Published once by Worker when the Akka actor system is ready.",
+      "taskId": null,
+      "payload": {
+        "Profile": { "type": "string", "description": "Active runtime profile name.", "required": true },
+        "AgentFrameworkExecutionMode": { "type": "string", "required": true },
+        "SandboxMode": { "type": "string", "required": true },
+        "AgUiProtocolVersion": { "type": "string", "description": "Semantic version string for the AG-UI protocol in use.", "required": true }
+      }
+    },
+    "agui.runtime.snapshot": {
+      "scope": "runtime",
+      "description": "Published by Worker on heartbeat and by the request_snapshot action when taskId is absent.",
+      "taskId": null,
+      "payload": {
+        "Started": { "type": "integer", "description": "Total tasks started since runtime boot.", "required": true },
+        "Completed": { "type": "integer", "required": true },
+        "Failed": { "type": "integer", "required": true },
+        "Escalations": { "type": "integer", "required": true }
+      },
+      "notes": "Also published with { totalTasks, statusCounts } shape when triggered via /ag-ui/actions request_snapshot with no taskId."
+    },
+    "agui.task.submitted": {
+      "scope": "task",
+      "description": "Published by DispatcherActor when a TaskAssigned message is dispatched to a TaskCoordinatorActor.",
+      "payload": {
+        "TaskId": { "type": "string", "required": true },
+        "Title": { "type": "string", "required": true },
+        "Description": { "type": "string", "required": true }
+      }
+    },
+    "agui.task.transition": {
+      "scope": "task",
+      "description": "Published on every task state change and at orchestrator decision points.",
+      "payload": {
+        "source": { "type": "string", "description": "Actor path name of the emitter.", "required": true },
+        "previous": { "type": "string", "description": "Previous TaskStatus name (Queued, Planning, Building, Reviewing, Done, Blocked). Present on state changes.", "required": false },
+        "current": { "type": "string", "description": "New TaskStatus name. Present on state changes.", "required": false },
+        "phase": { "type": "string", "description": "'orchestrating' — emitted when GOAP sends a task to the orchestrator worker.", "required": false },
+        "goapPlan": { "type": "array", "items": { "type": "string" }, "description": "Ordered list of GOAP action names in the recommended plan. Present when phase='orchestrating'.", "required": false },
+        "action": { "type": "string", "description": "Action name decided by orchestrator or GOAP fallback.", "required": false },
+        "decidedBy": { "type": "string", "enum": ["orchestrator", "goap-fallback", "consensus"], "description": "Who made the decision.", "required": false },
+        "a2ui": { "$ref": "#/a2uiPayloads/updateDataModel", "description": "Embedded A2UI patch to apply to the task surface.", "required": false }
+      }
+    },
+    "agui.task.decision": {
+      "scope": "task",
+      "description": "Published when a reviewer passes or rejects the build output.",
+      "payload": {
+        "source": { "type": "string", "required": true },
+        "action": { "type": "string", "enum": ["ReviewPassed", "ReviewRejected"], "required": true },
+        "decidedBy": { "type": "string", "enum": ["reviewer", "consensus"], "required": true }
+      }
+    },
+    "agui.task.retry": {
+      "scope": "task",
+      "description": "Published when SupervisorActor initiates a role retry for the task.",
+      "payload": {
+        "source": { "type": "string", "required": true },
+        "role": { "type": "string", "description": "Lowercase SwarmRole name that is being retried.", "required": true },
+        "reason": { "type": "string", "required": true }
+      }
+    },
+    "agui.task.done": {
+      "scope": "task",
+      "description": "Published when a task has successfully completed all roles (Planner → Builder → Reviewer).",
+      "payload": {
+        "summary": { "type": "string", "description": "Human-readable multi-line summary of the completed task.", "required": true },
+        "source": { "type": "string", "required": true }
+      }
+    },
+    "agui.task.failed": {
+      "scope": "task",
+      "description": "Published when a task is blocked or escalated due to unrecoverable failure.",
+      "payload": {
+        "source": { "type": "string", "required": true },
+        "error": { "type": "string", "description": "Human-readable error or escalation reason.", "required": true },
+        "a2ui": { "$ref": "#/a2uiPayloads/updateDataModel", "description": "Embedded A2UI patch reflecting the blocked status.", "required": false }
+      }
+    },
+    "agui.task.snapshot": {
+      "scope": "task",
+      "description": "Published in response to the request_snapshot action when a specific taskId is provided.",
+      "payload": {
+        "task": { "$ref": "#/schemas/taskSnapshot", "required": true },
+        "a2ui": { "$ref": "#/a2uiPayloads/updateDataModel", "required": false }
+      }
+    },
+    "agui.ui.surface": {
+      "scope": "task",
+      "description": "Published when a new A2UI surface should be created or fully replaced for a task.",
+      "payload": {
+        "source": { "type": "string", "required": true },
+        "a2ui": { "$ref": "#/a2uiPayloads/createSurface", "required": true }
+      }
+    },
+    "agui.ui.patch": {
+      "scope": "task",
+      "description": "Published when an existing A2UI surface's data model should be updated incrementally.",
+      "payload": {
+        "source": { "type": "string", "required": true },
+        "a2ui": { "$ref": "#/a2uiPayloads/updateDataModel", "required": true }
+      }
+    },
+    "agui.action.received": {
+      "scope": "task-or-runtime",
+      "description": "Echo published by POST /ag-ui/actions immediately upon receiving any action, before processing.",
+      "payload": {
+        "ActionId": { "type": "string", "required": true },
+        "Payload": { "type": ["object", "null"], "description": "The raw payload from the action request.", "required": false }
+      }
+    },
+    "agui.memory.bootstrap": {
+      "scope": "runtime",
+      "description": "Published by StartupMemoryBootstrapper after successfully restoring task snapshots from ArcadeDB.",
+      "taskId": null,
+      "payload": {
+        "source": { "type": "string", "enum": ["arcadedb"], "required": true },
+        "importedCount": { "type": "integer", "required": true },
+        "fetchedCount": { "type": "integer", "required": true },
+        "statusCounts": { "type": "object", "additionalProperties": { "type": "integer" }, "description": "Map of status name → task count.", "required": true }
+      }
+    },
+    "agui.memory.bootstrap.failed": {
+      "scope": "runtime",
+      "description": "Published by StartupMemoryBootstrapper when the startup restore fails.",
+      "taskId": null,
+      "payload": {
+        "source": { "type": "string", "enum": ["arcadedb"], "required": true },
+        "error": { "type": "string", "required": true }
+      }
+    },
+    "agui.memory.tasks": {
+      "scope": "runtime",
+      "description": "Published by load_memory action and during memory bootstrap. Carries a list of task summaries.",
+      "taskId": null,
+      "payload": {
+        "source": { "type": "string", "enum": ["arcadedb", "registry"], "required": true },
+        "count": { "type": "integer", "required": true },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/schemas/taskSummary" },
+          "required": true
+        }
+      }
+    },
+    "a2a.task.submitted": {
+      "scope": "task",
+      "description": "Published by POST /a2a/tasks when A2AEnabled=true and a new task is received via the A2A protocol.",
+      "payload": {
+        "taskId": { "type": "string", "required": true },
+        "Title": { "type": "string", "required": true },
+        "Description": { "type": "string", "required": true },
+        "metadata": { "type": ["object", "null"], "required": false }
+      }
+    }
+  },
+  "actions": {
+    "description": "Actions are submitted via POST /ag-ui/actions with body { actionId, taskId?, payload? }.",
+    "request_snapshot": {
+      "status": "implemented",
+      "description": "Request a snapshot of a specific task or the runtime. If taskId is provided, publishes agui.task.snapshot. Otherwise publishes agui.runtime.snapshot.",
+      "requestPayload": {
+        "actionId": { "const": "request_snapshot", "required": true },
+        "taskId": { "type": ["string", "null"], "description": "Omit for runtime-level snapshot.", "required": false },
+        "payload": null
+      },
+      "httpResponses": {
+        "202": "Accepted; event published to stream.",
+        "400": "{ \"error\": \"actionId is required.\" }",
+        "404": "{ \"error\": \"task not found\", \"taskId\": \"<id>\" } — only when taskId is provided."
+      }
+    },
+    "refresh_surface": {
+      "status": "implemented",
+      "description": "Rebuild and publish the A2UI surface for a task. Requires taskId.",
+      "requestPayload": {
+        "actionId": { "const": "refresh_surface", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": null
+      },
+      "httpResponses": {
+        "202": "Accepted; agui.ui.surface event published.",
+        "400": "{ \"error\": \"taskId is required for refresh_surface.\" }",
+        "404": "{ \"error\": \"task not found\", \"taskId\": \"<id>\" }"
+      }
+    },
+    "submit_task": {
+      "status": "implemented",
+      "description": "Submit a new task from the UI.",
+      "requestPayload": {
+        "actionId": { "const": "submit_task", "required": true },
+        "taskId": { "type": ["string", "null"], "description": "Optional client-assigned taskId. Auto-generated if omitted.", "required": false },
+        "payload": {
+          "title": { "type": "string", "description": "Task title.", "required": true },
+          "description": { "type": "string", "description": "Task description.", "required": false },
+          "taskId": { "type": "string", "description": "Duplicate of top-level taskId; optional override.", "required": false }
+        }
+      },
+      "httpResponses": {
+        "202": "{ \"taskId\": \"<id>\", \"status\": \"accepted\", \"statusUrl\": \"/a2a/tasks/<id>\" }",
+        "400": "{ \"error\": \"title is required.\" }",
+        "503": "Coordinator actor not available."
+      }
+    },
+    "load_memory": {
+      "status": "implemented",
+      "description": "Fetch persisted task snapshots from ArcadeDB (or in-memory registry fallback). Publishes agui.memory.tasks.",
+      "requestPayload": {
+        "actionId": { "const": "load_memory", "required": true },
+        "taskId": { "type": ["string", "null"], "required": false },
+        "payload": {
+          "limit": { "type": "integer", "description": "Max number of tasks to return (1–500, default 50).", "required": false }
+        }
+      },
+      "httpResponses": {
+        "200": "{ \"source\": \"arcadedb|registry\", \"count\": <n> }",
+        "400": "{ \"error\": \"actionId is required.\" }"
+      }
+    },
+    "approve_review": {
+      "status": "planned",
+      "description": "HITL: Human approves the reviewer output for a task. Runtime should advance task to Done.",
+      "requestPayload": {
+        "actionId": { "const": "approve_review", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": {
+          "comment": { "type": "string", "description": "Optional human comment attached to the approval.", "required": false }
+        }
+      },
+      "httpResponses": {
+        "202": "Accepted.",
+        "404": "Task not found.",
+        "409": "Task is not in Reviewing state."
+      }
+    },
+    "reject_review": {
+      "status": "planned",
+      "description": "HITL: Human rejects the reviewer output. Runtime should mark the task as failed and publish agui.task.failed.",
+      "requestPayload": {
+        "actionId": { "const": "reject_review", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": {
+          "reason": { "type": "string", "description": "Human-provided rejection reason.", "required": true }
+        }
+      },
+      "httpResponses": {
+        "202": "Accepted.",
+        "404": "Task not found.",
+        "409": "Task is not in Reviewing state."
+      }
+    },
+    "request_rework": {
+      "status": "planned",
+      "description": "HITL: Human requests that the builder role re-executes with additional feedback.",
+      "requestPayload": {
+        "actionId": { "const": "request_rework", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": {
+          "feedback": { "type": "string", "description": "Human-provided rework instructions.", "required": true }
+        }
+      },
+      "httpResponses": {
+        "202": "Accepted.",
+        "404": "Task not found.",
+        "409": "Task must be in Building or Reviewing state."
+      }
+    },
+    "pause_task": {
+      "status": "planned",
+      "description": "Pause execution of a running task. Runtime should suspend role execution and publish agui.task.transition with current=Paused.",
+      "requestPayload": {
+        "actionId": { "const": "pause_task", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": null
+      },
+      "httpResponses": {
+        "202": "Accepted.",
+        "404": "Task not found.",
+        "409": "Task is already paused or in a terminal state."
+      }
+    },
+    "resume_task": {
+      "status": "planned",
+      "description": "Resume a previously paused task. Runtime should re-enter the GOAP planning loop and publish agui.task.transition.",
+      "requestPayload": {
+        "actionId": { "const": "resume_task", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": null
+      },
+      "httpResponses": {
+        "202": "Accepted.",
+        "404": "Task not found.",
+        "409": "Task is not in Paused state."
+      }
+    },
+    "set_subtask_depth": {
+      "status": "planned",
+      "description": "Override the maximum sub-task spawning depth for a specific task before it begins planning.",
+      "requestPayload": {
+        "actionId": { "const": "set_subtask_depth", "required": true },
+        "taskId": { "type": "string", "required": true },
+        "payload": {
+          "depth": { "type": "integer", "minimum": 0, "maximum": 3, "description": "New max sub-task depth (0–3). Default is 3.", "required": true }
+        }
+      },
+      "httpResponses": {
+        "202": "Accepted.",
+        "400": "{ \"error\": \"depth must be between 0 and 3.\" }",
+        "404": "Task not found."
+      }
+    }
+  },
+  "a2uiPayloads": {
+    "description": "A2UI payloads are embedded inside AG-UI event payloads under the 'a2ui' key. The Godot UI GenUiNodeFactory reads these to render surfaces.",
+    "createSurface": {
+      "description": "Instructs Godot to create or replace a task surface.",
+      "properties": {
+        "protocol": { "const": "a2ui/v0.8", "required": true },
+        "operation": { "const": "createSurface", "required": true },
+        "surface": {
+          "properties": {
+            "id": { "type": "string", "description": "Surface identifier, typically 'task-surface-{taskId}'.", "required": true },
+            "title": { "type": "string", "required": true },
+            "dataModel": {
+              "description": "Initial data model for flat surfaces (flat createSurface overload).",
+              "properties": {
+                "taskId": { "type": "string", "required": true },
+                "title": { "type": "string", "required": true },
+                "description": { "type": "string", "required": true },
+                "status": { "type": "string", "enum": ["queued", "planning", "building", "reviewing", "done", "blocked"], "required": true }
+              },
+              "required": false,
+              "notes": "Present only in the flat createSurface overload; absent in the rich/nested component-tree overload."
+            },
+            "components": {
+              "type": "array",
+              "items": { "$ref": "#/a2uiPayloads/genUiComponent" },
+              "description": "Ordered list of GenUI components to render.",
+              "required": true
+            }
+          }
+        }
+      }
+    },
+    "updateDataModel": {
+      "description": "Instructs Godot to apply a partial patch to an existing surface's data model.",
+      "properties": {
+        "protocol": { "const": "a2ui/v0.8", "required": true },
+        "operation": { "const": "updateDataModel", "required": true },
+        "surfaceId": { "type": "string", "description": "ID of the surface to patch.", "required": true },
+        "dataModelPatch": {
+          "description": "Partial object merged into the surface data model. Only provided keys are updated.",
+          "examples": [
+            { "status": "building", "detail": "", "updatedAt": "2026-01-01T00:00:00Z" },
+            { "lastRole": "planner", "lastMessage": "...", "updatedAt": "2026-01-01T00:00:00Z" }
+          ]
+        }
+      }
+    },
+    "genUiComponent": {
+      "description": "A single renderable node in the A2UI component tree. GenUiNodeFactory in Godot maps 'type' to a scene.",
+      "properties": {
+        "id": { "type": "string", "required": true },
+        "type": {
+          "type": "string",
+          "enum": ["text", "rich_text", "button", "line_edit", "progress_bar", "separator", "vseparator", "vbox", "hbox", "panel", "margin", "scroll", "grid"],
+          "required": true
+        },
+        "props": {
+          "type": "object",
+          "description": "Type-specific properties. See component props below.",
+          "required": false
+        },
+        "theme_type_variation": {
+          "type": "string",
+          "description": "Godot ThemeTypeVariation override (e.g. 'HeaderLabel').",
+          "required": false
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/a2uiPayloads/genUiComponent" },
+          "description": "Nested child components (for container types).",
+          "required": false
+        }
+      },
+      "componentProps": {
+        "text": { "text": "string" },
+        "rich_text": { "text": "string", "bbcode": "boolean" },
+        "button": { "label": "string", "actionId": "string" },
+        "line_edit": { "text": "string", "placeholder": "string" },
+        "progress_bar": { "value": "number", "min": "number", "max": "number" },
+        "vbox": { "separation": "integer (optional)" },
+        "hbox": { "separation": "integer (optional)" },
+        "margin": { "margin_left": "integer", "margin_top": "integer", "margin_right": "integer", "margin_bottom": "integer" },
+        "grid": { "columns": "integer" }
+      }
+    }
+  },
+  "schemas": {
+    "taskSnapshot": {
+      "description": "Full task snapshot as returned by GET /a2a/tasks/{taskId} and embedded in agui.task.snapshot payloads.",
+      "properties": {
+        "taskId": { "type": "string", "required": true },
+        "title": { "type": "string", "required": true },
+        "description": { "type": "string", "required": true },
+        "status": { "type": "string", "enum": ["queued", "planning", "building", "reviewing", "done", "blocked"], "required": true },
+        "createdAt": { "type": "string", "format": "date-time", "required": true },
+        "updatedAt": { "type": "string", "format": "date-time", "required": true },
+        "planningOutput": { "type": ["string", "null"], "required": false },
+        "buildOutput": { "type": ["string", "null"], "required": false },
+        "reviewOutput": { "type": ["string", "null"], "required": false },
+        "summary": { "type": ["string", "null"], "required": false },
+        "error": { "type": ["string", "null"], "required": false },
+        "parentTaskId": { "type": ["string", "null"], "required": false },
+        "childTaskIds": { "type": "array", "items": { "type": "string" }, "required": false }
+      }
+    },
+    "taskSummary": {
+      "description": "Lightweight task summary used in memory list payloads.",
+      "properties": {
+        "taskId": { "type": "string", "required": true },
+        "title": { "type": "string", "required": true },
+        "status": { "type": "string", "enum": ["queued", "planning", "building", "reviewing", "done", "blocked"], "required": true },
+        "updatedAt": { "type": "string", "format": "date-time", "required": true },
+        "error": { "type": ["string", "null"], "required": false }
+      }
+    },
+    "actionRequest": {
+      "description": "Body schema for POST /ag-ui/actions.",
+      "properties": {
+        "actionId": { "type": "string", "required": true },
+        "taskId": { "type": ["string", "null"], "required": false },
+        "payload": { "type": ["object", "null"], "required": false }
+      }
+    },
+    "errorResponse": {
+      "description": "Standard error envelope returned by all API endpoints on failure.",
+      "properties": {
+        "error": { "type": "string", "description": "Human-readable error message.", "required": true },
+        "actionId": { "type": "string", "description": "Echo of the actionId when relevant (e.g. unsupported action).", "required": false },
+        "taskId": { "type": "string", "description": "Echo of the taskId when relevant (e.g. not-found).", "required": false },
+        "supported": { "type": "array", "items": { "type": "string" }, "description": "List of supported actionIds (included in unsupported-action 400 response).", "required": false }
+      }
+    }
+  },
+  "httpEndpoints": {
+    "GET /healthz": {
+      "auth": "none",
+      "description": "Liveness probe.",
+      "response200": "{ \"ok\": true }"
+    },
+    "GET /ag-ui/events": {
+      "auth": "optional X-API-Key",
+      "description": "SSE stream of all AG-UI events. Replays recent events on connect.",
+      "contentType": "text/event-stream",
+      "protocol": "event: <type>\\ndata: <json-envelope>\\n\\n"
+    },
+    "GET /ag-ui/recent": {
+      "auth": "optional X-API-Key",
+      "description": "Returns the last N AG-UI events from the in-memory ring buffer (max 200).",
+      "queryParams": { "count": { "type": "integer", "default": 50, "max": 200 } },
+      "response200": "Array of UiEventEnvelope objects."
+    },
+    "POST /ag-ui/actions": {
+      "auth": "optional X-API-Key",
+      "description": "Submit an AG-UI action. Body must be a valid actionRequest.",
+      "requestBody": { "$ref": "#/schemas/actionRequest" },
+      "httpStatuses": {
+        "200": "load_memory: { source, count }",
+        "202": "All other successful actions.",
+        "400": "Bad request (missing actionId, missing required field, unsupported actionId).",
+        "401": "X-API-Key required but missing or invalid.",
+        "404": "Task not found (request_snapshot or refresh_surface with unknown taskId).",
+        "503": "Coordinator actor not ready (submit_task only)."
+      }
+    },
+    "GET /memory/tasks": {
+      "auth": "optional X-API-Key",
+      "description": "List task snapshots from ArcadeDB (falls back to in-memory registry).",
+      "queryParams": { "limit": { "type": "integer", "default": 50, "max": 500 } },
+      "response200": "{ \"source\": \"arcadedb|registry\", \"items\": [TaskSnapshot, ...] }"
+    },
+    "GET /memory/tasks/{taskId}": {
+      "auth": "optional X-API-Key",
+      "description": "Get a single task snapshot by ID (ArcadeDB then registry fallback).",
+      "response200": "TaskSnapshot",
+      "response404": "{ \"error\": \"task not found\", \"taskId\": \"<id>\" }"
+    },
+    "POST /a2a/tasks": {
+      "auth": "optional X-API-Key",
+      "description": "A2A task submission endpoint (A2AEnabled=true required).",
+      "requestBody": { "taskId": "string?", "title": "string", "description": "string?", "metadata": "object?" },
+      "response202": "{ \"taskId\": \"<id>\", \"status\": \"accepted\", \"statusUrl\": \"/a2a/tasks/<id>\" }",
+      "response400": "{ \"error\": \"title is required.\" }",
+      "response503": "Coordinator not ready."
+    },
+    "GET /a2a/tasks/{taskId}": {
+      "auth": "optional X-API-Key",
+      "description": "Get A2A task snapshot from registry.",
+      "response200": "TaskSnapshot",
+      "response404": "{ \"error\": \"task not found\", \"taskId\": \"<id>\" }"
+    },
+    "GET /a2a/tasks": {
+      "auth": "optional X-API-Key",
+      "description": "List recent tasks from registry.",
+      "queryParams": { "limit": { "type": "integer", "default": 50 } },
+      "response200": "Array of { taskId, title, status, updatedAt, error? }"
+    },
+    "GET /.well-known/agent-card.json": {
+      "auth": "none",
+      "description": "A2A agent capability discovery (A2AEnabled=true required). Path configurable via A2AAgentCardPath."
+    }
+  },
+  "eventSequencing": {
+    "description": "Ordering guarantees and idempotency rules for AG-UI event consumers.",
+    "guarantees": [
+      "Events within a single task are published in the order they occur on the server; sequence numbers are monotonically increasing across all events.",
+      "The SSE stream replays all events currently in the 200-event ring buffer upon new subscriber connection.",
+      "Gaps in sequence numbers are possible if the buffer overflows; consumers should log gaps but must not fail.",
+      "agui.ui.surface always precedes agui.ui.patch events for the same task surface within a single lifecycle run.",
+      "agui.task.done and agui.task.failed are terminal events; no further task-scoped events are expected for that taskId.",
+      "agui.action.received is always the first event published for every POST /ag-ui/actions call, before any result events."
+    ],
+    "idempotency": [
+      "agui.ui.surface: Consumers must treat this as a full surface reset; duplicate surface IDs replace the previous surface.",
+      "agui.ui.patch: Consumers apply the dataModelPatch as a shallow merge; unknown keys must be ignored.",
+      "agui.task.done / agui.task.failed: Consumers must tolerate receiving these more than once for the same taskId (e.g. after reconnect replay).",
+      "agui.memory.bootstrap: Published at most once per runtime startup."
+    ],
+    "typicalLifecycleOrder": [
+      "agui.runtime.started",
+      "agui.memory.bootstrap (optional, if MemoryBootstrapEnabled=true)",
+      "agui.memory.tasks (optional, during bootstrap)",
+      "agui.ui.surface (optional, per restored task, up to 3)",
+      "agui.ui.patch (optional, per restored task)",
+      "agui.task.submitted (per new task)",
+      "agui.ui.surface (per new task, on assignment)",
+      "agui.task.transition (Queued → Planning)",
+      "agui.ui.patch (planner output)",
+      "agui.task.transition (Planning → Building)",
+      "agui.ui.patch (builder output)",
+      "agui.task.transition (Building → Reviewing)",
+      "agui.task.decision (ReviewPassed or ReviewRejected)",
+      "agui.ui.patch (reviewer output)",
+      "agui.task.transition (Reviewing → Done)",
+      "agui.task.done"
+    ]
+  },
+  "versioning": {
+    "contractVersion": "0.1",
+    "a2uiProtocolVersion": "a2ui/v0.8",
+    "strategy": "Semver-lite: MAJOR.MINOR. MINOR bumps are backward-compatible additions (new optional fields, new event types). MAJOR bumps require coordinated runtime + UI migration.",
+    "evolutionChecklist": [
+      "1. Update this file (ag-ui-contracts.json) first, in a dedicated PR or commit.",
+      "2. Add new event types or action IDs as 'planned' initially; only mark 'implemented' once the runtime and Godot both handle them.",
+      "3. New required payload fields on existing events require a MAJOR version bump and a migration window.",
+      "4. Optional fields (required: false) may be added in a MINOR bump without breaking existing consumers.",
+      "5. Renaming or removing an event type or field is a BREAKING change; bump MAJOR and document in a migration note.",
+      "6. Run `rg 'agui\\.' project/dotnet/src --include '*.cs'` before merging to confirm all emitted event types are documented here.",
+      "7. Update /project/ARCHITECTURE.md §Protocol Contracts to reference the new version."
+    ],
+    "compatibilityRules": [
+      "Consumers MUST ignore unknown fields in event payloads (open-world model).",
+      "Consumers MUST NOT fail on unknown event types; they should log and skip.",
+      "Required fields in this contract must always be present; consumers may assert their presence.",
+      "The 'sequence' field must always be present; consumers may use it for gap detection.",
+      "The 'at' timestamp is informational; do not use it for ordering — use 'sequence' instead."
+    ]
+  }
+}

@@ -134,6 +134,183 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - Use `task run:aspire` to boot the entire local development environment including frontend, backend, and databases.
 - The `Runtime` and `Godot UI` are configured via environment variables to dynamically discover ports assigned by Aspire.
 
+## Protocol Contracts (Phase 0)
+
+Machine-readable contract definitions live in `/project/docs/ag-ui-contracts.json`.
+That file is the **single source of truth** for all event types, action IDs, payload schemas, and versioning rules.
+This section summarises the contracts for quick reference.
+
+### Contract Version
+
+| Artifact | Version |
+|---|---|
+| `contractVersion` | `0.1` |
+| `a2uiProtocolVersion` | `a2ui/v0.8` |
+
+### Event Envelope
+
+Every AG-UI event is delivered in this wrapper:
+
+```json
+{
+  "sequence": 42,
+  "type": "agui.task.transition",
+  "taskId": "task-abc123",
+  "at": "2026-02-23T10:09:37.562Z",
+  "payload": { ... }
+}
+```
+
+`sequence` is monotonically increasing; use it for ordering and gap detection (do **not** use `at`).
+`taskId` is `null` for runtime-scoped events.
+
+### AG-UI Events
+
+| Event type | Scope | Description |
+|---|---|---|
+| `agui.runtime.started` | runtime | Actor system ready; carries runtime profile info. |
+| `agui.runtime.snapshot` | runtime | Task count summary (started/completed/failed/escalations). |
+| `agui.task.submitted` | task | Task dispatched to a TaskCoordinatorActor. |
+| `agui.task.transition` | task | Task state change or orchestrator decision point. |
+| `agui.task.decision` | task | Reviewer passed or rejected the build output. |
+| `agui.task.retry` | task | Supervisor-initiated role retry. |
+| `agui.task.done` | task | Task completed successfully; carries final summary. |
+| `agui.task.failed` | task | Task blocked or escalated; carries error detail. |
+| `agui.task.snapshot` | task | Full task snapshot (in response to `request_snapshot`). |
+| `agui.ui.surface` | task | Create/replace an A2UI surface in Godot. |
+| `agui.ui.patch` | task | Incremental data-model update to an existing surface. |
+| `agui.action.received` | any | Echo published on every `POST /ag-ui/actions` before processing. |
+| `agui.memory.bootstrap` | runtime | Startup memory restore summary. |
+| `agui.memory.bootstrap.failed` | runtime | Startup memory restore failure. |
+| `agui.memory.tasks` | runtime | Task summary list (bootstrap or `load_memory`). |
+| `a2a.task.submitted` | task | Task submitted via A2A protocol (`A2AEnabled=true`). |
+
+### AG-UI Actions
+
+Actions are submitted as `POST /ag-ui/actions` with body `{ "actionId": "...", "taskId": "...", "payload": { ... } }`.
+
+| `actionId` | Status | Requires `taskId` | Description |
+|---|---|---|---|
+| `request_snapshot` | implemented | optional | Request runtime or per-task snapshot event. |
+| `refresh_surface` | implemented | required | Rebuild A2UI surface for the task. |
+| `submit_task` | implemented | optional | Submit a new task; payload requires `title`. |
+| `load_memory` | implemented | optional | Fetch persisted task list from ArcadeDB. |
+| `approve_review` | planned | required | HITL: approve reviewer output, advance to Done. |
+| `reject_review` | planned | required | HITL: reject reviewer output, mark failed. |
+| `request_rework` | planned | required | HITL: send back to Builder with feedback. |
+| `pause_task` | planned | required | Suspend a running task's role execution. |
+| `resume_task` | planned | required | Resume a paused task. |
+| `set_subtask_depth` | planned | required | Override max sub-task depth before planning starts. |
+
+### A2UI Payloads (Godot Consumption)
+
+A2UI payloads are embedded under the `a2ui` key of `agui.ui.surface` and `agui.ui.patch` events.
+
+**`createSurface`** — full surface create/replace:
+```json
+{
+  "protocol": "a2ui/v0.8",
+  "operation": "createSurface",
+  "surface": {
+    "id": "task-surface-<taskId>",
+    "title": "Swarm Task Monitor",
+    "components": [ { "id": "...", "type": "text|button|vbox|...", "props": {...}, "children": [...] } ]
+  }
+}
+```
+
+**`updateDataModel`** — incremental patch:
+```json
+{
+  "protocol": "a2ui/v0.8",
+  "operation": "updateDataModel",
+  "surfaceId": "task-surface-<taskId>",
+  "dataModelPatch": { "status": "building", "updatedAt": "..." }
+}
+```
+
+Supported component types: `text`, `rich_text`, `button`, `line_edit`, `progress_bar`, `separator`, `vseparator`, `vbox`, `hbox`, `panel`, `margin`, `scroll`, `grid`.
+Godot `GenUiNodeFactory` maps each `type` to the corresponding scene in `godot-ui/scenes/components/`.
+
+### HTTP Endpoints and Error Format
+
+All error responses use the standard envelope:
+```json
+{ "error": "<message>", "taskId?": "...", "actionId?": "...", "supported?": ["..."] }
+```
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `GET /healthz` | none | Liveness probe. |
+| `GET /ag-ui/events` | optional `X-API-Key` | SSE stream (`text/event-stream`). |
+| `GET /ag-ui/recent?count=N` | optional `X-API-Key` | Last N events from ring buffer (max 200). |
+| `POST /ag-ui/actions` | optional `X-API-Key` | Action ingress — see action table above. |
+| `GET /memory/tasks?limit=N` | optional `X-API-Key` | Task snapshot list (ArcadeDB → registry fallback). |
+| `GET /memory/tasks/{taskId}` | optional `X-API-Key` | Single task snapshot. |
+| `POST /a2a/tasks` | optional `X-API-Key` | A2A task submission (`A2AEnabled=true`). |
+| `GET /a2a/tasks/{taskId}` | optional `X-API-Key` | A2A task snapshot. |
+| `GET /a2a/tasks?limit=N` | optional `X-API-Key` | A2A task list. |
+| `GET /.well-known/agent-card.json` | none | A2A capability card (`A2AEnabled=true`). |
+
+HTTP status codes used by `POST /ag-ui/actions`:
+
+| Status | Meaning |
+|---|---|
+| 200 | `load_memory` success (returns `{ source, count }`). |
+| 202 | Action accepted; result published as AG-UI event. |
+| 400 | Missing required field or unsupported `actionId`. |
+| 401 | `X-API-Key` header required but missing or incorrect. |
+| 404 | Referenced `taskId` not found. |
+| 409 | Task is in a state that does not allow the requested action (planned actions). |
+| 503 | Coordinator actor not yet available (`submit_task`). |
+
+### Event Sequencing and Ordering Guarantees
+
+- Events within a single task are published in order; `sequence` is server-assigned and monotonically increasing.
+- The SSE stream replays all events in the 200-event ring buffer on new subscriber connect.
+- Gaps in `sequence` values are possible on buffer overflow; consumers should log but not fail.
+- `agui.ui.surface` always precedes `agui.ui.patch` for the same surface in a lifecycle run.
+- `agui.task.done` and `agui.task.failed` are terminal; no further task-scoped events follow.
+- `agui.action.received` is always the first event for every `POST /ag-ui/actions` call.
+
+Typical lifecycle order per task:
+```
+agui.task.submitted → agui.ui.surface
+→ agui.task.transition (Queued→Planning)
+→ agui.ui.patch (planner output)
+→ agui.task.transition (Planning→Building)
+→ agui.ui.patch (builder output)
+→ agui.task.transition (Building→Reviewing)
+→ agui.task.decision
+→ agui.ui.patch (reviewer output)
+→ agui.task.transition (Reviewing→Done)
+→ agui.task.done
+```
+
+### Idempotency Rules
+
+- `agui.ui.surface`: treat as full surface reset; duplicate surface IDs replace the previous surface.
+- `agui.ui.patch`: apply `dataModelPatch` as a shallow merge; **ignore unknown keys**.
+- `agui.task.done` / `agui.task.failed`: tolerate receiving more than once after reconnect replay.
+- `agui.memory.bootstrap`: published at most once per runtime startup.
+
+### Compatibility Rules
+
+- Consumers **MUST** ignore unknown fields in event payloads (open-world model).
+- Consumers **MUST NOT** fail on unknown event types; log and skip.
+- Required fields defined in `ag-ui-contracts.json` must always be present.
+- Use `sequence` for ordering; `at` is informational only.
+
+### How to Evolve Contracts Safely
+
+1. **Update `ag-ui-contracts.json` first**, in a dedicated commit/PR.
+2. Mark new event types or actions as `"status": "planned"` until both runtime and Godot handle them; only then set `"implemented"`.
+3. Adding **optional** fields to an existing event payload is a **MINOR** bump (`contractVersion` `0.x → 0.x+1`); no breaking change.
+4. Adding a **required** field on an existing event is a **MAJOR** bump; coordinate runtime and Godot migration before merging.
+5. Renaming or removing an event type or field is **BREAKING**; bump `contractVersion` MAJOR and document a migration note.
+6. Before merging, run: `rg 'agui\.' project/dotnet/src --include '*.cs'` and verify every emitted event type appears in `ag-ui-contracts.json`.
+7. Update this section's version table when the contract version changes.
+
 ## Provider Strategy
 
 Priority is subscription-backed local CLIs:
