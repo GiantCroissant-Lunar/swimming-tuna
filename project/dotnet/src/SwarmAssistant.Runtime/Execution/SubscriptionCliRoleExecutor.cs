@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 
@@ -52,12 +53,54 @@ internal sealed class SubscriptionCliRoleExecutor
     private readonly RuntimeOptions _options;
     private readonly SemaphoreSlim _concurrencyGate;
     private readonly ILogger _logger;
+    private readonly SandboxLevelEnforcer _sandboxLevelEnforcer;
+    private readonly string _workspacePath;
 
     public SubscriptionCliRoleExecutor(RuntimeOptions options, ILoggerFactory loggerFactory)
     {
         _options = options;
         _concurrencyGate = new SemaphoreSlim(Math.Clamp(options.MaxCliConcurrency, 1, 32));
         _logger = loggerFactory.CreateLogger<SubscriptionCliRoleExecutor>();
+        _sandboxLevelEnforcer = new SandboxLevelEnforcer();
+        _workspacePath = GetWorkspacePath(options);
+    }
+
+    private static string GetWorkspacePath(RuntimeOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.WorkspacePath))
+        {
+            return options.WorkspacePath;
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse --show-toplevel",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit();
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    return output;
+                }
+            }
+        }
+        catch
+        {
+            // Fall through to default
+        }
+
+        return Environment.CurrentDirectory;
     }
 
     public async Task<CliRoleExecutionResult> ExecuteAsync(ExecuteRoleTask command, CancellationToken cancellationToken)
@@ -132,7 +175,20 @@ internal sealed class SubscriptionCliRoleExecutor
             SandboxCommand probeCommand;
             try
             {
-                probeCommand = SandboxCommandBuilder.Build(_options, adapter.ProbeCommand, adapter.ProbeArgs);
+                if (_options.SandboxLevel == SandboxLevel.OsSandboxed &&
+                    _sandboxLevelEnforcer.CanEnforce(SandboxLevel.OsSandboxed))
+                {
+                    probeCommand = SandboxCommandBuilder.BuildForLevel(
+                        SandboxLevel.OsSandboxed,
+                        adapter.ProbeCommand,
+                        adapter.ProbeArgs,
+                        _workspacePath,
+                        _options.SandboxAllowedHosts);
+                }
+                else
+                {
+                    probeCommand = SandboxCommandBuilder.Build(_options, adapter.ProbeCommand, adapter.ProbeArgs);
+                }
             }
             catch (Exception exception)
             {
@@ -159,7 +215,20 @@ internal sealed class SubscriptionCliRoleExecutor
             SandboxCommand executeCommand;
             try
             {
-                executeCommand = SandboxCommandBuilder.Build(_options, adapter.ExecuteCommand, executeArgs);
+                if (_options.SandboxLevel == SandboxLevel.OsSandboxed &&
+                    _sandboxLevelEnforcer.CanEnforce(SandboxLevel.OsSandboxed))
+                {
+                    executeCommand = SandboxCommandBuilder.BuildForLevel(
+                        SandboxLevel.OsSandboxed,
+                        adapter.ExecuteCommand,
+                        executeArgs,
+                        _workspacePath,
+                        _options.SandboxAllowedHosts);
+                }
+                else
+                {
+                    executeCommand = SandboxCommandBuilder.Build(_options, adapter.ExecuteCommand, executeArgs);
+                }
             }
             catch (Exception exception)
             {

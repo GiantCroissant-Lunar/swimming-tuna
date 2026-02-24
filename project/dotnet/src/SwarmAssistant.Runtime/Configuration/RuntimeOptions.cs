@@ -251,6 +251,23 @@ public sealed class RuntimeOptions
     /// </summary>
     public string[] CodeIndexLanguages { get; init; } = [];
 
+    /// <summary>
+    /// Workspace root path for Level 1 (OsSandboxed) sandbox execution.
+    /// When empty or null, uses the git repository root.
+    /// </summary>
+    public string? WorkspacePath { get; init; }
+
+    /// <summary>
+    /// Allowed network hosts for Level 1 (OsSandboxed) sandbox execution.
+    /// Default includes common API endpoints used by CLI adapters.
+    /// </summary>
+    public string[] SandboxAllowedHosts { get; init; } =
+    [
+        "api.github.com",
+        "copilot-proxy.githubusercontent.com",
+        "api.openai.com"
+    ];
+
     public SandboxLevel SandboxLevel => SandboxCommandBuilder.ParseLevel(SandboxMode);
 }
 

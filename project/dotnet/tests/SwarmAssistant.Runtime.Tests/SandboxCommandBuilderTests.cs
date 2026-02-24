@@ -118,4 +118,27 @@ public sealed class SandboxCommandBuilderTests
 
         Assert.Contains("Container lifecycle handles command wrapping separately", exception.Message);
     }
+
+    [Fact]
+    public void BuildForLevel_OsSandboxed_IncludesWorkspacePath()
+    {
+        if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        var options = new RuntimeOptions
+        {
+            SandboxMode = "os-sandboxed"
+        };
+
+        var result = SandboxCommandBuilder.BuildForLevel(
+            SandboxLevel.OsSandboxed,
+            "echo",
+            ["test"],
+            "/workspace/path",
+            ["api.example.com"]);
+
+        Assert.Contains(result.Args, arg => arg.Contains("/workspace/path"));
+    }
 }
