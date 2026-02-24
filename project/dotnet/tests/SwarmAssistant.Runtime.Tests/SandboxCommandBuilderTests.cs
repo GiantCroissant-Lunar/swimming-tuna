@@ -106,7 +106,7 @@ public sealed class SandboxCommandBuilderTests
     }
 
     [Fact]
-    public void BuildForLevel_Container_ThrowsInvalidOperation()
+    public void BuildForLevel_Container_ThrowsWhenImageMissing()
     {
         var exception = Assert.Throws<InvalidOperationException>(() =>
             SandboxCommandBuilder.BuildForLevel(
@@ -114,9 +114,42 @@ public sealed class SandboxCommandBuilderTests
                 "copilot",
                 ["--help"],
                 "/workspace",
-                []));
+                [],
+                containerImage: null));
 
         Assert.Contains("Container lifecycle handles command wrapping separately", exception.Message);
+    }
+
+    [Fact]
+    public void BuildForLevel_Container_ReturnsDockerRunCommand()
+    {
+        var result = SandboxCommandBuilder.BuildForLevel(
+            SandboxLevel.Container,
+            "bash",
+            ["-c", "echo test"],
+            "/workspace",
+            [],
+            containerImage: "ubuntu:22.04",
+            cpuLimit: 1.0,
+            memoryLimit: "512m",
+            timeoutSeconds: 30,
+            allowA2A: false);
+
+        Assert.Equal("docker", result.Command);
+        Assert.Contains("run", result.Args);
+        Assert.Contains("--rm", result.Args);
+        Assert.Contains("ubuntu:22.04", result.Args);
+        Assert.Contains("bash", result.Args);
+        Assert.Contains("-c", result.Args);
+        Assert.Contains("echo test", result.Args);
+
+        // Verify network isolation
+        Assert.Contains("--network=none", result.Args);
+
+        // Verify resource limits
+        Assert.Contains("--cpus=1", result.Args);
+        Assert.Contains("--memory=512m", result.Args);
+        Assert.Contains("--stop-timeout=30", result.Args);
     }
 
     [Fact]

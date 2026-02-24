@@ -20,14 +20,20 @@ internal static class SandboxCommandBuilder
         string command,
         IReadOnlyList<string> args,
         string workspacePath,
-        string[] allowedHosts)
+        string[] allowedHosts,
+        string? containerImage = null,
+        double cpuLimit = 1.0,
+        string memoryLimit = "512m",
+        int timeoutSeconds = 30,
+        bool allowA2A = false)
     {
         return level switch
         {
             SandboxLevel.BareCli => new SandboxCommand(command, args.ToArray()),
             SandboxLevel.OsSandboxed => BuildOsSandboxed(command, args, workspacePath, allowedHosts),
-            SandboxLevel.Container => throw new InvalidOperationException(
-                "Container lifecycle handles command wrapping separately."),
+            SandboxLevel.Container => containerImage != null
+                ? BuildContainerCommand(command, args, workspacePath, containerImage, cpuLimit, memoryLimit, timeoutSeconds, allowA2A)
+                : throw new InvalidOperationException("Container lifecycle handles command wrapping separately."),
             _ => throw new InvalidOperationException($"Unsupported sandbox level '{level}'.")
         };
     }
@@ -122,6 +128,34 @@ internal static class SandboxCommandBuilder
 
         builder.Append('\'');
         return builder.ToString();
+    }
+
+    private static SandboxCommand BuildContainerCommand(
+        string command,
+        IReadOnlyList<string> args,
+        string workspacePath,
+        string containerImage,
+        double cpuLimit,
+        string memoryLimit,
+        int timeoutSeconds,
+        bool allowA2A)
+    {
+        var runArgs = ContainerLifecycleManager.BuildRunArgs(
+            containerImage,
+            workspacePath,
+            cpuLimit,
+            memoryLimit,
+            timeoutSeconds);
+
+        var networkArgs = ContainerNetworkPolicy.BuildNetworkArgs(null, allowA2A);
+
+        var combinedArgs = new List<string>();
+        combinedArgs.AddRange(runArgs);
+        combinedArgs.AddRange(networkArgs);
+        combinedArgs.Add(command);
+        combinedArgs.AddRange(args);
+
+        return new SandboxCommand("docker", combinedArgs.ToArray());
     }
 }
 
