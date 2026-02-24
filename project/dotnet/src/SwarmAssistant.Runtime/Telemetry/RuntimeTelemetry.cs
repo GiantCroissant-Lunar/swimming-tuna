@@ -75,6 +75,7 @@ public sealed class RuntimeTelemetry : IDisposable
         ActivityKind kind = ActivityKind.Internal,
         string? taskId = null,
         string? role = null,
+        string? runId = null,
         IDictionary<string, object?>? tags = null)
     {
         var activity = ActivitySource.StartActivity(name, kind);
@@ -85,10 +86,21 @@ public sealed class RuntimeTelemetry : IDisposable
 
         activity.SetTag("swarm.profile", _profile);
 
+        var sessionId = !string.IsNullOrWhiteSpace(runId) ? runId : taskId;
+
         if (!string.IsNullOrWhiteSpace(taskId))
         {
             activity.SetTag("swarm.task.id", taskId);
-            activity.SetTag("langfuse.session.id", taskId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(runId))
+        {
+            activity.SetTag("swarm.run.id", runId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            activity.SetTag("langfuse.session.id", sessionId);
         }
 
         if (!string.IsNullOrWhiteSpace(role))
