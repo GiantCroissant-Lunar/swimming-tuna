@@ -219,10 +219,20 @@ public sealed class Worker : BackgroundService
         {
             if (File.Exists(_options.ProjectContextPath))
             {
-                projectContext = await File.ReadAllTextAsync(_options.ProjectContextPath, stoppingToken);
-                _logger.LogInformation(
-                    "Project context loaded path={Path} chars={CharCount}",
-                    _options.ProjectContextPath, projectContext.Length);
+                try
+                {
+                    projectContext = await File.ReadAllTextAsync(_options.ProjectContextPath, stoppingToken);
+                    _logger.LogInformation(
+                        "Project context loaded path={Path} chars={CharCount}",
+                        _options.ProjectContextPath, projectContext.Length);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Project context file could not be read path={Path}",
+                        _options.ProjectContextPath);
+                }
             }
             else
             {
@@ -231,7 +241,9 @@ public sealed class Worker : BackgroundService
             }
         }
 
-        var workspaceBranchManager = new WorkspaceBranchManager(_options.WorkspaceBranchEnabled);
+        var workspaceBranchManager = new WorkspaceBranchManager(
+            _options.WorkspaceBranchEnabled,
+            _loggerFactory.CreateLogger<WorkspaceBranchManager>());
 
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(

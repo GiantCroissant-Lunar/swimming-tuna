@@ -89,11 +89,13 @@ public sealed class WorkerActor : ReceiveActor
             var output = result.Output;
             var adapterId = result.AdapterId;
 
+            // TODO: CliRoleExecutionResult does not carry process exit code.
+            // Propagate exit code from SubscriptionCliRoleExecutor in a follow-up.
             _ = _eventRecorder?.RecordDiagnosticAdapterAsync(
                 command.TaskId,
-                command.RunId,
-                adapterId,
-                output.Length,
+                command.RunId ?? "",
+                result.AdapterId ?? "unknown",
+                result.Output?.Length ?? 0,
                 command.Role.ToString().ToLowerInvariant(),
                 exitCode: 0);
 

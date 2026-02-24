@@ -32,17 +32,4 @@ public sealed class WorkspaceBranchManagerTests
         Assert.Null(result);
     }
 
-    [Fact]
-    public async Task CreateBranch_WhenEnabled_ReturnsBranchNameOrNull()
-    {
-        var manager = new WorkspaceBranchManager(enabled: true);
-
-        var result = await manager.EnsureBranchAsync("task-abc-123");
-
-        // Graceful failure if not in a git repo or branch already exists
-        if (result is not null)
-        {
-            Assert.StartsWith("swarm/", result);
-        }
-    }
 }

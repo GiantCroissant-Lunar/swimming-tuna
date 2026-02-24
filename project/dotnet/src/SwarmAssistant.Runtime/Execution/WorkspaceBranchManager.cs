@@ -1,15 +1,18 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace SwarmAssistant.Runtime.Execution;
 
 public sealed partial class WorkspaceBranchManager
 {
     private readonly bool _enabled;
+    private readonly ILogger? _logger;
 
-    public WorkspaceBranchManager(bool enabled)
+    public WorkspaceBranchManager(bool enabled, ILogger? logger = null)
     {
         _enabled = enabled;
+        _logger = logger;
     }
 
     /// <summary>
@@ -59,12 +62,19 @@ public sealed partial class WorkspaceBranchManager
                 return null;
             }
 
-            await process.WaitForExitAsync();
+            // Drain streams to avoid OS pipe-buffer deadlock
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await process.WaitForExitAsync(cts.Token);
+            await Task.WhenAll(stdoutTask, stderrTask);
 
             return process.ExitCode == 0 ? branchName : null;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger?.LogWarning(ex, "Failed to create workspace branch {Branch} for task {TaskId}", branchName, taskId);
             return null;
         }
     }
