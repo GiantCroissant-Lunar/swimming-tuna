@@ -833,17 +833,23 @@ if (options.A2AEnabled)
         ISwarmRunReader runReader,
         CancellationToken cancellationToken) =>
     {
-        var runExists = runRegistry.GetRun(runId) is not null
-            || taskRegistry.GetTasksByRunId(runId, 1).Count > 0
-            || (await memoryReader.ListByRunIdAsync(runId, 1, cancellationToken)).Count > 0
-            || await runReader.GetAsync(runId, cancellationToken) is not null;
-        if (!runExists)
+        var runExistsInRegistry = runRegistry.GetRun(runId) is not null;
+        var hasRegistryTasks = taskRegistry.GetTasksByRunId(runId, 1).Count > 0;
+        if (!runExistsInRegistry && !hasRegistryTasks)
         {
-            return Results.NotFound(new { error = "run not found", runId });
+            var memoryProbeTask = memoryReader.ListByRunIdAsync(runId, 1, cancellationToken);
+            var runProbeTask = runReader.GetAsync(runId, cancellationToken);
+            await Task.WhenAll(memoryProbeTask, runProbeTask);
+
+            if (memoryProbeTask.Result.Count == 0 && runProbeTask.Result is null)
+            {
+                return Results.NotFound(new { error = "run not found", runId });
+            }
         }
 
         var requestedLimit = Math.Clamp(limit ?? 500, 1, 5000);
-        var registryTasks = taskRegistry.GetTasksByRunId(runId, 500);
+        var fetchLimit = Math.Clamp(requestedLimit, 1, 5000);
+        var registryTasks = taskRegistry.GetTasksByRunId(runId, fetchLimit);
         if (registryTasks.Count > 0)
         {
             var artifacts = FlattenArtifacts(registryTasks, requestedLimit);
@@ -855,7 +861,7 @@ if (options.A2AEnabled)
             });
         }
 
-        var memoryTasks = await memoryReader.ListByRunIdAsync(runId, 500, cancellationToken);
+        var memoryTasks = await memoryReader.ListByRunIdAsync(runId, fetchLimit, cancellationToken);
         var flattened = FlattenArtifacts(memoryTasks, requestedLimit);
         return Results.Ok(new
         {

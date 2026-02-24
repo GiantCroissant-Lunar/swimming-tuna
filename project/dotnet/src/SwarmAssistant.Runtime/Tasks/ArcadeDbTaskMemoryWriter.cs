@@ -66,7 +66,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                     : null,
                 ["runId"] = snapshot.RunId,
                 ["artifacts"] = snapshot.Artifacts is { Count: > 0 }
-                    ? JsonSerializer.Serialize(snapshot.Artifacts)
+                    ? JsonSerializer.Serialize(snapshot.Artifacts, TaskArtifactJson.SerializerOptions)
                     : null
             };
 

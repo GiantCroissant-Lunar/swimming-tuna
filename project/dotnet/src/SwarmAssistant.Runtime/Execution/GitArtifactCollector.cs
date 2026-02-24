@@ -7,6 +7,8 @@ namespace SwarmAssistant.Runtime.Execution;
 
 public sealed class GitArtifactCollector
 {
+    private static readonly TimeSpan GitCommandTimeout = TimeSpan.FromSeconds(30);
+
     private readonly ILogger<GitArtifactCollector>? _logger;
 
     public GitArtifactCollector(ILogger<GitArtifactCollector>? logger = null)
@@ -63,8 +65,19 @@ public sealed class GitArtifactCollector
             string contentHash;
             if (File.Exists(fullPath))
             {
-                var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
-                contentHash = TaskArtifact.ComputeContentHash(bytes);
+                try
+                {
+                    var bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken);
+                    contentHash = TaskArtifact.ComputeContentHash(bytes);
+                }
+                catch (IOException)
+                {
+                    contentHash = TaskArtifact.ComputeContentHash($"deleted:{normalizedPath}:{status}");
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    contentHash = TaskArtifact.ComputeContentHash($"deleted:{normalizedPath}:{status}");
+                }
             }
             else
             {
@@ -74,7 +87,18 @@ public sealed class GitArtifactCollector
             var (linesAdded, linesRemoved) = await GetNumStatAsync(normalizedPath, cancellationToken);
             if (linesAdded == 0 && linesRemoved == 0 && File.Exists(fullPath))
             {
-                linesAdded = await CountLinesAsync(fullPath, cancellationToken);
+                try
+                {
+                    linesAdded = await CountLinesAsync(fullPath, cancellationToken);
+                }
+                catch (IOException)
+                {
+                    linesAdded = 0;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    linesAdded = 0;
+                }
             }
 
             var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -111,6 +135,10 @@ public sealed class GitArtifactCollector
     {
         try
         {
+            using var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            tokenSource.CancelAfter(GitCommandTimeout);
+            var token = tokenSource.Token;
+
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -133,13 +161,44 @@ public sealed class GitArtifactCollector
                 return (1, string.Empty, "failed to start git process");
             }
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(token);
+            var stderrTask = process.StandardError.ReadToEndAsync(token);
 
-            await process.WaitForExitAsync(cancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                TryKillProcess(process);
+                try
+                {
+                    await Task.WhenAll(stdoutTask, stderrTask);
+                }
+                catch
+                {
+                    // ignore drain failures after timeout
+                }
+
+                _logger?.LogWarning(
+                    "git command timed out after {TimeoutSeconds}s args={Args}",
+                    GitCommandTimeout.TotalSeconds,
+                    string.Join(" ", args));
+                return (1, string.Empty, $"git command timed out after {GitCommandTimeout.TotalSeconds:0}s");
+            }
+            catch (OperationCanceledException)
+            {
+                TryKillProcess(process);
+                throw;
+            }
+
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
             return (process.ExitCode, stdout, stderr);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -206,5 +265,20 @@ public sealed class GitArtifactCollector
         }
 
         return ext.TrimStart('.').ToLowerInvariant();
+    }
+
+    private static void TryKillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // best effort only
+        }
     }
 }

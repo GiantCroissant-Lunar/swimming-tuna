@@ -22,6 +22,8 @@ public sealed record TaskArtifact(
     DateTimeOffset CreatedAt,
     IReadOnlyDictionary<string, string>? Metadata = null)
 {
+    private const int ArtifactIdPrefixLength = 24;
+
     public static string ComputeContentHash(string content)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
@@ -39,7 +41,7 @@ public sealed record TaskArtifact(
         var normalized = contentHash.StartsWith("sha256:", StringComparison.Ordinal)
             ? contentHash["sha256:".Length..]
             : contentHash;
-        var prefixLength = Math.Min(12, normalized.Length);
+        var prefixLength = Math.Min(ArtifactIdPrefixLength, normalized.Length);
         return $"art-{normalized[..prefixLength]}";
     }
 }

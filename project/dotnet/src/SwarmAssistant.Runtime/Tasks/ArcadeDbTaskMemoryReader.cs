@@ -12,10 +12,6 @@ namespace SwarmAssistant.Runtime.Tasks;
 public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
 {
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
-    private static readonly JsonSerializerOptions ArtifactJsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 
     private readonly RuntimeOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -48,7 +44,7 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
                 "SELECT FROM SwarmTask ORDER BY updatedAt DESC LIMIT :limit",
                 new Dictionary<string, object?>
                 {
-                    ["limit"] = Math.Clamp(limit, 1, 500)
+                    ["limit"] = Math.Clamp(limit, 1, 5000)
                 },
                 cancellationToken);
 
@@ -105,7 +101,7 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
                 new Dictionary<string, object?>
                 {
                     ["runId"] = runId,
-                    ["limit"] = Math.Clamp(limit, 1, 500)
+                    ["limit"] = Math.Clamp(limit, 1, 5000)
                 },
                 cancellationToken);
 
@@ -246,7 +242,7 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
 
         try
         {
-            return JsonSerializer.Deserialize<List<TaskArtifact>>(artifactsRaw, ArtifactJsonOptions);
+            return JsonSerializer.Deserialize<List<TaskArtifact>>(artifactsRaw, TaskArtifactJson.SerializerOptions);
         }
         catch (JsonException)
         {

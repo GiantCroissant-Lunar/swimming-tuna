@@ -256,7 +256,7 @@ public sealed class TaskRegistry : IAsyncDisposable
     {
         return _tasks.Values
             .OrderByDescending(task => task.UpdatedAt)
-            .Take(Math.Clamp(limit, 1, 500))
+            .Take(Math.Clamp(limit, 1, 5000))
             .ToList();
     }
 
@@ -265,7 +265,7 @@ public sealed class TaskRegistry : IAsyncDisposable
         return _tasks.Values
             .Where(task => string.Equals(task.RunId, runId, StringComparison.Ordinal))
             .OrderByDescending(task => task.UpdatedAt)
-            .Take(Math.Clamp(limit, 1, 500))
+            .Take(Math.Clamp(limit, 1, 5000))
             .ToList();
     }
 

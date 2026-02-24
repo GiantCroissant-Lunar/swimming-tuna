@@ -352,7 +352,34 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 message.Confidence,
                 _retryCount));
 
-        await CaptureRoleSuccessArtifactsAsync(message);
+        try
+        {
+            await CaptureRoleSuccessArtifactsAsync(message);
+        }
+        catch (IOException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Artifact capture failed with IO error taskId={TaskId} role={Role}; continuing",
+                _taskId,
+                message.Role);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Artifact capture failed with access error taskId={TaskId} role={Role}; continuing",
+                _taskId,
+                message.Role);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Artifact capture failed taskId={TaskId} role={Role}; continuing",
+                _taskId,
+                message.Role);
+        }
 
         switch (message.Role)
         {
@@ -498,7 +525,18 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             "Role failed taskId={TaskId} role={Role} error={Error}",
             _taskId, message.Role, message.Error);
 
-        CaptureRoleFailureArtifacts(message);
+        try
+        {
+            CaptureRoleFailureArtifacts(message);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Failure artifact capture failed taskId={TaskId} role={Role}; continuing",
+                _taskId,
+                message.Role);
+        }
 
         // Orchestrator failures are non-fatal: fall back to GOAP deterministic execution
         if (message.Role == SwarmRole.Orchestrator)
@@ -1494,9 +1532,22 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             if (_workspaceBranchName is { Length: > 0 })
             {
                 fileArtifacts = fileArtifacts
-                    .Select(artifact => artifact with
+                    .Select(artifact =>
                     {
-                        Metadata = WithMetadata(artifact.Metadata, "branch", _workspaceBranchName)
+                        if (artifact.Metadata?.TryGetValue("branch", out var actualBranch) == true &&
+                            !string.Equals(actualBranch, _workspaceBranchName, StringComparison.Ordinal))
+                        {
+                            _logger.LogWarning(
+                                "Builder artifact branch mismatch taskId={TaskId} expected={ExpectedBranch} actual={ActualBranch}; overwriting artifact metadata",
+                                _taskId,
+                                _workspaceBranchName,
+                                actualBranch);
+                        }
+
+                        return artifact with
+                        {
+                            Metadata = WithMetadata(artifact.Metadata, "branch", _workspaceBranchName)
+                        };
                     })
                     .ToList();
             }
