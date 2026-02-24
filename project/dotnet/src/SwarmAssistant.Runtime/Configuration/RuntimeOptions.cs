@@ -18,6 +18,9 @@ public sealed class RuntimeOptions
     public string AgUiProtocolVersion { get; init; } = "0.1";
     public bool A2AEnabled { get; init; } = false;
     public string A2AAgentCardPath { get; init; } = "/.well-known/agent-card.json";
+    public bool AgentEndpointEnabled { get; init; }
+    public string AgentEndpointPortRange { get; init; } = "8001-8032";
+    public int AgentHeartbeatIntervalSeconds { get; init; } = 30;
     public bool ArcadeDbEnabled { get; init; } = false;
     public string ArcadeDbHttpUrl { get; init; } = "http://127.0.0.1:2480";
     public string ArcadeDbDatabase { get; init; } = "swarm_assistant";
