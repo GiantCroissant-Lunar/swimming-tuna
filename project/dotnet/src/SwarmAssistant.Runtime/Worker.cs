@@ -230,7 +230,7 @@ public sealed class Worker : BackgroundService
                 {
                     _logger.LogWarning(
                         ex,
-                        "Project context file could not be read path={Path}",
+                        "Failed to read project context file path={Path}; continuing without context",
                         _options.ProjectContextPath);
                 }
             }

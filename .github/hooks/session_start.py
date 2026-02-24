@@ -17,7 +17,7 @@ def _get_config_path() -> Path:
     return Path(__file__).resolve().parent / "config.json"
 
 
-def _load_supermemory_context(project_root: str, adapter: str) -> str:
+def _load_supermemory_context(project_root: str) -> str:
     """Search Supermemory and return formatted context string."""
     # Add lib dir to path for supermemory_client import
     lib_dir = str(Path(__file__).resolve().parent.parent / "lib")
@@ -74,7 +74,7 @@ def main() -> None:
             # Resolve project root: two levels up from hooks dir
             project_root = str(Path(__file__).resolve().parent.parent.parent)
             adapter = config.get("adapter", "unknown")
-            context = _load_supermemory_context(project_root, adapter)
+            context = _load_supermemory_context(project_root)
             if context:
                 result["additionalContext"] = context
         except Exception:
