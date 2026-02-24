@@ -74,11 +74,6 @@ public sealed class RuntimeEventRecorder
         AppendAsync(TaskFailed, taskId, runId,
             JsonSerializer.Serialize(new TaskFailedEventPayload(error)));
 
-    private static readonly JsonSerializerOptions CamelCaseOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     public Task RecordDiagnosticContextAsync(
         string taskId,
         string? runId,
@@ -91,8 +86,7 @@ public sealed class RuntimeEventRecorder
         IReadOnlyList<string> targetFiles) =>
         AppendAsync(DiagnosticContext, taskId, runId,
             JsonSerializer.Serialize(
-                new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles),
-                CamelCaseOptions));
+                new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles)));
 
     // ── internal append helper ────────────────────────────────────────────────
 

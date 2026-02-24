@@ -303,23 +303,29 @@ public sealed class RuntimeEventEmissionTests : TestKit
             .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticContext)
             .ToList();
 
-        // At least one diagnostic.context event should be emitted per role dispatch
-        Assert.NotEmpty(diagEvents);
+        // Happy-path should emit at least Plan + Build + Review diagnostic events
+        Assert.True(diagEvents.Count >= 3, $"Expected at least 3 diagnostic events but got {diagEvents.Count}");
 
-        // Each diagnostic event should have a non-empty payload with expected fields
+        // Each diagnostic event should have a non-empty payload with expected PascalCase fields
         foreach (var evt in diagEvents)
         {
             Assert.NotNull(evt.Payload);
 
             var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
-            Assert.True(payload.TryGetProperty("action", out _), "Payload should contain 'action'");
-            Assert.True(payload.TryGetProperty("role", out _), "Payload should contain 'role'");
-            Assert.True(payload.TryGetProperty("promptLength", out _), "Payload should contain 'promptLength'");
-            Assert.True(payload.TryGetProperty("hasCodeContext", out _), "Payload should contain 'hasCodeContext'");
-            Assert.True(payload.TryGetProperty("codeChunkCount", out _), "Payload should contain 'codeChunkCount'");
-            Assert.True(payload.TryGetProperty("hasStrategyAdvice", out _), "Payload should contain 'hasStrategyAdvice'");
-            Assert.True(payload.TryGetProperty("targetFiles", out _), "Payload should contain 'targetFiles'");
+            Assert.True(payload.TryGetProperty("Action", out _), "Payload should contain 'Action'");
+            Assert.True(payload.TryGetProperty("Role", out _), "Payload should contain 'Role'");
+            Assert.True(payload.TryGetProperty("PromptLength", out _), "Payload should contain 'PromptLength'");
+            Assert.True(payload.TryGetProperty("HasCodeContext", out _), "Payload should contain 'HasCodeContext'");
+            Assert.True(payload.TryGetProperty("CodeChunkCount", out _), "Payload should contain 'CodeChunkCount'");
+            Assert.True(payload.TryGetProperty("HasStrategyAdvice", out _), "Payload should contain 'HasStrategyAdvice'");
+            Assert.True(payload.TryGetProperty("TargetFiles", out _), "Payload should contain 'TargetFiles'");
         }
+
+        // Assert concrete values on the first diagnostic event
+        var firstPayload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(diagEvents[0].Payload!);
+        var action = firstPayload.GetProperty("Action").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(action), "First diagnostic event Action should be a non-empty string");
+        Assert.True(firstPayload.GetProperty("PromptLength").GetInt32() > 0, "First diagnostic event PromptLength should be > 0");
     }
 
     [Fact]
