@@ -52,6 +52,14 @@ npx --yes "quicktype@${QUICKTYPE_VERSION}" \
 echo "  wrote $TS_OUT"
 
 echo ""
+echo "==> Compiling TypeScript models to JavaScript..."
+(cd "$REPO_ROOT/project" && npx --yes tsc --project tsconfig.json)
+echo "  wrote ${TS_OUT%.ts}.js"
+echo "  wrote ${TS_OUT%.ts}.d.ts"
+
+echo ""
 echo "Done. Generated files:"
 echo "  $CS_OUT"
 echo "  $TS_OUT"
+echo "  ${TS_OUT%.ts}.js"
+echo "  ${TS_OUT%.ts}.d.ts"

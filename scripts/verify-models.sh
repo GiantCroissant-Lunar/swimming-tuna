@@ -14,6 +14,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCHEMA_DIR="$REPO_ROOT/project/docs/openapi/schemas"
 CS_OUT="$REPO_ROOT/project/dotnet/src/SwarmAssistant.Contracts/Generated/Models.g.cs"
 TS_OUT="$REPO_ROOT/project/src/generated/models.g.ts"
+JS_OUT="$REPO_ROOT/project/src/generated/models.g.js"
+DTS_OUT="$REPO_ROOT/project/src/generated/models.g.d.ts"
 OPENAPI_SPEC="$REPO_ROOT/project/docs/openapi/runtime.v1.yaml"
 QUICKTYPE_VERSION="${QUICKTYPE_VERSION:-23.2.6}"
 
@@ -21,6 +23,8 @@ TMPDIR="$(mktemp -d)"
 TMP_SCHEMA_DIR="$TMPDIR/schemas"
 TMP_CS="$TMPDIR/Models.g.cs"
 TMP_TS="$TMPDIR/models.g.ts"
+TMP_JS="$TMPDIR/models.g.js"
+TMP_DTS="$TMPDIR/models.g.d.ts"
 
 cleanup() { rm -rf "$TMPDIR"; }
 trap cleanup EXIT
@@ -48,6 +52,25 @@ npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   --just-types \
   --out "$TMP_TS" 2>/dev/null
 
+echo "==> Compiling TypeScript models into temp JS..."
+# Write a minimal tsconfig pointing at the temp TS file
+TMP_TSCONFIG="$TMPDIR/tsconfig.json"
+cat > "$TMP_TSCONFIG" <<EOF
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "declaration": true,
+    "outDir": "$TMPDIR",
+    "rootDir": "$TMPDIR",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "files": ["$TMP_TS"]
+}
+EOF
+(cd "$TMPDIR" && npx --prefix "$REPO_ROOT/project" tsc --project "$TMP_TSCONFIG" 2>/dev/null)
+
 EXIT_CODE=0
 
 compare_file() {
@@ -73,6 +96,8 @@ compare_file() {
 
 compare_file "C# models (Models.g.cs)"        "$TMP_CS" "$CS_OUT"
 compare_file "TypeScript models (models.g.ts)" "$TMP_TS" "$TS_OUT"
+compare_file "Compiled JS models (models.g.js)"  "$TMP_JS" "$JS_OUT"
+compare_file "TypeScript declarations (models.g.d.ts)" "$TMP_DTS" "$DTS_OUT"
 
 if ! diff -qr "$TMP_SCHEMA_DIR" "$SCHEMA_DIR" > /dev/null 2>&1; then
   echo "FAIL: OpenAPI schema artifacts are stale. Run 'task models:generate' and commit the result."

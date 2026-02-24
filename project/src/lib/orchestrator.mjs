@@ -1,4 +1,4 @@
-import { createTask, getPendingTasks, updateTask } from "./store.mjs";
+import { createTask, getPendingTasks, updateTask, TaskState } from "./store.mjs";
 
 function stepPrompt(role, task, artifacts) {
   if (role === "planner") {
@@ -50,44 +50,46 @@ function artifactFromResult(step, result) {
 }
 
 async function runTask(task, router, eventWriter) {
-  updateTask(task, { status: "planning", error: null });
+  updateTask(task, { status: TaskState.Planning, error: null });
 
   const plan = await router.executeRole("planner", stepPrompt("planner", task, task.artifacts), { task });
   if (!plan.ok) {
-    updateTask(task, { status: "blocked", error: plan.error });
+    updateTask(task, { status: TaskState.Blocked, error: plan.error });
     eventWriter({ type: "task.blocked", taskId: task.id, reason: plan.error, at: new Date().toISOString() });
     return;
   }
   task.artifacts.plan = artifactFromResult("planner", plan);
 
-  updateTask(task, { status: "building" });
+  updateTask(task, { status: TaskState.Building });
   const build = await router.executeRole("builder", stepPrompt("builder", task, task.artifacts), { task });
   if (!build.ok) {
-    updateTask(task, { status: "blocked", error: build.error });
+    updateTask(task, { status: TaskState.Blocked, error: build.error });
     eventWriter({ type: "task.blocked", taskId: task.id, reason: build.error, at: new Date().toISOString() });
     return;
   }
   task.artifacts.build = artifactFromResult("builder", build);
 
-  updateTask(task, { status: "reviewing" });
+  updateTask(task, { status: TaskState.Reviewing });
   const review = await router.executeRole("reviewer", stepPrompt("reviewer", task, task.artifacts), { task });
   if (!review.ok) {
-    updateTask(task, { status: "blocked", error: review.error });
+    updateTask(task, { status: TaskState.Blocked, error: review.error });
     eventWriter({ type: "task.blocked", taskId: task.id, reason: review.error, at: new Date().toISOString() });
     return;
   }
   task.artifacts.review = artifactFromResult("reviewer", review);
 
+  // "finalizing" is a CLI-local transient state; it is not part of the
+  // OpenAPI-generated TaskState enum which covers only the runtime API states.
   updateTask(task, { status: "finalizing" });
   const final = await router.executeRole("finalizer", stepPrompt("finalizer", task, task.artifacts), { task });
   if (!final.ok) {
-    updateTask(task, { status: "blocked", error: final.error });
+    updateTask(task, { status: TaskState.Blocked, error: final.error });
     eventWriter({ type: "task.blocked", taskId: task.id, reason: final.error, at: new Date().toISOString() });
     return;
   }
 
   task.artifacts.final = artifactFromResult("finalizer", final);
-  updateTask(task, { status: "done", result: task.artifacts.final.output, error: null });
+  updateTask(task, { status: TaskState.Done, result: task.artifacts.final.output, error: null });
   eventWriter({ type: "task.done", taskId: task.id, at: new Date().toISOString() });
 }
 
