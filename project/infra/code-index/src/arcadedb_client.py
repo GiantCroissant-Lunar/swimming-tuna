@@ -1,13 +1,16 @@
 """ArcadeDB client for vector storage and retrieval."""
 
 import json
+import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import httpx
 
 from src.models import CodeChunk, SchemaStatus, Language, NodeType
+
+logger = logging.getLogger(__name__)
 
 
 class ArcadeDbClient:
@@ -54,7 +57,7 @@ class ArcadeDbClient:
         try:
             response = self.client.get("/server")
             return response.status_code == 200
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     def check_schema(self) -> SchemaStatus:
@@ -84,7 +87,7 @@ class ArcadeDbClient:
             indexes = [idx.get("name", "") for idx in result.get("result", [])]
 
             return SchemaStatus(exists=True, vertex_type="CodeChunk", indexes=indexes)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return SchemaStatus(exists=False, indexes=[str(e)])
 
     def create_schema(self, dimension: int = 384) -> bool:
@@ -147,15 +150,18 @@ class ArcadeDbClient:
             """)
 
             return True
-        except Exception as e:
-            print(f"Failed to create schema: {e}")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to create schema")
             return False
 
-    def _execute_command(self, command: str) -> dict:
-        """Execute a SQL command."""
+    def execute_command(self, command: str, params: Optional[dict] = None) -> dict:
+        """Execute a SQL command with optional parameterized bindings."""
+        payload: dict = {"language": "sql", "command": command.strip()}
+        if params:
+            payload["params"] = params
         response = self.client.post(
             f"/api/v1/command/{self.database}",
-            json={"language": "sql", "command": command.strip()},
+            json=payload,
         )
         response.raise_for_status()
         return response.json()
@@ -182,55 +188,81 @@ class ArcadeDbClient:
             result = response.json()
             existing = result.get("result", [])
 
-            # Prepare embedding as JSON array
-            embedding_json = json.dumps(chunk.embedding) if chunk.embedding else "[]"
+            embedding_list = chunk.embedding if chunk.embedding else []
 
             if existing:
                 # Update existing
                 rid = existing[0].get("@rid")
-                self._execute_command(f"""
+                self.execute_command(
+                    """
                     UPDATE CodeChunk SET
-                        content = {json.dumps(chunk.content)},
-                        startLine = {chunk.start_line},
-                        endLine = {chunk.end_line},
-                        embedding = {embedding_json},
-                        lastModified = datetime('{chunk.last_modified.isoformat()}'),
-                        tokenCount = {chunk.token_count or 0},
-                        charCount = {chunk.char_count}
-                    WHERE @rid = {rid}
-                """)
+                        content = :content,
+                        startLine = :startLine,
+                        endLine = :endLine,
+                        embedding = :embedding,
+                        lastModified = :lastModified,
+                        tokenCount = :tokenCount,
+                        charCount = :charCount
+                    WHERE @rid = :rid
+                    """,
+                    params={
+                        "content": chunk.content,
+                        "startLine": chunk.start_line,
+                        "endLine": chunk.end_line,
+                        "embedding": embedding_list,
+                        "lastModified": chunk.last_modified.isoformat(),
+                        "tokenCount": chunk.token_count or 0,
+                        "charCount": chunk.char_count,
+                        "rid": rid,
+                    },
+                )
                 return rid
             else:
                 # Insert new
-                cmd = f"""
+                result = self.execute_command(
+                    """
                     INSERT INTO CodeChunk SET
-                        filePath = {json.dumps(chunk.file_path)},
-                        fullyQualifiedName = {json.dumps(chunk.fully_qualified_name)},
-                        nodeType = {json.dumps(chunk.node_type.value)},
-                        language = {json.dumps(chunk.language.value)},
-                        content = {json.dumps(chunk.content)},
-                        startLine = {chunk.start_line},
-                        endLine = {chunk.end_line},
-                        embedding = {embedding_json},
-                        lastModified = datetime('{chunk.last_modified.isoformat()}'),
-                        tokenCount = {chunk.token_count or 0},
-                        charCount = {chunk.char_count}
-                """
-                result = self._execute_command(cmd)
+                        filePath = :filePath,
+                        fullyQualifiedName = :fqn,
+                        nodeType = :nodeType,
+                        language = :language,
+                        content = :content,
+                        startLine = :startLine,
+                        endLine = :endLine,
+                        embedding = :embedding,
+                        lastModified = :lastModified,
+                        tokenCount = :tokenCount,
+                        charCount = :charCount
+                    """,
+                    params={
+                        "filePath": chunk.file_path,
+                        "fqn": chunk.fully_qualified_name,
+                        "nodeType": chunk.node_type.value,
+                        "language": chunk.language.value,
+                        "content": chunk.content,
+                        "startLine": chunk.start_line,
+                        "endLine": chunk.end_line,
+                        "embedding": embedding_list,
+                        "lastModified": chunk.last_modified.isoformat(),
+                        "tokenCount": chunk.token_count or 0,
+                        "charCount": chunk.char_count,
+                    },
+                )
                 return result.get("result", [{}])[0].get("@rid")
-        except Exception as e:
-            print(f"Failed to upsert chunk: {e}")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to upsert chunk")
             return None
 
     def delete_chunks_by_file(self, file_path: str) -> int:
         """Delete all chunks for a file. Returns count deleted."""
         try:
-            result = self._execute_command(f"""
-                DELETE FROM CodeChunk WHERE filePath = {json.dumps(file_path)}
-            """)
+            result = self.execute_command(
+                "DELETE FROM CodeChunk WHERE filePath = :filePath",
+                params={"filePath": file_path},
+            )
             return result.get("count", 0)
-        except Exception as e:
-            print(f"Failed to delete chunks: {e}")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to delete chunks for %s", file_path)
             return 0
 
     def search_similar(
@@ -243,36 +275,42 @@ class ArcadeDbClient:
     ) -> List[CodeChunk]:
         """Search for similar code chunks using vector similarity."""
         try:
-            # Build WHERE clause
             where_conditions = []
+            params: dict = {
+                "topK": top_k,
+            }
 
             if language_filter:
-                langs = [f"'{lang.value}'" for lang in language_filter]
-                where_conditions.append(f"language IN [{','.join(langs)}]")
+                lang_values = [lang.value for lang in language_filter]
+                where_conditions.append("language IN :languages")
+                params["languages"] = lang_values
 
             if node_type_filter:
-                types = [f"'{t.value}'" for t in node_type_filter]
-                where_conditions.append(f"nodeType IN [{','.join(types)}]")
+                type_values = [t.value for t in node_type_filter]
+                where_conditions.append("nodeType IN :nodeTypes")
+                params["nodeTypes"] = type_values
 
             if file_path_prefix:
-                where_conditions.append(f"filePath LIKE '{file_path_prefix}%'")
+                where_conditions.append("filePath LIKE :filePathPrefix")
+                params["filePathPrefix"] = f"{file_path_prefix}%"
 
             where_clause = ""
             if where_conditions:
                 where_clause = "WHERE " + " AND ".join(where_conditions)
 
-            # Execute vector search query
+            # Embedding passed as JSON in the query string (no param support for vectors)
             embedding_json = json.dumps(embedding)
             query = f"""
                 SELECT *, vectorDistance(embedding, {embedding_json}) as score
                 FROM CodeChunk
                 {where_clause}
                 ORDER BY score ASC
-                LIMIT {top_k}
+                LIMIT :topK
             """
 
             response = self.client.post(
-                f"/api/v1/query/{self.database}/sql", json={"command": query}
+                f"/api/v1/query/{self.database}/sql",
+                json={"command": query, "params": params},
             )
             response.raise_for_status()
             result = response.json()
@@ -284,13 +322,19 @@ class ArcadeDbClient:
                     chunks.append(chunk)
 
             return chunks
-        except Exception as e:
-            print(f"Search failed: {e}")
+        except Exception:  # noqa: BLE001
+            logger.exception("Search failed")
             return []
 
     def _record_to_chunk(self, record: dict) -> Optional[CodeChunk]:
         """Convert ArcadeDB record to CodeChunk."""
         try:
+            last_modified_str = record.get("lastModified")
+            if last_modified_str:
+                last_modified = datetime.fromisoformat(last_modified_str)
+            else:
+                last_modified = datetime.now(timezone.utc)
+
             return CodeChunk(
                 id=record.get("@rid"),
                 file_path=record.get("filePath", ""),
@@ -301,12 +345,11 @@ class ArcadeDbClient:
                 start_line=record.get("startLine", 0),
                 end_line=record.get("endLine", 0),
                 embedding=record.get("embedding"),
-                last_modified=datetime.fromisoformat(
-                    record.get("lastModified", datetime.utcnow().isoformat())
-                ),
+                last_modified=last_modified,
+                similarity_score=record.get("score"),
                 token_count=record.get("tokenCount"),
                 char_count=record.get("charCount", 0),
             )
-        except Exception as e:
-            print(f"Failed to convert record: {e}")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to convert record")
             return None

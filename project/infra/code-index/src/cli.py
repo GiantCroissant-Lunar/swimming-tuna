@@ -129,7 +129,12 @@ def search(
         query_embedding = embedder.embed_text(query)
 
     # Parse filters
-    lang_filter = [Language(language)] if language else None
+    try:
+        lang_filter = [Language(language)] if language else None
+    except ValueError:
+        console.print(f"[red]Unknown language: {language}[/red]")
+        sys.exit(1)
+
     type_filter = None  # TODO: Parse node type
 
     # Search
@@ -179,7 +184,7 @@ def stats():
     db = ArcadeDbClient()
 
     try:
-        result = db._execute_command("SELECT COUNT(*) as count FROM CodeChunk")
+        result = db.execute_command("SELECT COUNT(*) as count FROM CodeChunk")
         total = result.get("result", [{}])[0].get("count", 0)
 
         console.print(f"[green]Total chunks: {total}[/green]")
@@ -187,7 +192,7 @@ def stats():
 
         if total > 0:
             # By language
-            result = db._execute_command("""
+            result = db.execute_command("""
                 SELECT language, COUNT(*) as count
                 FROM CodeChunk
                 GROUP BY language
@@ -204,7 +209,7 @@ def stats():
             console.print()
 
             # By node type
-            result = db._execute_command("""
+            result = db.execute_command("""
                 SELECT nodeType, COUNT(*) as count
                 FROM CodeChunk
                 GROUP BY nodeType
@@ -236,7 +241,7 @@ def reset(force: bool = typer.Option(False, "--force", help="Skip confirmation")
     db = ArcadeDbClient()
 
     try:
-        result = db._execute_command("DELETE FROM CodeChunk")
+        result = db.execute_command("DELETE FROM CodeChunk")
         count = result.get("count", 0)
         console.print(f"[green]Deleted {count} chunks[/green]")
     except Exception as e:

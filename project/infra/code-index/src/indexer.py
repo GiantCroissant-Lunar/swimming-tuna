@@ -1,7 +1,8 @@
 """Full indexing pipeline with git-aware incremental updates."""
 
+import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -11,6 +12,8 @@ from src.models import CodeChunk, IndexRequest, IndexResponse, Language
 from src.parser import TreeSitterParser, CodeExtractor, find_source_files
 from src.embedder import EmbeddingGenerator, TokenCounter
 from src.arcadedb_client import ArcadeDbClient
+
+logger = logging.getLogger(__name__)
 
 
 class CodeIndexer:
@@ -119,8 +122,8 @@ class CodeIndexer:
         for chunk in chunks:
             self.token_counter.count_chunk_tokens(chunk)
 
-        # Get file modification time
-        mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+        # Get file modification time (UTC-aware)
+        mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
         for chunk in chunks:
             chunk.last_modified = mtime
 
@@ -164,9 +167,8 @@ class CodeIndexer:
                     changed_files.append((full_path, lang))
 
             return changed_files, deleted_files
-        except Exception as e:
-            # Fall back to full index
-            print(f"Git diff failed ({e}), falling back to full index")
+        except Exception:  # noqa: BLE001
+            logger.warning("Git diff failed, falling back to full index", exc_info=True)
             return find_source_files(repo_path, languages), []
 
     def _detect_language_from_path(self, file_path: Path) -> Optional[Language]:
@@ -178,10 +180,10 @@ class CodeIndexer:
     def get_index_stats(self) -> dict:
         """Get indexing statistics."""
         try:
-            result = self.db._execute_command("SELECT COUNT(*) as count FROM CodeChunk")
+            result = self.db.execute_command("SELECT COUNT(*) as count FROM CodeChunk")
             total_chunks = result.get("result", [{}])[0].get("count", 0)
 
-            result = self.db._execute_command("""
+            result = self.db.execute_command("""
                 SELECT language, COUNT(*) as count
                 FROM CodeChunk
                 GROUP BY language
@@ -213,23 +215,27 @@ class IncrementalIndexer:
         """Watch for file changes and index periodically."""
         import time
 
-        print(f"Starting file watcher for {request.source_path}")
-        print(f"Check interval: {interval_seconds}s")
+        logger.info(
+            "Starting file watcher for %s (interval: %ds)",
+            request.source_path,
+            interval_seconds,
+        )
 
         while True:
             try:
                 response = self.index_since_last(request)
                 if response.total_files > 0:
-                    print(
-                        f"Indexed {response.total_files} files, "
-                        f"{response.total_chunks} chunks "
-                        f"({response.duration_seconds:.1f}s)"
+                    logger.info(
+                        "Indexed %d files, %d chunks (%.1fs)",
+                        response.total_files,
+                        response.total_chunks,
+                        response.duration_seconds,
                     )
 
                 time.sleep(interval_seconds)
             except KeyboardInterrupt:
-                print("\nStopping file watcher")
+                logger.info("Stopping file watcher")
                 break
-            except Exception as e:
-                print(f"Error during indexing: {e}")
+            except Exception:  # noqa: BLE001
+                logger.exception("Error during indexing")
                 time.sleep(interval_seconds)

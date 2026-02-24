@@ -29,7 +29,7 @@ public sealed class CodeIndexActor : ReceiveActor
         _apiBaseUrl = options.Value.CodeIndexUrl?.TrimEnd('/') ?? "http://localhost:8080";
 
         Receive<CodeIndexQuery>(OnQuery);
-        Receive<HealthCheckCodeIndex>(_ => Sender.Tell(new CodeIndexHealthResponse(IsHealthy())));
+        Receive<HealthCheckCodeIndex>(OnHealthCheck);
     }
 
     /// <summary>
@@ -50,6 +50,7 @@ public sealed class CodeIndexActor : ReceiveActor
         {
             try
             {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 using var activity = new Activity("code-index.query").Start();
                 activity?.SetTag("query", query.Query);
                 activity?.SetTag("top_k", query.TopK);
@@ -63,7 +64,7 @@ public sealed class CodeIndexActor : ReceiveActor
                     file_path_prefix = query.FilePathPrefix
                 };
 
-                var response = await _httpClient.PostAsJsonAsync($"{_apiBaseUrl}/search", request);
+                var response = await _httpClient.PostAsJsonAsync($"{_apiBaseUrl}/search", request, cts.Token);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -105,19 +106,28 @@ public sealed class CodeIndexActor : ReceiveActor
         }).PipeTo(sender);
     }
 
-    private bool IsHealthy()
+    private void OnHealthCheck(HealthCheckCodeIndex _)
     {
-        if (!_enabled) return false;
+        if (!_enabled)
+        {
+            Sender.Tell(new CodeIndexHealthResponse(false));
+            return;
+        }
 
-        try
+        var sender = Sender;
+        Task.Run(async () =>
         {
-            var response = _httpClient.GetAsync($"{_apiBaseUrl}/health").GetAwaiter().GetResult();
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var response = await _httpClient.GetAsync($"{_apiBaseUrl}/health", cts.Token);
+                return new CodeIndexHealthResponse(response.IsSuccessStatusCode);
+            }
+            catch
+            {
+                return new CodeIndexHealthResponse(false);
+            }
+        }).PipeTo(sender);
     }
 
     protected override void PostStop()
@@ -158,32 +168,32 @@ public sealed record CodeIndexResult(
 public sealed record HealthCheckCodeIndex;
 public sealed record CodeIndexHealthResponse(bool IsHealthy);
 
-// API Response Models
+// API Response Models (JSON deserialization targets — snake_case maps to Python API)
 file sealed class CodeIndexApiResponse
 {
-    public string query { get; set; } = "";
-    public List<CodeIndexApiResult> results { get; set; } = new();
-    public int total_found { get; set; }
-    public float duration_ms { get; set; }
+    public string query { get; init; } = "";
+    public List<CodeIndexApiResult> results { get; init; } = new();
+    public int total_found { get; init; }
+    public float duration_ms { get; init; }
 }
 
 file sealed class CodeIndexApiResult
 {
-    public CodeChunkApiModel chunk { get; set; } = new();
-    public float similarity_score { get; set; }
-    public int rank { get; set; }
+    public CodeChunkApiModel chunk { get; init; } = new();
+    public float similarity_score { get; init; }
+    public int rank { get; init; }
 }
 
 file sealed class CodeChunkApiModel
 {
-    public string? id { get; set; }
-    public string file_path { get; set; } = "";
-    public string fully_qualified_name { get; set; } = "";
-    public string node_type { get; set; } = "";
-    public string language { get; set; } = "";
-    public string content { get; set; } = "";
-    public int start_line { get; set; }
-    public int end_line { get; set; }
-    public int? token_count { get; set; }
-    public int char_count { get; set; }
+    public string? id { get; init; }
+    public string file_path { get; init; } = "";
+    public string fully_qualified_name { get; init; } = "";
+    public string node_type { get; init; } = "";
+    public string language { get; init; } = "";
+    public string content { get; init; } = "";
+    public int start_line { get; init; }
+    public int end_line { get; init; }
+    public int? token_count { get; init; }
+    public int char_count { get; init; }
 }

@@ -152,9 +152,13 @@ internal static class RolePromptFactory
     /// <summary>
     /// Builds a code context section from code index results.
     /// This is the 4th context layer: relevant codebase structure for the task.
+    /// Total budget is capped at 40,000 characters to avoid overwhelming the LLM context window.
     /// </summary>
     private static string BuildCodeContext(CodeIndexResult result)
     {
+        const int maxTotalChars = 40_000;
+        const int maxPerChunkChars = 2_000;
+
         var lines = new List<string>
         {
             "--- Relevant Code Context ---",
@@ -163,19 +167,34 @@ internal static class RolePromptFactory
             string.Empty
         };
 
+        var totalChars = 0;
         foreach (var chunk in result.Chunks)
         {
+            var content = chunk.Content.Length > maxPerChunkChars
+                ? chunk.Content[..maxPerChunkChars] + "\n... (truncated)"
+                : chunk.Content;
+
+            if (totalChars + content.Length > maxTotalChars)
+                break;
+
+            var langTag = chunk.Language switch
+            {
+                "csharp" => "csharp",
+                "javascript" => "javascript",
+                "typescript" => "typescript",
+                "python" => "python",
+                _ => ""
+            };
+
             lines.Add($"### {chunk.FullyQualifiedName}");
             lines.Add($"File: {chunk.FilePath} (lines {chunk.StartLine}-{chunk.EndLine})");
             lines.Add($"Type: {chunk.NodeType} | Language: {chunk.Language} | Relevance: {chunk.SimilarityScore:P0}");
-            lines.Add("```");
-            // Limit content length to avoid overwhelming the prompt
-            var content = chunk.Content.Length > 2000
-                ? chunk.Content[..2000] + "\n... (truncated)"
-                : chunk.Content;
+            lines.Add($"```{langTag}");
             lines.Add(content);
             lines.Add("```");
             lines.Add(string.Empty);
+
+            totalChars += content.Length;
         }
 
         lines.Add("--- End Code Context ---");

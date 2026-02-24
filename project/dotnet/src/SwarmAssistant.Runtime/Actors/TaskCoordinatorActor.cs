@@ -906,11 +906,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         // Query code index asynchronously
         var self = Self;
+        var languages = _options.CodeIndexLanguages is { Length: > 0 }
+            ? _options.CodeIndexLanguages
+            : null;
         _codeIndexActor.Ask<CodeIndexResult>(
             new CodeIndexQuery(
                 Query: query,
                 TopK: _options.CodeIndexMaxChunks,
-                Languages: new[] { "csharp" } // Primary language for now
+                Languages: languages
             ),
             TimeSpan.FromSeconds(10)
         ).ContinueWith(task =>

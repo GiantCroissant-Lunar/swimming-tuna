@@ -215,7 +215,6 @@ class CodeExtractor:
             start_line=start_line,
             end_line=end_line,
             char_count=len(node_text),
-            last_modified=None,  # Will be set from file stats
         )
 
     def _map_node_type(self, ts_type: str, language: LangEnum) -> NodeType:

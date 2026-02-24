@@ -1,10 +1,10 @@
 """Pydantic models for code chunks and indexing operations."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NodeType(str, Enum):
@@ -63,27 +63,35 @@ class CodeChunk(BaseModel):
     start_line: int = Field(..., description="1-based start line number")
     end_line: int = Field(..., description="1-based end line number")
     embedding: Optional[List[float]] = Field(None, description="Vector embedding")
-    last_modified: datetime = Field(default_factory=datetime.utcnow)
+    last_modified: Optional[datetime] = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+    )
     metadata: dict = Field(default_factory=dict, description="Additional metadata")
+    similarity_score: Optional[float] = Field(
+        None, description="Similarity score from vector search"
+    )
 
     # Token counts for debugging
     token_count: Optional[int] = Field(None, description="Token count in content")
     char_count: int = Field(..., description="Character count in content")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "file_path": "src/Services/AuthService.cs",
-                "fully_qualified_name": "SwarmAssistant.Services.AuthService.Authenticate",
-                "node_type": "method",
-                "language": "csharp",
-                "content": "public async Task<AuthResult> AuthenticateAsync(string username, string password)",
-                "start_line": 45,
-                "end_line": 67,
-                "token_count": 128,
-                "char_count": 450,
-            }
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "file_path": "src/Services/AuthService.cs",
+                    "fully_qualified_name": "SwarmAssistant.Services.AuthService.Authenticate",
+                    "node_type": "method",
+                    "language": "csharp",
+                    "content": "public async Task<AuthResult> AuthenticateAsync(string username, string password)",
+                    "start_line": 45,
+                    "end_line": 67,
+                    "token_count": 128,
+                    "char_count": 450,
+                }
+            ]
         }
+    )
 
 
 class IndexRequest(BaseModel):

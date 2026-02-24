@@ -214,6 +214,13 @@ public sealed class RuntimeOptions
     /// When true, includes code context in reviewer prompts.
     /// </summary>
     public bool CodeIndexForReviewer { get; init; } = true;
+
+    /// <summary>
+    /// Languages to include in code index queries.
+    /// When empty or null, no language filter is applied (all indexed languages are searched).
+    /// Example: ["csharp", "javascript", "python"]
+    /// </summary>
+    public string[] CodeIndexLanguages { get; init; } = [];
 }
 
 public sealed class SandboxWrapperOptions
