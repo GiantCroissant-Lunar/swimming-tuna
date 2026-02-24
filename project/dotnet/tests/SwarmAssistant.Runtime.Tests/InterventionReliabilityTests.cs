@@ -453,7 +453,7 @@ public sealed class InterventionReliabilityTests : TestKit
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
                 ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options,
-                null, null, 2, 0)));
+                null, null, null, 2, 0)));
 
         _registries[suffix] = registry;
         return (taskId, coordinator, registry, uiEvents);
