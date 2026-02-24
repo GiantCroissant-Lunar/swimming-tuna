@@ -1,10 +1,20 @@
 using System.Text;
+using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 
 namespace SwarmAssistant.Runtime.Execution;
 
 internal static class SandboxCommandBuilder
 {
+    public static SandboxLevel ParseLevel(string mode) =>
+        (mode ?? "host").Trim().ToLowerInvariant() switch
+        {
+            "host" => SandboxLevel.BareCli,
+            "docker" => SandboxLevel.Container,
+            "apple-container" => SandboxLevel.Container,
+            _ => throw new InvalidOperationException($"Unsupported sandbox mode '{mode}'.")
+        };
+
     public static SandboxCommand Build(
         RuntimeOptions options,
         string command,

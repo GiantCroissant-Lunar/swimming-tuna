@@ -1,3 +1,4 @@
+using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 
@@ -50,5 +51,22 @@ public sealed class SandboxCommandBuilderTests
 
         Assert.Equal("docker", command.Command);
         Assert.Equal(["run", "--rm", "tools-image", "sh", "-lc", "copilot '--prompt' 'hello world'"], command.Args);
+    }
+
+    [Theory]
+    [InlineData("host", SandboxLevel.BareCli)]
+    [InlineData("HOST", SandboxLevel.BareCli)]
+    [InlineData("docker", SandboxLevel.Container)]
+    [InlineData("apple-container", SandboxLevel.Container)]
+    public void ParseLevel_MapsStringToEnum(string mode, SandboxLevel expected)
+    {
+        Assert.Equal(expected, SandboxCommandBuilder.ParseLevel(mode));
+    }
+
+    [Fact]
+    public void ParseLevel_UnknownMode_ThrowsInvalidOperation()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            SandboxCommandBuilder.ParseLevel("unknown-mode"));
     }
 }
