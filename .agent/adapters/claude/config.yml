@@ -2,7 +2,7 @@ name: claude-code
 description: Claude Code CLI adapter
 
 capabilities:
-  hooks: [SessionStart, Stop, PreCompact]
+  hooks: [SessionStart, Stop, PreToolUse]
   mcp: true
   skills: true
   rules: true
@@ -39,4 +39,4 @@ sync:
     mapping:
       session_start.py: SessionStart
       session_end.py: Stop
-      pre_tool_use.py: PreCompact
+      pre_tool_use.py: PreToolUse

@@ -174,15 +174,21 @@ def execute_merge_claude_hooks(
                 command = f'python3 "{hook_path}"'
         else:
             command = f'python3 "{hook_path}"'
-        entry = {"type": "command", "command": command}
+        hook_entry = {"type": "command", "command": command}
+        # Claude Code expects: { "hooks": [ { "type": "command", ... } ] }
+        event_block = {"hooks": [hook_entry]}
 
         if event_name not in settings["hooks"]:
             settings["hooks"][event_name] = []
 
-        # Check for duplicate by comparing command field
-        existing_commands = [e.get("command") for e in settings["hooks"][event_name]]
+        # Check for duplicate by comparing command field in nested hooks
+        existing_commands = [
+            cmd.get("command")
+            for block in settings["hooks"][event_name]
+            for cmd in block.get("hooks", [])
+        ]
         if command not in existing_commands:
-            settings["hooks"][event_name].append(entry)
+            settings["hooks"][event_name].append(event_block)
 
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
