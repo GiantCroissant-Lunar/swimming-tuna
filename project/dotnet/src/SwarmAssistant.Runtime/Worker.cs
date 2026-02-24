@@ -35,6 +35,7 @@ public sealed class Worker : BackgroundService
     private readonly StartupMemoryBootstrapper _startupMemoryBootstrapper;
     private readonly OutcomeTracker _outcomeTracker;
     private readonly IOutcomeReader _outcomeReader;
+    private readonly ITaskExecutionEventWriter? _eventWriter;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -52,7 +53,8 @@ public sealed class Worker : BackgroundService
         TaskRegistry taskRegistry,
         StartupMemoryBootstrapper startupMemoryBootstrapper,
         OutcomeTracker outcomeTracker,
-        IOutcomeReader outcomeReader)
+        IOutcomeReader outcomeReader,
+        ITaskExecutionEventWriter? eventWriter = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -64,6 +66,7 @@ public sealed class Worker : BackgroundService
         _startupMemoryBootstrapper = startupMemoryBootstrapper;
         _outcomeTracker = outcomeTracker;
         _outcomeReader = outcomeReader;
+        _eventWriter = eventWriter;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -189,6 +192,9 @@ public sealed class Worker : BackgroundService
         }
 
         var tracker = _options.ArcadeDbEnabled ? _outcomeTracker : null;
+        var eventRecorder = _eventWriter is not null
+            ? new RuntimeEventRecorder(_eventWriter, _loggerFactory.CreateLogger<RuntimeEventRecorder>())
+            : null;
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -203,7 +209,8 @@ public sealed class Worker : BackgroundService
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
                 tracker,
-                strategyAdvisorActor)),
+                strategyAdvisorActor,
+                eventRecorder)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

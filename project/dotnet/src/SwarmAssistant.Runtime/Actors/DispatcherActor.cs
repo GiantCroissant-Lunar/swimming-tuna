@@ -33,6 +33,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly RuntimeOptions _options;
     private readonly OutcomeTracker? _outcomeTracker;
     private readonly IActorRef? _strategyAdvisorActor;
+    private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -56,7 +57,8 @@ public sealed class DispatcherActor : ReceiveActor
         TaskRegistry taskRegistry,
         IOptions<RuntimeOptions> options,
         OutcomeTracker? outcomeTracker = null,
-        IActorRef? strategyAdvisorActor = null)
+        IActorRef? strategyAdvisorActor = null,
+        RuntimeEventRecorder? eventRecorder = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -71,6 +73,7 @@ public sealed class DispatcherActor : ReceiveActor
         _options = options.Value;
         _outcomeTracker = outcomeTracker;
         _strategyAdvisorActor = strategyAdvisorActor;
+        _eventRecorder = eventRecorder;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -108,6 +111,13 @@ public sealed class DispatcherActor : ReceiveActor
 
         _taskRegistry.Register(message);
 
+        // Persist task.submitted lifecycle event (best-effort, fire-and-forget)
+        if (_eventRecorder is not null)
+        {
+            var registeredRunId = _taskRegistry.GetTask(message.TaskId)?.RunId;
+            _ = _eventRecorder.RecordTaskSubmittedAsync(message.TaskId, registeredRunId, message.Title);
+        }
+
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
         var coordinator = Context.ActorOf(
@@ -130,7 +140,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _outcomeTracker,
                 _strategyAdvisorActor,
                 DefaultMaxRetries,
-                0)),
+                0,
+                _eventRecorder)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -161,6 +172,13 @@ public sealed class DispatcherActor : ReceiveActor
         _taskRegistry.RegisterSubTask(
             message.ChildTaskId, message.Title, message.Description, message.ParentTaskId);
 
+        // Persist task.submitted lifecycle event for sub-task (best-effort, fire-and-forget)
+        if (_eventRecorder is not null)
+        {
+            var registeredRunId = _taskRegistry.GetTask(message.ChildTaskId)?.RunId;
+            _ = _eventRecorder.RecordTaskSubmittedAsync(message.ChildTaskId, registeredRunId, message.Title);
+        }
+
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
         var coordinator = Context.ActorOf(
@@ -183,7 +201,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _outcomeTracker,
                 _strategyAdvisorActor,
                 DefaultMaxRetries,
-                message.Depth)),
+                message.Depth,
+                _eventRecorder)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;
