@@ -495,12 +495,12 @@ public sealed class InterventionReliabilityTests : TestKit
                 uiEvents,
                 registry,
                 Options.Create(_options),
-                outcomeTracker: null,
-                strategyAdvisorActor: null,
-                eventRecorder: null,
-                codeIndexActor: null,
-                projectContext: null,
-                workspaceBranchManager: null)),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null)),
             $"disp-{suffix}");
     }
 
