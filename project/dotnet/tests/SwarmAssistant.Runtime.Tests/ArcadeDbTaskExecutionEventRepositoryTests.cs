@@ -353,7 +353,8 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
             logger ?? NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
     }
 
-    private static TaskExecutionEvent MakeEvent(string eventId, string runId, string taskId, string eventType)
+    private static TaskExecutionEvent MakeEvent(string eventId, string runId, string taskId, string eventType,
+        string? traceId = null, string? spanId = null)
     {
         return new TaskExecutionEvent(
             EventId: eventId,
@@ -363,7 +364,116 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
             Payload: null,
             OccurredAt: DateTimeOffset.UtcNow,
             TaskSequence: 0,
-            RunSequence: 0);
+            RunSequence: 0,
+            TraceId: traceId,
+            SpanId: spanId);
+    }
+
+    [Fact]
+    public async Task AppendAsync_PersistsTraceIdAndSpanId_WhenProvided()
+    {
+        var recorder = new CommandRecorderHandler();
+        using var client = new HttpClient(recorder);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+
+        var evt = MakeEvent("evt-trace", "run-1", "task-1", "role.started",
+            traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+            spanId: "00f067aa0ba902b7");
+        await repository.AppendAsync(evt);
+
+        Assert.True(recorder.CapturedTraceId is "4bf92f3577b34da6a3ce929d0e0e4736",
+            $"Expected traceId to be persisted but got: {recorder.CapturedTraceId}");
+        Assert.True(recorder.CapturedSpanId is "00f067aa0ba902b7",
+            $"Expected spanId to be persisted but got: {recorder.CapturedSpanId}");
+    }
+
+    [Fact]
+    public async Task AppendAsync_PersistsNullTraceIdAndSpanId_WhenNotProvided()
+    {
+        var recorder = new CommandRecorderHandler();
+        using var client = new HttpClient(recorder);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+
+        await repository.AppendAsync(MakeEvent("evt-notrace", "run-1", "task-1", "role.started"));
+
+        Assert.Null(recorder.CapturedTraceId);
+        Assert.Null(recorder.CapturedSpanId);
+    }
+
+    [Fact]
+    public async Task ListByTaskAsync_ReturnsCorrelationFields()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var responseBody = $$"""
+        {
+          "result": [
+            {
+              "eventId": "e-corr-1",
+              "runId": "run-corr",
+              "taskId": "task-corr",
+              "eventType": "role.started",
+              "payload": null,
+              "occurredAt": "{{now.ToString("O")}}",
+              "taskSequence": 1,
+              "runSequence": 1,
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b7"
+            }
+          ]
+        }
+        """;
+
+        var handler = new FixedResponseHandler(responseBody);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+        var events = await repository.ListByTaskAsync("task-corr");
+
+        Assert.Single(events);
+        Assert.Equal("4bf92f3577b34da6a3ce929d0e0e4736", events[0].TraceId);
+        Assert.Equal("00f067aa0ba902b7", events[0].SpanId);
+    }
+
+    [Fact]
+    public async Task ListByTaskAsync_ReturnsMissingCorrelationFieldsAsNull()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var responseBody = $$"""
+        {
+          "result": [
+            {
+              "eventId": "e-no-corr",
+              "runId": "run-1",
+              "taskId": "task-1",
+              "eventType": "task.started",
+              "payload": null,
+              "occurredAt": "{{now.ToString("O")}}",
+              "taskSequence": 1,
+              "runSequence": 1
+            }
+          ]
+        }
+        """;
+
+        var handler = new FixedResponseHandler(responseBody);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+        var events = await repository.ListByTaskAsync("task-1");
+
+        Assert.Single(events);
+        Assert.Null(events[0].TraceId);
+        Assert.Null(events[0].SpanId);
     }
 
     private sealed class CommandRecorderHandler : HttpMessageHandler
@@ -375,6 +485,8 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
         private readonly Dictionary<string, long> _maxRunSequences = new(StringComparer.Ordinal);
 
         public List<long> CapturedTaskSequences => _taskSeqCaptures;
+        public string? CapturedTraceId { get; private set; }
+        public string? CapturedSpanId { get; private set; }
 
         public IReadOnlyList<long> RunSequencesByRun(string runId)
         {
@@ -440,6 +552,20 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
                         rSeqEl.TryGetInt64(out var rSeq))
                     {
                         _runSeqCaptures.Add((runIdEl.GetString() ?? string.Empty, rSeq));
+                    }
+
+                    if (paramsEl.TryGetProperty("traceId", out var traceIdEl))
+                    {
+                        CapturedTraceId = traceIdEl.ValueKind == JsonValueKind.String
+                            ? traceIdEl.GetString()
+                            : null;
+                    }
+
+                    if (paramsEl.TryGetProperty("spanId", out var spanIdEl))
+                    {
+                        CapturedSpanId = spanIdEl.ValueKind == JsonValueKind.String
+                            ? spanIdEl.GetString()
+                            : null;
                     }
                 }
 

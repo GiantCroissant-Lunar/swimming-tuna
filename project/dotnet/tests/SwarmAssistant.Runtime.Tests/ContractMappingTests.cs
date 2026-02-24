@@ -57,7 +57,9 @@ public sealed class ContractMappingTests
             Payload: "{\"role\":\"builder\"}",
             OccurredAt: new DateTimeOffset(2025, 6, 2, 9, 30, 0, TimeSpan.Zero),
             TaskSequence: 3L,
-            RunSequence: 7L);
+            RunSequence: 7L,
+            TraceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+            SpanId: "00f067aa0ba902b7");
 
     [Fact]
     public void TaskExecutionEventDto_MapsAllFields()
@@ -73,6 +75,8 @@ public sealed class ContractMappingTests
         Assert.Equal(evt.OccurredAt, dto.OccurredAt);
         Assert.Equal(3L, dto.TaskSequence);
         Assert.Equal(7L, dto.RunSequence);
+        Assert.Equal("4bf92f3577b34da6a3ce929d0e0e4736", dto.TraceId);
+        Assert.Equal("00f067aa0ba902b7", dto.SpanId);
     }
 
     [Fact]
@@ -165,6 +169,8 @@ public sealed class ContractMappingTests
         Assert.True(root.TryGetProperty("occurredAt", out _), "Missing: occurredAt");
         Assert.True(root.TryGetProperty("taskSequence", out _), "Missing: taskSequence");
         Assert.True(root.TryGetProperty("runSequence", out _), "Missing: runSequence");
-        Assert.Equal(8, root.EnumerateObject().Count());
+        Assert.True(root.TryGetProperty("traceId", out _), "Missing: traceId");
+        Assert.True(root.TryGetProperty("spanId", out _), "Missing: spanId");
+        Assert.Equal(10, root.EnumerateObject().Count());
     }
 }
