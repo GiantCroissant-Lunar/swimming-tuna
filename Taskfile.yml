@@ -38,6 +38,21 @@ tasks:
     cmds:
       - go test -v -race ./...
 
+  test:dotnet:
+    desc: Run .NET runtime tests (includes intervention, graph/telemetry, and lifecycle reliability suites)
+    cmds:
+      - dotnet test project/dotnet/tests/SwarmAssistant.Runtime.Tests/SwarmAssistant.Runtime.Tests.csproj
+
+  test:dotnet:intervention:
+    desc: Run only the intervention reliability test suite
+    cmds:
+      - dotnet test project/dotnet/tests/SwarmAssistant.Runtime.Tests/SwarmAssistant.Runtime.Tests.csproj --filter InterventionReliabilityTests
+
+  test:dotnet:graph:
+    desc: Run only the graph and telemetry event test suite
+    cmds:
+      - dotnet test project/dotnet/tests/SwarmAssistant.Runtime.Tests/SwarmAssistant.Runtime.Tests.csproj --filter GraphAndTelemetryEventTests
+
   build:
     desc: Build the project
     cmds:
