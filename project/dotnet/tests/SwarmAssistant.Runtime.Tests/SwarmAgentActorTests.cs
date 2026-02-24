@@ -36,7 +36,8 @@ public sealed class SwarmAgentActorTests : TestKit
             telemetry,
             registry,
             new[] { SwarmRole.Planner, SwarmRole.Reviewer },
-            default)));
+            default(TimeSpan),
+            null)));
 
         AwaitAssert(() =>
         {
@@ -62,7 +63,8 @@ public sealed class SwarmAgentActorTests : TestKit
             telemetry,
             registry,
             new[] { SwarmRole.Planner, SwarmRole.Researcher },
-            default)));
+            default(TimeSpan),
+            null)));
         AwaitAgentRegistration(registry);
 
         registry.Tell(new ExecuteRoleTask("task-plan", SwarmRole.Planner, "Plan", "desc", null, null));
@@ -93,7 +95,8 @@ public sealed class SwarmAgentActorTests : TestKit
             telemetry,
             registry,
             new[] { SwarmRole.Planner, SwarmRole.Builder, SwarmRole.Reviewer, SwarmRole.Orchestrator },
-            default)));
+            default(TimeSpan),
+            null)));
         AwaitAgentRegistration(registry);
 
         registry.Tell(new ExecuteRoleTask(
@@ -124,7 +127,8 @@ public sealed class SwarmAgentActorTests : TestKit
             telemetry,
             registry,
             new[] { SwarmRole.Builder },
-            default)));
+            default(TimeSpan),
+            null)));
         AwaitAgentRegistration(registry);
 
         agent.Tell(new NegotiationOffer("task-negotiation", SwarmRole.Builder, "peer-a"));
@@ -147,7 +151,8 @@ public sealed class SwarmAgentActorTests : TestKit
             telemetry,
             registry,
             new[] { SwarmRole.Builder },
-            default)));
+            default(TimeSpan),
+            null)));
         AwaitAgentRegistration(registry);
 
         agent.Tell(new HelpRequest("task-help", "Need additional implementation support", "peer-a"));
@@ -243,6 +248,62 @@ public sealed class SwarmAgentActorTests : TestKit
 
         var award = ExpectMsg<ContractNetAward>(TimeSpan.FromSeconds(1));
         Assert.Equal(firstBidder.Ref.Path.ToStringWithoutAddress(), award.AwardedAgent);
+    }
+
+    [Fact]
+    public void Agent_HasUniqueIdentity()
+    {
+        var options = CreateRuntimeOptions();
+        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var telemetry = new RuntimeTelemetry(options, _loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
+
+        const string explicitId = "test-agent-42";
+        _ = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+            options,
+            _loggerFactory,
+            engine,
+            telemetry,
+            registry,
+            new[] { SwarmRole.Planner },
+            default,
+            explicitId)));
+
+        AwaitAssert(() =>
+        {
+            registry.Tell(new GetCapabilitySnapshot());
+            var snapshot = ExpectMsg<CapabilitySnapshot>();
+            Assert.Contains(snapshot.Agents, a => a.AgentId == explicitId);
+        }, TimeSpan.FromSeconds(3), TimeSpan.FromMilliseconds(100));
+    }
+
+    [Fact]
+    public void Agent_GeneratesUniqueIdentityWhenNotProvided()
+    {
+        var options = CreateRuntimeOptions();
+        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var telemetry = new RuntimeTelemetry(options, _loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
+
+        _ = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+            options,
+            _loggerFactory,
+            engine,
+            telemetry,
+            registry,
+            new[] { SwarmRole.Builder },
+            default(TimeSpan),
+            null)));
+
+        AwaitAssert(() =>
+        {
+            registry.Tell(new GetCapabilitySnapshot());
+            var snapshot = ExpectMsg<CapabilitySnapshot>();
+            Assert.Single(snapshot.Agents);
+            Assert.NotNull(snapshot.Agents[0].AgentId);
+            Assert.StartsWith("agent-", snapshot.Agents[0].AgentId!);
+            Assert.Equal(16, snapshot.Agents[0].AgentId!.Length);
+        }, TimeSpan.FromSeconds(3), TimeSpan.FromMilliseconds(100));
     }
 
     private void AwaitAgentRegistration(IActorRef registry)

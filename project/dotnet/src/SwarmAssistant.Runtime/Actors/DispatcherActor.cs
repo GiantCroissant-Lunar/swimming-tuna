@@ -276,7 +276,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _telemetry,
                 _workerActor,
                 capabilities,
-                idleTtl)),
+                idleTtl,
+                agentId)),
             agentId);
 
         _spawnedAgentIds[agent] = agentId;
