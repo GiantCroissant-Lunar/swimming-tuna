@@ -26,6 +26,9 @@ public sealed record AgentCard
     [JsonPropertyName("sandboxLevel")]
     public required int SandboxLevel { get; init; }
 
+    [JsonPropertyName("sandboxRequirements")]
+    public SandboxRequirements? SandboxRequirements { get; init; }
+
     [JsonPropertyName("endpointUrl")]
     public required string EndpointUrl { get; init; }
 }
