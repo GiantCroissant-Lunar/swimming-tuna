@@ -12,5 +12,7 @@ public sealed record TaskExecutionEvent(
     string? Payload,
     DateTimeOffset OccurredAt,
     long TaskSequence,
-    long RunSequence
+    long RunSequence,
+    string? TraceId = null,
+    string? SpanId = null
 );

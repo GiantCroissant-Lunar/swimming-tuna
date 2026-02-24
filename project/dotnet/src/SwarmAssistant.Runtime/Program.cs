@@ -190,7 +190,9 @@ static object MapEvent(SwarmAssistant.Runtime.Tasks.TaskExecutionEvent evt) => n
     payload = evt.Payload,
     occurredAt = evt.OccurredAt,
     taskSequence = evt.TaskSequence,
-    runSequence = evt.RunSequence
+    runSequence = evt.RunSequence,
+    traceId = evt.TraceId,
+    spanId = evt.SpanId
 };
 
 if (options.AgUiEnabled)

@@ -33,6 +33,8 @@ public sealed class ArcadeDbTaskExecutionEventRepository
         "CREATE PROPERTY TaskExecutionEvent.occurredAt IF NOT EXISTS STRING",
         "CREATE PROPERTY TaskExecutionEvent.taskSequence IF NOT EXISTS LONG",
         "CREATE PROPERTY TaskExecutionEvent.runSequence IF NOT EXISTS LONG",
+        "CREATE PROPERTY TaskExecutionEvent.traceId IF NOT EXISTS STRING",
+        "CREATE PROPERTY TaskExecutionEvent.spanId IF NOT EXISTS STRING",
         "CREATE INDEX ON TaskExecutionEvent (eventId) UNIQUE IF NOT EXISTS",
         "CREATE INDEX ON TaskExecutionEvent (taskId, taskSequence) IF NOT EXISTS",
         "CREATE INDEX ON TaskExecutionEvent (runId, runSequence) IF NOT EXISTS"
@@ -102,7 +104,8 @@ public sealed class ArcadeDbTaskExecutionEventRepository
                 "INSERT INTO TaskExecutionEvent SET " +
                 "eventId = :eventId, runId = :runId, taskId = :taskId, " +
                 "eventType = :eventType, payload = :payload, occurredAt = :occurredAt, " +
-                "taskSequence = :taskSequence, runSequence = :runSequence",
+                "taskSequence = :taskSequence, runSequence = :runSequence, " +
+                "traceId = :traceId, spanId = :spanId",
                 new Dictionary<string, object?>
                 {
                     ["eventId"] = evt.EventId,
@@ -112,7 +115,9 @@ public sealed class ArcadeDbTaskExecutionEventRepository
                     ["payload"] = evt.Payload,
                     ["occurredAt"] = evt.OccurredAt.ToString("O"),
                     ["taskSequence"] = taskSeq,
-                    ["runSequence"] = runSeq
+                    ["runSequence"] = runSeq,
+                    ["traceId"] = evt.TraceId,
+                    ["spanId"] = evt.SpanId
                 },
                 cancellationToken);
 
@@ -362,7 +367,9 @@ public sealed class ArcadeDbTaskExecutionEventRepository
             Payload: GetString(item, "payload"),
             OccurredAt: occurredAt ?? DateTimeOffset.UtcNow,
             TaskSequence: taskSequence,
-            RunSequence: runSequence);
+            RunSequence: runSequence,
+            TraceId: GetString(item, "traceId"),
+            SpanId: GetString(item, "spanId"));
     }
 
     private static string? GetString(JsonElement item, string propertyName)
