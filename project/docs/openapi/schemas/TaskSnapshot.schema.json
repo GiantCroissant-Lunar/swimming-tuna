@@ -88,6 +88,13 @@
         "type": "string"
       },
       "description": "Identifiers of child sub-tasks spawned by this task."
+    },
+    "runId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Run identifier this task belongs to."
     }
   }
 }

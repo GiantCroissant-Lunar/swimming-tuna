@@ -46,6 +46,12 @@ namespace SwarmAssistant.Contracts.Generated
         public Dictionary<string, object> Metadata { get; set; }
 
         /// <summary>
+        /// Optional run identifier to associate this task with an existing run.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
+
+        /// <summary>
         /// Optional caller-supplied task identifier. Auto-generated if omitted.
         /// </summary>
         [JsonProperty("taskId")]
@@ -224,6 +230,12 @@ namespace SwarmAssistant.Contracts.Generated
         /// </summary>
         [JsonProperty("reviewOutput")]
         public string ReviewOutput { get; set; }
+
+        /// <summary>
+        /// Run identifier this task belongs to.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
 
         [JsonProperty("status")]
         public TaskStateEnum Status { get; set; }

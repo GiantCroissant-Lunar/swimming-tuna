@@ -150,6 +150,11 @@ components:
           items:
             type: string
           description: Identifiers of child sub-tasks spawned by this task.
+        runId:
+          type:
+            - string
+            - "null"
+          description: Run identifier this task belongs to.
 
     # ── Task summary (lightweight list item) ──────────────────────────────
     TaskSummary:
@@ -317,6 +322,11 @@ components:
             - "null"
           additionalProperties: true
           description: Arbitrary caller-supplied metadata attached to the task.
+        runId:
+          type:
+            - string
+            - "null"
+          description: Optional run identifier to associate this task with an existing run.
 
     # ── A2A task submit response ───────────────────────────────────────────
     A2aTaskSubmitResponse:
