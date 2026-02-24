@@ -15,6 +15,43 @@ internal static class SandboxCommandBuilder
             _ => throw new InvalidOperationException($"Unsupported sandbox mode '{mode}'.")
         };
 
+    public static SandboxCommand BuildForLevel(
+        SandboxLevel level,
+        string command,
+        IReadOnlyList<string> args,
+        string workspacePath,
+        string[] allowedHosts)
+    {
+        return level switch
+        {
+            SandboxLevel.BareCli => new SandboxCommand(command, args.ToArray()),
+            SandboxLevel.OsSandboxed => BuildOsSandboxed(command, args, workspacePath, allowedHosts),
+            SandboxLevel.Container => throw new InvalidOperationException(
+                "Container lifecycle handles command wrapping separately."),
+            _ => throw new InvalidOperationException($"Unsupported sandbox level '{level}'.")
+        };
+    }
+
+    private static SandboxCommand BuildOsSandboxed(
+        string command,
+        IReadOnlyList<string> args,
+        string workspacePath,
+        string[] allowedHosts)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return SandboxExecWrapper.WrapCommand(command, args, workspacePath, allowedHosts);
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return LinuxSandboxWrapper.WrapCommand(command, args, workspacePath, allowedHosts);
+        }
+
+        throw new PlatformNotSupportedException(
+            $"OS-level sandboxing is not supported on {Environment.OSVersion.Platform}.");
+    }
+
     public static SandboxCommand Build(
         RuntimeOptions options,
         string command,

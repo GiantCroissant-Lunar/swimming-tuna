@@ -69,4 +69,53 @@ public sealed class SandboxCommandBuilderTests
         Assert.Throws<InvalidOperationException>(() =>
             SandboxCommandBuilder.ParseLevel("unknown-mode"));
     }
+
+    [Fact]
+    public void BuildForLevel_BareCli_ReturnsOriginalCommand()
+    {
+        var command = SandboxCommandBuilder.BuildForLevel(
+            SandboxLevel.BareCli,
+            "copilot",
+            ["--help"],
+            "/workspace",
+            []);
+
+        Assert.Equal("copilot", command.Command);
+        Assert.Equal(["--help"], command.Args);
+    }
+
+    [Fact]
+    public void BuildForLevel_OsSandboxed_WrapsMacOS()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        var command = SandboxCommandBuilder.BuildForLevel(
+            SandboxLevel.OsSandboxed,
+            "copilot",
+            ["--help"],
+            "/workspace",
+            ["api.github.com"]);
+
+        Assert.Equal("sandbox-exec", command.Command);
+        Assert.Contains("-p", command.Args);
+        Assert.Contains("copilot", command.Args);
+        Assert.Contains("--help", command.Args);
+    }
+
+    [Fact]
+    public void BuildForLevel_Container_ThrowsInvalidOperation()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            SandboxCommandBuilder.BuildForLevel(
+                SandboxLevel.Container,
+                "copilot",
+                ["--help"],
+                "/workspace",
+                []));
+
+        Assert.Contains("Container lifecycle handles command wrapping separately", exception.Message);
+    }
 }
