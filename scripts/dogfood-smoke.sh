@@ -24,9 +24,9 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# Start runtime (CI profile, A2A + AG-UI enabled, no ArcadeDB, no demo task)
+# Start runtime (Development profile, A2A + AG-UI enabled, no ArcadeDB, no demo task)
 # ---------------------------------------------------------------------------
-DOTNET_ENVIRONMENT=CI \
+DOTNET_ENVIRONMENT=Development \
 Runtime__A2AEnabled=true \
 Runtime__AgUiEnabled=true \
 Runtime__AgUiBindUrl="http://0.0.0.0:${RUNTIME_PORT}" \
