@@ -41,6 +41,7 @@ public sealed class ReviewerActor : ReceiveActor
             "reviewer.role.execute",
             taskId: command.TaskId,
             role: command.Role.ToString().ToLowerInvariant(),
+            runId: command.RunId,
             tags: new Dictionary<string, object?>
             {
                 ["actor.name"] = Self.Path.Name,

@@ -7,10 +7,12 @@
   "scripts": {
     "init": "node src/index.mjs init",
     "run": "node src/index.mjs run",
-    "status": "node src/index.mjs status"
+    "status": "node src/index.mjs status",
+    "build:models": "tsc --project tsconfig.json"
   },
   "devDependencies": {
-    "quicktype": "23.2.6"
+    "quicktype": "23.2.6",
+    "typescript": "^5.8.3"
   },
   "engines": {
     "node": ">=20"

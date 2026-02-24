@@ -87,9 +87,12 @@ public sealed class DispatcherActor : ReceiveActor
 
     private void HandleTaskAssigned(TaskAssigned message)
     {
+        var runId = _taskRegistry.GetTask(message.TaskId)?.RunId;
+
         using var activity = _telemetry.StartActivity(
             "dispatcher.task.assigned",
             taskId: message.TaskId,
+            runId: runId,
             tags: new Dictionary<string, object?>
             {
                 ["task.title"] = message.Title,

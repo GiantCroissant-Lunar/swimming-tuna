@@ -6,8 +6,8 @@ using Godot;
 
 public partial class Main : Control
 {
-    private string _recentEventsUrl;
-    private string _actionsUrl;
+    private string _recentEventsUrl = "";
+    private string _actionsUrl = "";
 
     public override void _Ready()
     {
@@ -22,7 +22,7 @@ public partial class Main : Control
         _actionsUrl = $"{agUiUrl}/ag-ui/actions";
 
         GetTree().AutoAcceptQuit = false;
-        DisplayServer.WindowSetMinSize(new Vector2I(960, 640));
+        DisplayServer.WindowSetMinSize(new Vector2I(1280, 800));
         BuildLayout();
         SetupNetworking();
         TriggerPoll();
@@ -37,32 +37,91 @@ public partial class Main : Control
     private bool _recentInFlight;
     private bool _actionInFlight;
 
+    // Header
     private Label? _titleLabel;
     private Label? _statusLabel;
+    private Label? _connectionStatusLabel;
+
+    // Task submission
     private LineEdit? _taskTitleInput;
     private LineEdit? _taskDescriptionInput;
+
+    // Task hierarchy/tree
     private ItemList? _taskList;
+    private Tree? _taskTree;
+
+    // Task details panel
+    private Label? _selectedTaskLabel;
+    private Label? _taskStatusLabel;
+    private Label? _taskRoleLabel;
+    private ProgressBar? _taskProgressBar;
+
+    // HITL Controls
+    private Button? _approveButton;
+    private Button? _rejectButton;
+    private Button? _reworkButton;
+    private Button? _pauseButton;
+    private Button? _resumeButton;
+    private SpinBox? _depthSpinBox;
+    private Button? _setDepthButton;
+
+    // Component container for dynamic UI
     private VBoxContainer? _componentContainer;
     private RichTextLabel? _logOutput;
+
+    // Status widgets
+    private Label? _qualityStatusLabel;
+    private Label? _retryStatusLabel;
+    private Label? _adapterStatusLabel;
 
     private const int TaskIdShortLength = 8;
     private const int TaskTitleMaxLength = 44;
     private const int TaskTitleTruncatedLength = 41;
 
+    // State model for graph and task selection
     private readonly Dictionary<string, int> _taskListTaskIds = [];
     private readonly Dictionary<int, string> _taskListByIndex = [];
+    private readonly Dictionary<string, TaskNodeState> _taskGraphState = [];
+    private readonly List<string> _actionHistory = [];
     private long _lastSequence;
     private string? _activeTaskId;
+    private string? _selectedTaskId;
     private string? _pendingSelectionRefreshTaskId;
     private bool _shuttingDown;
+    private bool _isConnected;
+    private DateTime _lastPollTime = DateTime.MinValue;
+
+    // Task state model
+    private sealed record TaskNodeState
+    {
+        public string TaskId { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string Status { get; init; } = "unknown";
+        public string? ParentId { get; init; }
+        public IReadOnlyList<string> Children { get; init; } = [];
+        public string? Role { get; init; }
+        public string? LastMessage { get; init; }
+        public double Progress { get; init; }
+        public int Depth { get; init; }
+        public string? Quality { get; init; }
+        public int RetryCount { get; init; }
+        public string? Adapter { get; init; }
+        public DateTime UpdatedAt { get; init; }
+    }
 
     public override void _Notification(int what)
     {
         if (what == NotificationWMCloseRequest)
         {
             Shutdown();
-            GetTree().Quit();
+            // Use deferred quit to allow cleanup
+            CallDeferred(nameof(DeferredQuit));
         }
+    }
+
+    private void DeferredQuit()
+    {
+        GetTree().Quit();
     }
 
     public override void _ExitTree()
@@ -75,6 +134,8 @@ public partial class Main : Control
         if (_shuttingDown) return;
         _shuttingDown = true;
 
+        GD.Print("[Shutdown] Cleaning up resources...");
+
         if (_pollTimer is not null)
         {
             _pollTimer.Stop();
@@ -85,133 +146,363 @@ public partial class Main : Control
 
         if (_recentRequest is not null)
         {
-            _recentRequest.CancelRequest();
             _recentRequest.RequestCompleted -= OnRecentRequestCompleted;
-            _recentRequest.QueueFree();
+            _recentRequest.CancelRequest();
             _recentRequest = null;
         }
 
         if (_actionRequest is not null)
         {
-            _actionRequest.CancelRequest();
             _actionRequest.RequestCompleted -= OnActionRequestCompleted;
-            _actionRequest.QueueFree();
+            _actionRequest.CancelRequest();
             _actionRequest = null;
         }
+
+        // Clear collections to help GC
+        _taskListTaskIds.Clear();
+        _taskListByIndex.Clear();
+        _taskGraphState.Clear();
+
+        GD.Print("[Shutdown] Cleanup complete");
     }
 
     private void BuildLayout()
     {
-        var root = new MarginContainer();
-        root.SetAnchorsPreset(LayoutPreset.FullRect);
-        root.OffsetLeft = 16;
-        root.OffsetTop = 16;
-        root.OffsetRight = -16;
-        root.OffsetBottom = -16;
-        AddChild(root);
+        // Main margin container
+        var margin = new MarginContainer();
+        margin.SetAnchorsPreset(LayoutPreset.FullRect);
+        margin.AddThemeConstantOverride("margin_left", 16);
+        margin.AddThemeConstantOverride("margin_top", 16);
+        margin.AddThemeConstantOverride("margin_right", 16);
+        margin.AddThemeConstantOverride("margin_bottom", 16);
+        AddChild(margin);
 
-        var layout = new VBoxContainer();
-        layout.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        layout.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        root.AddChild(layout);
+        // Main vertical split: top content vs log
+        var mainVSplit = new VSplitContainer();
+        mainVSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        mainVSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        mainVSplit.SplitOffsets = [550];
+        margin.AddChild(mainVSplit);
 
-        _titleLabel = new Label
-        {
-            Text = "SwarmAssistant UI",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart
-        };
-        layout.AddChild(_titleLabel);
+        // Top section with header and content
+        var topVBox = new VBoxContainer();
+        topVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        topVBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        mainVSplit.AddChild(topVBox);
 
-        _statusLabel = new Label { Text = "Connecting..." };
-        layout.AddChild(_statusLabel);
+        // Header
+        BuildHeader(topVBox);
 
-        var submitRow = new HFlowContainer();
+        // Content area (horizontal split: task list | details)
+        var contentHSplit = new HSplitContainer();
+        contentHSplit.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        contentHSplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        contentHSplit.SplitOffsets = [350];
+        topVBox.AddChild(contentHSplit);
+
+        // Left: Task tree and list
+        BuildLeftPanel(contentHSplit);
+
+        // Right: Details and controls
+        BuildRightPanel(contentHSplit);
+
+        // Bottom: Log
+        BuildLogPanel(mainVSplit);
+    }
+
+    private void BuildHeader(VBoxContainer parent)
+    {
+        var header = new HBoxContainer();
+        header.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        parent.AddChild(header);
+
+        _titleLabel = new Label();
+        _titleLabel.Text = "SwarmAssistant Operator Control Surface";
+        _titleLabel.AddThemeFontSizeOverride("font_size", 16);
+        header.AddChild(_titleLabel);
+
+        var spacer = new Control();
+        spacer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        header.AddChild(spacer);
+
+        var statusVBox = new VBoxContainer();
+        header.AddChild(statusVBox);
+
+        _connectionStatusLabel = new Label();
+        _connectionStatusLabel.Text = "● Disconnected";
+        _connectionStatusLabel.HorizontalAlignment = HorizontalAlignment.Right;
+        _connectionStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.2f, 0.2f));
+        statusVBox.AddChild(_connectionStatusLabel);
+
+        _statusLabel = new Label();
+        _statusLabel.Text = "Initializing...";
+        _statusLabel.HorizontalAlignment = HorizontalAlignment.Right;
+        statusVBox.AddChild(_statusLabel);
+
+        // Separator
+        parent.AddChild(new HSeparator());
+
+        // Task submission row
+        var submitRow = new HBoxContainer();
+        submitRow.AddThemeConstantOverride("separation", 8);
         submitRow.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        layout.AddChild(submitRow);
+        parent.AddChild(submitRow);
 
-        _taskTitleInput = new LineEdit
-        {
-            PlaceholderText = "Task title",
-            CustomMinimumSize = new Vector2(240, 0),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-        };
+        _taskTitleInput = new LineEdit();
+        _taskTitleInput.PlaceholderText = "Task title";
+        _taskTitleInput.CustomMinimumSize = new Vector2(200, 0);
+        _taskTitleInput.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         submitRow.AddChild(_taskTitleInput);
 
-        _taskDescriptionInput = new LineEdit
-        {
-            PlaceholderText = "Task description",
-            CustomMinimumSize = new Vector2(320, 0),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-        };
+        _taskDescriptionInput = new LineEdit();
+        _taskDescriptionInput.PlaceholderText = "Task description";
+        _taskDescriptionInput.CustomMinimumSize = new Vector2(280, 0);
+        _taskDescriptionInput.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         submitRow.AddChild(_taskDescriptionInput);
 
-        var submitButton = new Button { Text = "Submit Task" };
-        submitButton.Pressed += OnSubmitTaskPressed;
-        submitRow.AddChild(submitButton);
+        var submitBtn = new Button();
+        submitBtn.Text = "Submit Task";
+        submitBtn.Pressed += OnSubmitTaskPressed;
+        submitRow.AddChild(submitBtn);
 
-        var actionRow = new HFlowContainer();
-        actionRow.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        layout.AddChild(actionRow);
+        var snapshotBtn = new Button();
+        snapshotBtn.Text = "Snapshot";
+        snapshotBtn.Pressed += OnRequestSnapshotPressed;
+        submitRow.AddChild(snapshotBtn);
 
-        var snapshotButton = new Button { Text = "Request Snapshot" };
-        snapshotButton.Pressed += OnRequestSnapshotPressed;
-        actionRow.AddChild(snapshotButton);
+        var refreshBtn = new Button();
+        refreshBtn.Text = "Refresh";
+        refreshBtn.Pressed += OnRefreshSurfacePressed;
+        submitRow.AddChild(refreshBtn);
 
-        var refreshButton = new Button { Text = "Refresh Surface" };
-        refreshButton.Pressed += OnRefreshSurfacePressed;
-        actionRow.AddChild(refreshButton);
+        var memoryBtn = new Button();
+        memoryBtn.Text = "Memory";
+        memoryBtn.Pressed += OnLoadMemoryPressed;
+        submitRow.AddChild(memoryBtn);
 
-        var loadMemoryButton = new Button { Text = "Load Memory" };
-        loadMemoryButton.Pressed += OnLoadMemoryPressed;
-        actionRow.AddChild(loadMemoryButton);
+        parent.AddChild(new HSeparator());
+    }
 
-        var bodySplit = new HSplitContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill
-        };
-        layout.AddChild(bodySplit);
+    private void BuildLeftPanel(SplitContainer parent)
+    {
+        var leftScroll = new ScrollContainer();
+        leftScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        leftScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        parent.AddChild(leftScroll);
 
-        var taskPane = new VBoxContainer
-        {
-            CustomMinimumSize = new Vector2(320, 0),
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill
-        };
-        bodySplit.AddChild(taskPane);
+        var leftVBox = new VBoxContainer();
+        leftVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        leftVBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        leftScroll.AddChild(leftVBox);
 
-        var taskPaneLabel = new Label { Text = "Tasks" };
-        taskPane.AddChild(taskPaneLabel);
+        // Tree label
+        var treeLabel = new Label();
+        treeLabel.Text = "Task Hierarchy";
+        treeLabel.AddThemeFontSizeOverride("font_size", 14);
+        treeLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        leftVBox.AddChild(treeLabel);
 
-        _taskList = new ItemList
-        {
-            AllowReselect = true,
-            SelectMode = ItemList.SelectModeEnum.Single,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill
-        };
+        // Tree
+        _taskTree = new Tree();
+        _taskTree.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _taskTree.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _taskTree.CustomMinimumSize = new Vector2(0, 200);
+        _taskTree.HideRoot = true;
+        _taskTree.ItemSelected += OnTaskTreeItemSelected;
+        leftVBox.AddChild(_taskTree);
+
+        leftVBox.AddChild(new HSeparator());
+
+        // List label
+        var listLabel = new Label();
+        listLabel.Text = "Active Tasks";
+        listLabel.AddThemeFontSizeOverride("font_size", 14);
+        listLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        leftVBox.AddChild(listLabel);
+
+        // Task list
+        _taskList = new ItemList();
+        _taskList.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _taskList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _taskList.CustomMinimumSize = new Vector2(0, 150);
+        _taskList.AllowReselect = true;
+        _taskList.SelectMode = ItemList.SelectModeEnum.Single;
         _taskList.ItemSelected += OnTaskListItemSelected;
-        taskPane.AddChild(_taskList);
+        leftVBox.AddChild(_taskList);
+    }
 
-        var detailsPane = new VBoxContainer
-        {
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill
-        };
-        bodySplit.AddChild(detailsPane);
+    private void BuildRightPanel(SplitContainer parent)
+    {
+        var rightScroll = new ScrollContainer();
+        rightScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        rightScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        parent.AddChild(rightScroll);
+
+        var rightVBox = new VBoxContainer();
+        rightVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        rightVBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        rightScroll.AddChild(rightVBox);
+
+        // Task Details Section
+        var detailsLabel = new Label();
+        detailsLabel.Text = "Task Details";
+        detailsLabel.AddThemeFontSizeOverride("font_size", 16);
+        detailsLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        rightVBox.AddChild(detailsLabel);
+
+        _selectedTaskLabel = new Label();
+        _selectedTaskLabel.Text = "No task selected";
+        _selectedTaskLabel.AddThemeFontSizeOverride("font_size", 14);
+        rightVBox.AddChild(_selectedTaskLabel);
+
+        _taskStatusLabel = new Label();
+        _taskStatusLabel.Text = "Status: -";
+        _taskStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
+        rightVBox.AddChild(_taskStatusLabel);
+
+        _taskRoleLabel = new Label();
+        _taskRoleLabel.Text = "Role: -";
+        _taskRoleLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
+        rightVBox.AddChild(_taskRoleLabel);
+
+        _taskProgressBar = new ProgressBar();
+        _taskProgressBar.MinValue = 0;
+        _taskProgressBar.MaxValue = 100;
+        _taskProgressBar.Value = 0;
+        _taskProgressBar.CustomMinimumSize = new Vector2(0, 20);
+        rightVBox.AddChild(_taskProgressBar);
+
+        rightVBox.AddChild(new HSeparator());
+
+        // HITL Controls
+        var hitlLabel = new Label();
+        hitlLabel.Text = "HITL Controls";
+        hitlLabel.AddThemeFontSizeOverride("font_size", 16);
+        hitlLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        rightVBox.AddChild(hitlLabel);
+
+        var hitlRow1 = new HBoxContainer();
+        hitlRow1.AddThemeConstantOverride("separation", 8);
+        rightVBox.AddChild(hitlRow1);
+
+        _approveButton = new Button();
+        _approveButton.Text = "Approve";
+        _approveButton.Disabled = true;
+        _approveButton.Pressed += () => SendHitlAction("approve");
+        hitlRow1.AddChild(_approveButton);
+
+        _rejectButton = new Button();
+        _rejectButton.Text = "Reject";
+        _rejectButton.Disabled = true;
+        _rejectButton.Pressed += () => SendHitlAction("reject");
+        hitlRow1.AddChild(_rejectButton);
+
+        _reworkButton = new Button();
+        _reworkButton.Text = "Rework";
+        _reworkButton.Disabled = true;
+        _reworkButton.Pressed += () => SendHitlAction("rework");
+        hitlRow1.AddChild(_reworkButton);
+
+        var hitlRow2 = new HBoxContainer();
+        hitlRow2.AddThemeConstantOverride("separation", 8);
+        rightVBox.AddChild(hitlRow2);
+
+        _pauseButton = new Button();
+        _pauseButton.Text = "Pause";
+        _pauseButton.Disabled = true;
+        _pauseButton.Pressed += () => SendHitlAction("pause");
+        hitlRow2.AddChild(_pauseButton);
+
+        _resumeButton = new Button();
+        _resumeButton.Text = "Resume";
+        _resumeButton.Disabled = true;
+        _resumeButton.Pressed += () => SendHitlAction("resume");
+        hitlRow2.AddChild(_resumeButton);
+
+        // Depth control
+        var depthRow = new HBoxContainer();
+        depthRow.AddThemeConstantOverride("separation", 8);
+        rightVBox.AddChild(depthRow);
+
+        var depthLabel = new Label();
+        depthLabel.Text = "Max Depth:";
+        depthRow.AddChild(depthLabel);
+
+        _depthSpinBox = new SpinBox();
+        _depthSpinBox.MinValue = 1;
+        _depthSpinBox.MaxValue = 10;
+        _depthSpinBox.Value = 3;
+        _depthSpinBox.CustomMinimumSize = new Vector2(80, 0);
+        depthRow.AddChild(_depthSpinBox);
+
+        _setDepthButton = new Button();
+        _setDepthButton.Text = "Set Depth";
+        _setDepthButton.Disabled = true;
+        _setDepthButton.Pressed += OnSetDepthPressed;
+        depthRow.AddChild(_setDepthButton);
+
+        rightVBox.AddChild(new HSeparator());
+
+        // Status Widgets
+        var widgetsLabel = new Label();
+        widgetsLabel.Text = "Status Widgets";
+        widgetsLabel.AddThemeFontSizeOverride("font_size", 16);
+        widgetsLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        rightVBox.AddChild(widgetsLabel);
+
+        _qualityStatusLabel = new Label();
+        _qualityStatusLabel.Text = "Quality: -";
+        _qualityStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
+        rightVBox.AddChild(_qualityStatusLabel);
+
+        _retryStatusLabel = new Label();
+        _retryStatusLabel.Text = "Retries: 0";
+        _retryStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
+        rightVBox.AddChild(_retryStatusLabel);
+
+        _adapterStatusLabel = new Label();
+        _adapterStatusLabel.Text = "Adapter: -";
+        _adapterStatusLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
+        rightVBox.AddChild(_adapterStatusLabel);
+
+        rightVBox.AddChild(new HSeparator());
+
+        // Dynamic Components
+        var dynLabel = new Label();
+        dynLabel.Text = "Dynamic Components";
+        dynLabel.AddThemeFontSizeOverride("font_size", 16);
+        dynLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        rightVBox.AddChild(dynLabel);
 
         _componentContainer = new VBoxContainer();
         _componentContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _componentContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        detailsPane.AddChild(_componentContainer);
+        rightVBox.AddChild(_componentContainer);
+    }
 
-        _logOutput = new RichTextLabel
-        {
-            CustomMinimumSize = new Vector2(0, 280),
-            ScrollActive = true,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill
-        };
-        detailsPane.AddChild(_logOutput);
+    private void BuildLogPanel(SplitContainer parent)
+    {
+        var logPanel = new PanelContainer();
+        logPanel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        parent.AddChild(logPanel);
+
+        var logVBox = new VBoxContainer();
+        logVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        logVBox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        logPanel.AddChild(logVBox);
+
+        var logLabel = new Label();
+        logLabel.Text = "Event Log";
+        logLabel.AddThemeFontSizeOverride("font_size", 14);
+        logLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.9f));
+        logVBox.AddChild(logLabel);
+
+        _logOutput = new RichTextLabel();
+        _logOutput.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _logOutput.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _logOutput.ScrollActive = true;
+        _logOutput.BbcodeEnabled = true;
+        _logOutput.CustomMinimumSize = new Vector2(0, 150);
+        logVBox.AddChild(_logOutput);
     }
 
     private void SetupNetworking()
@@ -224,12 +515,10 @@ public partial class Main : Control
         AddChild(_actionRequest);
         _actionRequest.RequestCompleted += OnActionRequestCompleted;
 
-        _pollTimer = new Timer
-        {
-            WaitTime = Math.Max(0.2, PollIntervalSeconds),
-            Autostart = true,
-            OneShot = false
-        };
+        _pollTimer = new Timer();
+        _pollTimer.WaitTime = Math.Max(0.2, PollIntervalSeconds);
+        _pollTimer.Autostart = true;
+        _pollTimer.OneShot = false;
         AddChild(_pollTimer);
         _pollTimer.Timeout += TriggerPoll;
     }
@@ -242,12 +531,14 @@ public partial class Main : Control
         }
 
         _recentInFlight = true;
+        _lastPollTime = DateTime.UtcNow;
         var url = $"{_recentEventsUrl}?count={Math.Clamp(RecentEventCount, 10, 500)}";
         var error = _recentRequest.Request(url);
         if (error != Error.Ok)
         {
             _recentInFlight = false;
             AppendLog($"[error] Poll request failed: {error}");
+            UpdateConnectionStatus(false);
         }
     }
 
@@ -255,13 +546,16 @@ public partial class Main : Control
     {
         _recentInFlight = false;
         if (_shuttingDown) return;
+
         if (result != (long)HttpRequest.Result.Success || responseCode < 200 || responseCode > 299)
         {
-            _statusLabel!.Text = "Status: disconnected";
+            UpdateConnectionStatus(false);
+            _statusLabel!.Text = $"Status: disconnected (HTTP {responseCode})";
             AppendLog($"[warn] Poll failed result={result} http={responseCode}");
             return;
         }
 
+        UpdateConnectionStatus(true);
         _statusLabel!.Text = "Status: connected";
 
         try
@@ -295,6 +589,31 @@ public partial class Main : Control
         {
             AppendLog($"[error] Invalid poll payload: {exception.Message}");
         }
+    }
+
+    private void UpdateConnectionStatus(bool connected)
+    {
+        _isConnected = connected;
+        if (_connectionStatusLabel is not null)
+        {
+            _connectionStatusLabel.Text = connected ? "● Connected" : "● Disconnected";
+            _connectionStatusLabel.AddThemeColorOverride("font_color",
+                connected ? new Color(0.2f, 0.8f, 0.2f) : new Color(0.8f, 0.2f, 0.2f));
+        }
+
+        UpdateHitlControlsState();
+    }
+
+    private void UpdateHitlControlsState()
+    {
+        var hasSelection = !string.IsNullOrWhiteSpace(_selectedTaskId) && _isConnected;
+
+        if (_approveButton is not null) _approveButton.Disabled = !hasSelection;
+        if (_rejectButton is not null) _rejectButton.Disabled = !hasSelection;
+        if (_reworkButton is not null) _reworkButton.Disabled = !hasSelection;
+        if (_pauseButton is not null) _pauseButton.Disabled = !hasSelection;
+        if (_resumeButton is not null) _resumeButton.Disabled = !hasSelection;
+        if (_setDepthButton is not null) _setDepthButton.Disabled = !hasSelection;
     }
 
     private void ApplyEnvelope(JsonElement envelope)
@@ -358,6 +677,7 @@ public partial class Main : Control
                         : string.Empty;
                     UpsertTaskListItem(_activeTaskId!, title, "queued", updatedAt: null);
                     SelectTaskInList(_activeTaskId!);
+                    UpdateTaskGraphState(_activeTaskId!, title, "queued", null);
                 }
                 break;
 
@@ -410,10 +730,46 @@ public partial class Main : Control
                             ? updatedAtElement.ToString()
                             : null;
 
+                        var role = taskElement.TryGetProperty("role", out var roleElement) &&
+                                   roleElement.ValueKind == JsonValueKind.String
+                            ? roleElement.GetString()
+                            : null;
+
+                        var quality = taskElement.TryGetProperty("quality", out var qualityElement) &&
+                                      qualityElement.ValueKind == JsonValueKind.String
+                            ? qualityElement.GetString()
+                            : null;
+
+                        var adapter = taskElement.TryGetProperty("adapter", out var adapterElement) &&
+                                      adapterElement.ValueKind == JsonValueKind.String
+                            ? adapterElement.GetString()
+                            : null;
+
+                        var retryCount = taskElement.TryGetProperty("retryCount", out var retryElement) &&
+                                         retryElement.ValueKind == JsonValueKind.Number
+                            ? retryElement.GetInt32()
+                            : 0;
+
+                        var progress = taskElement.TryGetProperty("progress", out var progressElement) &&
+                                       progressElement.ValueKind == JsonValueKind.Number
+                            ? progressElement.GetDouble()
+                            : 0.0;
+                        var parentTaskId = ReadOptionalString(taskElement, "parentTaskId")
+                            ?? ReadOptionalString(taskElement, "parentId");
+                        var childTaskIds = ReadOptionalStringArray(taskElement, "childTaskIds")
+                            ?? ReadOptionalStringArray(taskElement, "children");
+
                         if (!string.IsNullOrWhiteSpace(_activeTaskId))
                         {
                             UpsertTaskListItem(_activeTaskId!, title, status, updatedAt);
                             SelectTaskInList(_activeTaskId!);
+                            UpdateTaskGraphState(_activeTaskId!, title, status, updatedAt, role, quality, adapter, retryCount,
+                                progress, parentTaskId, childTaskIds);
+
+                            if (_activeTaskId == _selectedTaskId)
+                            {
+                                UpdateTaskDetailsPanel(_activeTaskId!, status, role, quality, adapter, retryCount, progress);
+                            }
                         }
                     }
                 }
@@ -461,6 +817,125 @@ public partial class Main : Control
                 AppendLog($"[memory-bootstrap] failed error={error}");
                 break;
         }
+    }
+
+    private void UpdateTaskGraphState(string taskId, string title, string status, string? updatedAt,
+        string? role = null, string? quality = null, string? adapter = null,
+        int retryCount = 0, double progress = 0.0, string? parentId = null,
+        IReadOnlyList<string>? children = null)
+    {
+        var existing = _taskGraphState.GetValueOrDefault(taskId) ?? new TaskNodeState { TaskId = taskId };
+
+        var parsedDate = updatedAt is not null
+            && DateTime.TryParse(updatedAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal, out var d)
+            ? d
+            : DateTime.UtcNow;
+
+        _taskGraphState[taskId] = existing with
+        {
+            Title = title,
+            Status = status,
+            UpdatedAt = parsedDate,
+            Role = role ?? existing.Role,
+            Quality = quality ?? existing.Quality,
+            Adapter = adapter ?? existing.Adapter,
+            RetryCount = retryCount,
+            Progress = progress,
+            ParentId = parentId ?? existing.ParentId,
+            Children = children ?? existing.Children
+        };
+
+        RefreshTaskTree();
+    }
+
+    private void RefreshTaskTree()
+    {
+        if (_taskTree is null) return;
+
+        _taskTree.Clear();
+        var root = _taskTree.CreateItem();
+        var treeItemsByTaskId = new Dictionary<string, TreeItem>();
+
+        TreeItem EnsureTreeItem(string taskId, HashSet<string>? ancestry = null)
+        {
+            if (treeItemsByTaskId.TryGetValue(taskId, out var existingItem))
+            {
+                return existingItem;
+            }
+
+            if (!_taskGraphState.TryGetValue(taskId, out var state))
+            {
+                GD.PushWarning($"[task-tree] Missing state for taskId={taskId}; attaching to root");
+                return root;
+            }
+
+            ancestry ??= new HashSet<string>(StringComparer.Ordinal);
+            if (!ancestry.Add(taskId))
+            {
+                GD.PushWarning($"[task-tree] Cycle detected at taskId={taskId}; attaching to root");
+                return root;
+            }
+
+            var parentItem = root;
+            if (!string.IsNullOrWhiteSpace(state.ParentId) &&
+                !string.Equals(state.ParentId, state.TaskId, StringComparison.Ordinal))
+            {
+                parentItem = EnsureTreeItem(state.ParentId, ancestry);
+            }
+
+            var item = _taskTree.CreateItem(parentItem);
+            var shortId = state.TaskId.Length > TaskIdShortLength ? state.TaskId[..TaskIdShortLength] : state.TaskId;
+            item.SetText(0, $"[{state.Status}] {shortId} - {state.Title}");
+
+            var color = state.Status switch
+            {
+                "completed" => new Color(0.2f, 0.8f, 0.2f),
+                "failed" => new Color(0.8f, 0.2f, 0.2f),
+                "paused" => new Color(0.8f, 0.8f, 0.2f),
+                "running" => new Color(0.2f, 0.6f, 0.8f),
+                "queued" => new Color(0.6f, 0.6f, 0.6f),
+                _ => new Color(0.8f, 0.8f, 0.8f)
+            };
+            item.SetCustomColor(0, color);
+            item.SetMetadata(0, state.TaskId);
+            treeItemsByTaskId[state.TaskId] = item;
+            ancestry.Remove(taskId);
+            return item;
+        }
+
+        foreach (var taskId in _taskGraphState.Keys)
+        {
+            EnsureTreeItem(taskId);
+        }
+    }
+
+    private void UpdateTaskDetailsPanel(string taskId, string status, string? role,
+        string? quality, string? adapter, int retryCount, double progress)
+    {
+        if (_selectedTaskLabel is not null)
+        {
+            var shortId = taskId.Length > 16 ? taskId[..16] : taskId;
+            _selectedTaskLabel.Text = $"Task: {shortId}...";
+        }
+
+        if (_taskStatusLabel is not null)
+            _taskStatusLabel.Text = $"Status: {status}";
+
+        if (_taskRoleLabel is not null)
+            _taskRoleLabel.Text = $"Role: {role ?? "-"}";
+
+        if (_taskProgressBar is not null)
+            _taskProgressBar.Value = progress * 100;
+
+        if (_qualityStatusLabel is not null)
+            _qualityStatusLabel.Text = $"Quality: {quality ?? "-"}";
+
+        if (_retryStatusLabel is not null)
+            _retryStatusLabel.Text = $"Retries: {retryCount}";
+
+        if (_adapterStatusLabel is not null)
+            _adapterStatusLabel.Text = $"Adapter: {adapter ?? "-"}";
     }
 
     private void RenderSurface(JsonElement a2ui)
@@ -521,6 +996,45 @@ public partial class Main : Control
         SendAction(actionId);
     }
 
+    private void SendHitlAction(string actionType)
+    {
+        if (string.IsNullOrWhiteSpace(_selectedTaskId))
+        {
+            AppendLog("[warn] No task selected for HITL action");
+            return;
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["action"] = actionType,
+            ["timestamp"] = DateTimeOffset.UtcNow.ToString("O")
+        };
+
+        SendAction($"hitl_{actionType}", payload, _selectedTaskId);
+        var shortId = _selectedTaskId.Length > 8 ? _selectedTaskId[..8] : _selectedTaskId;
+        AppendLog($"[HITL] Sent {actionType} for task {shortId}");
+    }
+
+    private void OnSetDepthPressed()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedTaskId) || _depthSpinBox is null)
+        {
+            AppendLog("[warn] No task selected or depth not set");
+            return;
+        }
+
+        var depth = (int)_depthSpinBox.Value;
+        var payload = new Dictionary<string, object?>
+        {
+            ["maxDepth"] = depth,
+            ["timestamp"] = DateTimeOffset.UtcNow.ToString("O")
+        };
+
+        SendAction("set_depth", payload, _selectedTaskId);
+        var shortId = _selectedTaskId.Length > 8 ? _selectedTaskId[..8] : _selectedTaskId;
+        AppendLog($"[HITL] Set depth to {depth} for task {shortId}");
+    }
+
     private void OnSubmitTaskPressed()
     {
         var title = _taskTitleInput?.Text?.Trim() ?? string.Empty;
@@ -576,10 +1090,40 @@ public partial class Main : Control
             return;
         }
 
-        _activeTaskId = taskId;
-        _pendingSelectionRefreshTaskId = taskId;
-        _statusLabel!.Text = $"Status: selected ({taskId})";
+        SelectTask(taskId);
+    }
 
+    private void OnTaskTreeItemSelected()
+    {
+        if (_taskTree is null) return;
+
+        var selected = _taskTree.GetSelected();
+        if (selected is null) return;
+
+        var taskId = selected.GetMetadata(0).AsString();
+        if (string.IsNullOrWhiteSpace(taskId)) return;
+
+        SelectTask(taskId);
+    }
+
+    private void SelectTask(string taskId)
+    {
+        _activeTaskId = taskId;
+        _selectedTaskId = taskId;
+        _pendingSelectionRefreshTaskId = taskId;
+        var shortId = taskId.Length > 8 ? taskId[..8] : taskId;
+        _statusLabel!.Text = $"Status: selected ({shortId})";
+
+        if (_taskGraphState.TryGetValue(taskId, out var state))
+        {
+            UpdateTaskDetailsPanel(taskId, state.Status, state.Role, state.Quality, state.Adapter, state.RetryCount, state.Progress);
+        }
+        else
+        {
+            UpdateTaskDetailsPanel(taskId, "unknown", null, null, null, 0, 0);
+        }
+
+        UpdateHitlControlsState();
         SendAction("request_snapshot", taskId: taskId);
     }
 
@@ -618,6 +1162,9 @@ public partial class Main : Control
             _actionInFlight = false;
             AppendLog($"[error] Action request failed: {error}");
         }
+
+        _actionHistory.Add($"[{DateTimeOffset.UtcNow:HH:mm:ss}] {actionId}");
+        if (_actionHistory.Count > 50) _actionHistory.RemoveAt(0);
     }
 
     private void OnActionRequestCompleted(long result, long responseCode, string[] headers, byte[] body)
@@ -639,15 +1186,39 @@ public partial class Main : Control
                     {
                         _activeTaskId = taskIdElement.GetString();
                     }
+
+                    if (document.RootElement.TryGetProperty("status", out var statusElement) &&
+                        statusElement.ValueKind == JsonValueKind.String)
+                    {
+                        var status = statusElement.GetString();
+                        if (status == "accepted")
+                        {
+                            AppendLog($"[action] ✓ Accepted (http={responseCode})");
+                        }
+                        else if (status == "rejected")
+                        {
+                            AppendLog($"[action] ✗ Rejected (http={responseCode})");
+                        }
+                        else
+                        {
+                            AppendLog($"[action] Sent (http={responseCode}, status={status})");
+                        }
+                    }
+                    else
+                    {
+                        AppendLog($"[action] Sent (http={responseCode})");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    // Non-JSON response (e.g. plain text or empty body) — not an error.
                     GD.Print($"[action] Could not parse response body as JSON: {ex.Message}");
+                    AppendLog($"[action] Sent (http={responseCode})");
                 }
             }
-
-            AppendLog($"[action] Sent (http={responseCode}).");
+            else
+            {
+                AppendLog($"[action] Sent (http={responseCode})");
+            }
 
             if (!string.IsNullOrWhiteSpace(_pendingSelectionRefreshTaskId))
             {
@@ -659,7 +1230,20 @@ public partial class Main : Control
             return;
         }
 
-        AppendLog($"[warn] Action response result={result} http={responseCode} body={responseBody}");
+        var errorMsg = responseCode switch
+        {
+            400 => "Bad request - invalid action payload",
+            401 => "Unauthorized - authentication required",
+            403 => "Forbidden - action not permitted",
+            404 => "Not found - task or endpoint unavailable",
+            409 => "Conflict - task in incompatible state",
+            429 => "Rate limited - too many requests",
+            500 => "Server error - runtime failure",
+            503 => "Service unavailable - runtime disconnected",
+            _ => $"Unknown error (HTTP {responseCode})"
+        };
+
+        AppendLog($"[error] Action failed: {errorMsg} result={result} body={responseBody[..Math.Min(200, responseBody.Length)]}");
     }
 
     private void AppendLog(string line)
@@ -669,7 +1253,16 @@ public partial class Main : Control
             return;
         }
 
-        _logOutput.AppendText($"{line}\n");
+        var coloredLine = line switch
+        {
+            var s when s.StartsWith("[error]") => $"[color=red]{line}[/color]",
+            var s when s.StartsWith("[warn]") => $"[color=yellow]{line}[/color]",
+            var s when s.StartsWith("[action]") && s.Contains("✓") => $"[color=green]{line}[/color]",
+            var s when s.StartsWith("[HITL]") => $"[color=cyan]{line}[/color]",
+            _ => line
+        };
+
+        _logOutput.AppendText($"{coloredLine}\n");
     }
 
     private void ReplaceTaskListFromMemory(JsonElement items)
@@ -710,11 +1303,17 @@ public partial class Main : Control
             var updatedAt = item.TryGetProperty("updatedAt", out var updatedAtElement)
                 ? updatedAtElement.ToString()
                 : null;
+            var parentTaskId = ReadOptionalString(item, "parentTaskId")
+                ?? ReadOptionalString(item, "parentId");
+            var childTaskIds = ReadOptionalStringArray(item, "childTaskIds")
+                ?? ReadOptionalStringArray(item, "children");
 
             var idx = _taskList.ItemCount;
             _taskListTaskIds[taskId] = idx;
             _taskListByIndex[idx] = taskId;
             _taskList.AddItem(FormatTaskListItem(taskId, title, status, updatedAt));
+
+            UpdateTaskGraphState(taskId, title, status, updatedAt, parentId: parentTaskId, children: childTaskIds);
 
             if (string.IsNullOrWhiteSpace(_activeTaskId))
             {
@@ -763,6 +1362,48 @@ public partial class Main : Control
         }
 
         _taskList.Select(index);
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement arrayElement)
+    {
+        var values = new List<string>();
+        foreach (var element in arrayElement.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = element.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
+    }
+
+    private static string? ReadOptionalString(JsonElement objectElement, string propertyName)
+    {
+        if (objectElement.TryGetProperty(propertyName, out var propertyElement) &&
+            propertyElement.ValueKind == JsonValueKind.String)
+        {
+            return propertyElement.GetString();
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<string>? ReadOptionalStringArray(JsonElement objectElement, string propertyName)
+    {
+        if (objectElement.TryGetProperty(propertyName, out var propertyElement) &&
+            propertyElement.ValueKind == JsonValueKind.Array)
+        {
+            return ReadStringArray(propertyElement);
+        }
+
+        return null;
     }
 
     private static string FormatTaskListItem(string taskId, string title, string status, string? updatedAt)

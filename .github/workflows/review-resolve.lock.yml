@@ -23,10 +23,15 @@
 #
 # Address automated review comments by creating a follow-up PR with fixes
 #
-# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"d273553e56653abc6750116a452d3855c95ffc40a482f9144fcb4e37d26f3c5c","compiler_version":"v0.48.4"}
+# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"a568bceae70ed20474d2506e9ac6010dc9ee60667a1fc1f93e9813f12b0c322b","compiler_version":"v0.48.4"}
 
 name: "Review Comment Resolver"
 "on":
+  # bots: # Bots processed as bot check in pre-activation job
+  # - gemini-code-assist[bot] # Bots processed as bot check in pre-activation job
+  # - coderabbitai[bot] # Bots processed as bot check in pre-activation job
+  # - github-actions[bot] # Bots processed as bot check in pre-activation job
+  # - copilot[bot] # Bots processed as bot check in pre-activation job
   pull_request_review:
     types:
     - submitted
@@ -1140,6 +1145,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_REQUIRED_ROLES: admin,maintainer,write
+          GH_AW_ALLOWED_BOTS: gemini-code-assist[bot],coderabbitai[bot],github-actions[bot],copilot[bot]
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

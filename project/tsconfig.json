@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "declaration": true,
+    "outDir": "src/generated",
+    "rootDir": "src/generated",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "files": ["src/generated/models.g.ts"]
+}

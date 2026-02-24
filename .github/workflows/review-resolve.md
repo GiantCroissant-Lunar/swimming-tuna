@@ -5,6 +5,7 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
+  bots: ['gemini-code-assist[bot]', 'coderabbitai[bot]', 'github-actions[bot]', 'copilot[bot]']
 engine: copilot
 permissions:
   contents: read

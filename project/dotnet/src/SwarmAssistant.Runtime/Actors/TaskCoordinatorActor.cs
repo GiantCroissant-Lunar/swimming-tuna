@@ -59,6 +59,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly string _taskId;
     private readonly string _title;
     private readonly string _description;
+    private readonly string? _runId;
     private readonly int _subTaskDepth;
 
     private WorldState _worldState;
@@ -121,6 +122,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _taskId = taskId;
         _title = title;
         _description = description;
+        _runId = taskRegistry.GetTask(taskId)?.RunId;
         _maxRetries = maxRetries;
         _subTaskDepth = subTaskDepth;
 
@@ -835,7 +837,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             _description,
             null,
             null,
-            orchestratorPrompt));
+            orchestratorPrompt,
+            RunId: _runId));
     }
 
     private void DispatchAction(string actionName)
@@ -859,7 +862,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("planner", _taskId));
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Planner, _title, _description, null, null));
+                    _taskId, SwarmRole.Planner, _title, _description, null, null, RunId: _runId));
                 break;
 
             case "Build":
@@ -869,7 +872,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("builder", _taskId));
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId));
                 break;
 
             case "Review":
@@ -882,7 +885,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 if (reviewCount == 1)
                 {
                     _reviewerActor.Tell(new ExecuteRoleTask(
-                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
                 }
                 else
                 {
@@ -891,7 +894,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     {
                         // We use the same _reviewerActor pool but let it handle multiple messages.
                         _reviewerActor.Tell(new ExecuteRoleTask(
-                            _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                            _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
                     }
                 }
                 break;
@@ -916,7 +919,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 for (int i = 0; i < currentRequiredVotes + additionalReviewCount; i++)
                 {
                     _reviewerActor.Tell(new ExecuteRoleTask(
-                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput));
+                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
                 }
                 break;
 
@@ -928,7 +931,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("builder", _taskId));
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
                 break;
 
             case "Finalize":
