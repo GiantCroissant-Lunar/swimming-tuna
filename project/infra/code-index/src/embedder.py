@@ -57,7 +57,7 @@ class EmbeddingGenerator:
         texts = [chunk.content for chunk in chunks]
         embeddings = self.embed_texts(texts)
 
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
             chunk.embedding = embedding
 
     def is_loaded(self) -> bool:

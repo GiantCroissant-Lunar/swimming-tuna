@@ -10,7 +10,11 @@ FROM python:3.12-slim-bookworm AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libgomp1 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser
 
 # Set working directory
 WORKDIR /app
@@ -20,16 +24,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Download tree-sitter language parsers
-RUN python -c "
-from tree_sitter import Language
-import tree_sitter_c_sharp as tspython_cs
-import tree_sitter_javascript as tspython_js
-import tree_sitter_python as tspython_py
-print('Tree-sitter languages ready')
-"
+RUN python -c "from tree_sitter import Language; import tree_sitter_c_sharp; import tree_sitter_javascript; import tree_sitter_typescript; import tree_sitter_python; print('Tree-sitter languages ready')"
 
 # Copy application code
 COPY src/ ./src/
+
+# Set ownership
+RUN chown -R appuser:appgroup /app
 
 # Environment configuration
 ENV PYTHONPATH=/app
@@ -41,6 +42,9 @@ ENV EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 ENV EMBEDDING_DIMENSION=384
 ENV CHUNK_MAX_TOKENS=512
 ENV CHUNK_OVERLAP_TOKENS=50
+
+# Switch to non-root user
+USER appuser
 
 # Default command (service mode)
 CMD ["python", "-m", "src.api"]

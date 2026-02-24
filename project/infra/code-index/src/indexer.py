@@ -81,9 +81,9 @@ class CodeIndexer:
 
                     if not request.dry_run:
                         for chunk in chunks:
-                            rid = self.db.upsert_chunk(chunk)
+                            rid, was_update = self.db.upsert_chunk(chunk)
                             if rid:
-                                if chunk.id:
+                                if was_update:
                                     updated_chunks += 1
                                 else:
                                     indexed_chunks += 1
@@ -148,11 +148,20 @@ class CodeIndexer:
 
             # Check for changes
             for diff_item in diff_index:
-                file_path = diff_item.a_path if diff_item.a_path else diff_item.b_path
-
                 if diff_item.deleted_file:
-                    deleted_files.append(file_path)
-                elif diff_item.change_type in ("M", "A", "R"):
+                    deleted_files.append(diff_item.a_path or diff_item.b_path)
+                elif diff_item.change_type == "R":
+                    # Rename: delete old path, index new path
+                    if diff_item.a_path:
+                        deleted_files.append(diff_item.a_path)
+                    new_path = diff_item.b_path or diff_item.a_path
+                    full_path = repo_path / new_path
+                    if full_path.exists():
+                        lang = self._detect_language_from_path(full_path)
+                        if lang and lang in languages:
+                            changed_files.append((full_path, lang))
+                elif diff_item.change_type in ("M", "A"):
+                    file_path = diff_item.a_path or diff_item.b_path
                     full_path = repo_path / file_path
                     if full_path.exists():
                         lang = self._detect_language_from_path(full_path)

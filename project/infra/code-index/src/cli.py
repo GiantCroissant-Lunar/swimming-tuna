@@ -250,7 +250,12 @@ def reset(force: bool = typer.Option(False, "--force", help="Skip confirmation")
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        "-h",
+        help="Host to bind (use 0.0.0.0 for all interfaces)",
+    ),
     port: int = typer.Option(8080, "--port", "-p", help="Port to bind"),
 ):
     """Start the retrieval API server."""

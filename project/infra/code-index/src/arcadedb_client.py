@@ -166,8 +166,8 @@ class ArcadeDbClient:
         response.raise_for_status()
         return response.json()
 
-    def upsert_chunk(self, chunk: CodeChunk) -> Optional[str]:
-        """Insert or update a code chunk. Returns record ID."""
+    def upsert_chunk(self, chunk: CodeChunk) -> tuple[Optional[str], bool]:
+        """Insert or update a code chunk. Returns (record_id, was_update)."""
         try:
             # Check if chunk exists by file_path + fully_qualified_name
             query = """
@@ -210,13 +210,15 @@ class ArcadeDbClient:
                         "startLine": chunk.start_line,
                         "endLine": chunk.end_line,
                         "embedding": embedding_list,
-                        "lastModified": chunk.last_modified.isoformat(),
+                        "lastModified": chunk.last_modified.isoformat()
+                        if chunk.last_modified
+                        else None,
                         "tokenCount": chunk.token_count or 0,
                         "charCount": chunk.char_count,
                         "rid": rid,
                     },
                 )
-                return rid
+                return rid, True
             else:
                 # Insert new
                 result = self.execute_command(
@@ -243,15 +245,17 @@ class ArcadeDbClient:
                         "startLine": chunk.start_line,
                         "endLine": chunk.end_line,
                         "embedding": embedding_list,
-                        "lastModified": chunk.last_modified.isoformat(),
+                        "lastModified": chunk.last_modified.isoformat()
+                        if chunk.last_modified
+                        else None,
                         "tokenCount": chunk.token_count or 0,
                         "charCount": chunk.char_count,
                     },
                 )
-                return result.get("result", [{}])[0].get("@rid")
+                return result.get("result", [{}])[0].get("@rid"), False
         except Exception:  # noqa: BLE001
             logger.exception("Failed to upsert chunk")
-            return None
+            return None, False
 
     def delete_chunks_by_file(self, file_path: str) -> int:
         """Delete all chunks for a file. Returns count deleted."""

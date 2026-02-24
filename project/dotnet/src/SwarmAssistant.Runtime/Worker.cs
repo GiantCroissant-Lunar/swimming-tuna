@@ -194,9 +194,13 @@ public sealed class Worker : BackgroundService
         IActorRef? codeIndexActor = null;
         if (_options.CodeIndexEnabled)
         {
+            var codeIndexHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
             codeIndexActor = _actorSystem.ActorOf(
                 Props.Create(() => new CodeIndexActor(
-                    new HttpClient(),
+                    codeIndexHttpClient,
                     _loggerFactory.CreateLogger<CodeIndexActor>(),
                     _optionsInstance)),
                 "code-index");

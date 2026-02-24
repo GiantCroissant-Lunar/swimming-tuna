@@ -13,7 +13,7 @@ The Code Index Pipeline provides codebase-aware context to swarm agents by:
 
 ## Architecture
 
-```
+```text
 Source files
   → Tree-sitter parse (AST)
   → Structural chunking (class/method/function boundaries)

@@ -237,6 +237,6 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("CODE_INDEX_PORT", "8080"))
-    host = os.getenv("CODE_INDEX_HOST", "0.0.0.0")
+    host = os.getenv("CODE_INDEX_HOST", "127.0.0.1")
 
     uvicorn.run(app, host=host, port=port)

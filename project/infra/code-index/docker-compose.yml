@@ -29,7 +29,8 @@ services:
       retries: 10
       start_period: 5s
     depends_on:
-      - arcadedb
+      arcadedb:
+        condition: service_healthy
     networks:
       - swarm_assistant_network
 
@@ -42,8 +43,14 @@ services:
       - ${HOST_BIND_IP:-127.0.0.1}:${ARCADEDB_BINARY_PORT:-2424}:2424
     environment:
       JAVA_OPTS: >-
-        -Darcadedb.server.rootPassword=${ARCADEDB_ROOT_PASSWORD:-playwithdata}
+        -Darcadedb.server.rootPassword=${ARCADEDB_PASSWORD:-playwithdata}
         -Darcadedb.server.defaultDatabases=${ARCADEDB_DATABASE:-swarm_assistant}[root]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2480/api/v1/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     volumes:
       - arcadedb_data:/home/arcadedb/databases
     networks:
