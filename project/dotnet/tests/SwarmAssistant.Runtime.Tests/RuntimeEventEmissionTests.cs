@@ -289,6 +289,40 @@ public sealed class RuntimeEventEmissionTests : TestKit
     }
 
     [Fact]
+    public async Task HappyPath_EmitsDiagnosticContextEvent()
+    {
+        var (dispatcher, writer) = BuildDispatcher("diag");
+        var taskId = $"emit-diag-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "Diag Test", "Verify diagnostic context event.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+        await Task.Delay(200);
+
+        var diagEvents = writer.Events
+            .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticContext)
+            .ToList();
+
+        // At least one diagnostic.context event should be emitted per role dispatch
+        Assert.NotEmpty(diagEvents);
+
+        // Each diagnostic event should have a non-empty payload with expected fields
+        foreach (var evt in diagEvents)
+        {
+            Assert.NotNull(evt.Payload);
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
+            Assert.True(payload.TryGetProperty("action", out _), "Payload should contain 'action'");
+            Assert.True(payload.TryGetProperty("role", out _), "Payload should contain 'role'");
+            Assert.True(payload.TryGetProperty("promptLength", out _), "Payload should contain 'promptLength'");
+            Assert.True(payload.TryGetProperty("hasCodeContext", out _), "Payload should contain 'hasCodeContext'");
+            Assert.True(payload.TryGetProperty("codeChunkCount", out _), "Payload should contain 'codeChunkCount'");
+            Assert.True(payload.TryGetProperty("hasStrategyAdvice", out _), "Payload should contain 'hasStrategyAdvice'");
+            Assert.True(payload.TryGetProperty("targetFiles", out _), "Payload should contain 'targetFiles'");
+        }
+    }
+
+    [Fact]
     public async Task HappyPath_NoEventWriterInjected_DoesNotThrow()
     {
         // Dispatcher without event recorder — should execute normally

@@ -30,12 +30,21 @@ public sealed class RuntimeEventRecorder
     public const string RoleFailed = "role.failed";
     public const string TaskDone = "task.done";
     public const string TaskFailed = "task.failed";
+    public const string DiagnosticContext = "diagnostic.context";
 
     private sealed record TaskSubmittedEventPayload(string Title);
     private sealed record RoleEventPayload(string Role);
     private sealed record RoleCompletedEventPayload(string Role, double Confidence);
     private sealed record RoleFailedEventPayload(string Role, string Error);
     private sealed record TaskFailedEventPayload(string Error);
+    private sealed record DiagnosticContextPayload(
+        string Action,
+        string Role,
+        int PromptLength,
+        bool HasCodeContext,
+        int CodeChunkCount,
+        bool HasStrategyAdvice,
+        IReadOnlyList<string> TargetFiles);
 
     // ── public record methods ─────────────────────────────────────────────────
 
@@ -64,6 +73,26 @@ public sealed class RuntimeEventRecorder
     public Task RecordTaskFailedAsync(string taskId, string? runId, string error) =>
         AppendAsync(TaskFailed, taskId, runId,
             JsonSerializer.Serialize(new TaskFailedEventPayload(error)));
+
+    private static readonly JsonSerializerOptions CamelCaseOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public Task RecordDiagnosticContextAsync(
+        string taskId,
+        string? runId,
+        string action,
+        string role,
+        int promptLength,
+        bool hasCodeContext,
+        int codeChunkCount,
+        bool hasStrategyAdvice,
+        IReadOnlyList<string> targetFiles) =>
+        AppendAsync(DiagnosticContext, taskId, runId,
+            JsonSerializer.Serialize(
+                new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles),
+                CamelCaseOptions));
 
     // ── internal append helper ────────────────────────────────────────────────
 
