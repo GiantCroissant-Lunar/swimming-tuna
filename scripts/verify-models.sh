@@ -19,6 +19,42 @@ DTS_OUT="$REPO_ROOT/project/src/generated/models.g.d.ts"
 OPENAPI_SPEC="$REPO_ROOT/project/docs/openapi/runtime.v1.yaml"
 QUICKTYPE_VERSION="${QUICKTYPE_VERSION:-23.2.6}"
 
+patch_csharp_nullability() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+text = re.sub(
+    r"(public partial class TaskExecutionEventFeed\s*\{.*?\[JsonProperty\(\"runId\"\)\]\s*public )string( RunId \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+text = re.sub(
+    r"(public partial class TaskExecutionEventFeed\s*\{.*?\[JsonProperty\(\"taskId\"\)\]\s*public )string( TaskId \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+text = re.sub(
+    r"(public partial class TaskExecutionEvent\s*\{.*?\[JsonProperty\(\"payload\"\)\]\s*public )string( Payload \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+
+path.write_text(text, encoding="utf-8")
+PY
+}
+
 TMPDIR="$(mktemp -d)"
 TMP_SCHEMA_DIR="$TMPDIR/schemas"
 TMP_CS="$TMPDIR/Models.g.cs"
@@ -43,6 +79,7 @@ npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   --array-type list \
   --features complete \
   --out "$TMP_CS" 2>/dev/null
+patch_csharp_nullability "$TMP_CS"
 
 echo "==> Generating TypeScript models into temp file..."
 npx --yes "quicktype@${QUICKTYPE_VERSION}" \

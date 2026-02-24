@@ -752,9 +752,18 @@ if (options.A2AEnabled)
         string runId,
         long? cursor,
         int? limit,
+        RunRegistry runRegistry,
+        ISwarmRunReader runReader,
         ITaskExecutionEventReader eventReader,
         CancellationToken cancellationToken) =>
     {
+        var runExists = runRegistry.GetRun(runId) is not null
+            || await runReader.GetAsync(runId, cancellationToken) is not null;
+        if (!runExists)
+        {
+            return Results.NotFound(new { error = "run not found", runId });
+        }
+
         var afterSequence = cursor ?? 0L;
         var requestedLimit = Math.Clamp(limit ?? 200, 1, 1000);
         var events = await eventReader.ListByRunAsync(runId, afterSequence, requestedLimit, cancellationToken);

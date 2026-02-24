@@ -275,13 +275,13 @@ namespace SwarmAssistant.Contracts.Generated
         /// Run identifier, present for run-scoped feeds.
         /// </summary>
         [JsonProperty("runId")]
-        public string RunId { get; set; }
+        public string? RunId { get; set; }
 
         /// <summary>
         /// Task identifier, present for task-scoped feeds.
         /// </summary>
         [JsonProperty("taskId")]
-        public string TaskId { get; set; }
+        public string? TaskId { get; set; }
     }
 
     /// <summary>
@@ -312,7 +312,7 @@ namespace SwarmAssistant.Contracts.Generated
         /// JSON-encoded event payload, when present.
         /// </summary>
         [JsonProperty("payload")]
-        public string Payload { get; set; }
+        public string? Payload { get; set; }
 
         /// <summary>
         /// Identifier of the swarm run this event belongs to.
