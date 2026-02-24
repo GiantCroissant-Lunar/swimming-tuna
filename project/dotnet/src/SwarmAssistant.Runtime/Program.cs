@@ -7,6 +7,7 @@ using SwarmAssistant.Runtime.A2A;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Dto;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Ui;
 
@@ -128,39 +129,6 @@ Func<EndpointFilterInvocationContext, EndpointFilterDelegate, ValueTask<object?>
 
 app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
 
-static object MapTaskSnapshot(TaskSnapshot snapshot)
-{
-    return new
-    {
-        taskId = snapshot.TaskId,
-        title = snapshot.Title,
-        description = snapshot.Description,
-        status = snapshot.Status.ToString().ToLowerInvariant(),
-        createdAt = snapshot.CreatedAt,
-        updatedAt = snapshot.UpdatedAt,
-        planningOutput = snapshot.PlanningOutput,
-        buildOutput = snapshot.BuildOutput,
-        reviewOutput = snapshot.ReviewOutput,
-        summary = snapshot.Summary,
-        error = snapshot.Error,
-        parentTaskId = snapshot.ParentTaskId,
-        childTaskIds = snapshot.ChildTaskIds,
-        runId = snapshot.RunId
-    };
-}
-
-static object MapTaskSummary(TaskSnapshot snapshot)
-{
-    return new
-    {
-        taskId = snapshot.TaskId,
-        title = snapshot.Title,
-        status = snapshot.Status.ToString().ToLowerInvariant(),
-        updatedAt = snapshot.UpdatedAt,
-        error = snapshot.Error
-    };
-}
-
 static IResult SubmitTask(
     string? requestedTaskId,
     string? title,
@@ -227,7 +195,7 @@ if (options.AgUiEnabled)
         var snapshots = memoryTasks.Count > 0
             ? memoryTasks
             : taskRegistry.GetTasks(requestedLimit);
-        var items = snapshots.Select(MapTaskSnapshot);
+        var items = snapshots.Select(TaskSnapshotMapper.ToDto);
         return Results.Ok(new
         {
             source,
@@ -248,7 +216,7 @@ if (options.AgUiEnabled)
             return Results.NotFound(new { error = "task not found", taskId });
         }
 
-        return Results.Ok(MapTaskSnapshot(snapshot));
+        return Results.Ok(TaskSnapshotMapper.ToDto(snapshot));
     }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/ag-ui/recent", (int? count, UiEventStream stream) =>
@@ -377,7 +345,7 @@ if (options.AgUiEnabled)
                         taskId: task.TaskId,
                         payload: new
                         {
-                            task = MapTaskSnapshot(task),
+                            task = TaskSnapshotMapper.ToDto(task),
                             a2ui = A2UiPayloadFactory.UpdateStatus(task.TaskId, task.Status, task.Error ?? task.Summary)
                         });
 
@@ -407,7 +375,7 @@ if (options.AgUiEnabled)
                 var snapshots = memoryTasks.Count > 0
                     ? memoryTasks
                     : taskRegistry.GetTasks(limit);
-                var items = snapshots.Select(MapTaskSummary).ToList();
+                var items = snapshots.Select(TaskSnapshotMapper.ToSummaryDto).ToList();
 
                 stream.Publish(
                     type: "agui.memory.tasks",
@@ -651,20 +619,13 @@ if (options.A2AEnabled)
             return Results.NotFound(new { error = "task not found", taskId });
         }
 
-        return Results.Ok(MapTaskSnapshot(snapshot));
+        return Results.Ok(TaskSnapshotMapper.ToDto(snapshot));
     }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/a2a/tasks", (int? limit, TaskRegistry taskRegistry) =>
     {
         var snapshots = taskRegistry.GetTasks(limit ?? 50);
-        var items = snapshots.Select(snapshot => new
-        {
-            taskId = snapshot.TaskId,
-            title = snapshot.Title,
-            status = snapshot.Status.ToString().ToLowerInvariant(),
-            updatedAt = snapshot.UpdatedAt,
-            error = snapshot.Error
-        });
+        var items = snapshots.Select(TaskSnapshotMapper.ToSummaryDto);
         return Results.Ok(items);
     }).AddEndpointFilter(requireApiKey);
 
