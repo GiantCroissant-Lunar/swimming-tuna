@@ -980,6 +980,13 @@ paths:
         Returns execution events for the given run in ascending `runSequence`
         order. Supports cursor-based pagination: pass the `nextCursor` value
         from the previous response as `cursor` to retrieve the next page.
+
+
+        **Run existence policy (unified across all `/runs/{runId}` endpoints):**
+        a run is considered to exist if it was explicitly created via `POST /runs`,
+        or if one or more tasks carrying the `runId` have been submitted via
+        `POST /a2a/tasks`. Calling `POST /runs` before submitting tasks is not
+        required. `404` is returned only when neither condition is satisfied.
       tags:
         - Runs
       security:

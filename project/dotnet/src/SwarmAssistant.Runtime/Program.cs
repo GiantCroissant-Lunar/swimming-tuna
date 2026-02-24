@@ -755,11 +755,15 @@ if (options.A2AEnabled)
         long? cursor,
         int? limit,
         RunRegistry runRegistry,
+        TaskRegistry taskRegistry,
+        ITaskMemoryReader memoryReader,
         ISwarmRunReader runReader,
         ITaskExecutionEventReader eventReader,
         CancellationToken cancellationToken) =>
     {
         var runExists = runRegistry.GetRun(runId) is not null
+            || taskRegistry.GetTasksByRunId(runId, 1).Count > 0
+            || (await memoryReader.ListByRunIdAsync(runId, 1, cancellationToken)).Count > 0
             || await runReader.GetAsync(runId, cancellationToken) is not null;
         if (!runExists)
         {

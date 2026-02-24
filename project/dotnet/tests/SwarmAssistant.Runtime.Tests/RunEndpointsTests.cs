@@ -226,6 +226,108 @@ public sealed class RunEndpointsTests
         factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
     }
 
+    // Unified run existence policy inputs used by GET /runs/{runId}/events
+
+    [Fact]
+    public async Task RunExistencePolicy_ExplicitRunCreation_SatisfiesExistence()
+    {
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+        runRegistry.CreateRun(runId: "run-explicit");
+
+        var memoryReader = new Moq.Mock<ITaskMemoryReader>();
+        memoryReader
+            .Setup(x => x.ListByRunIdAsync("run-explicit", 1, Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<TaskSnapshot>>(Array.Empty<TaskSnapshot>()));
+        var runReader = new Moq.Mock<ISwarmRunReader>();
+        runReader
+            .Setup(x => x.GetAsync("run-explicit", Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<SwarmRun?>(null));
+
+        var exists = await RunExistsAsync("run-explicit", runRegistry, taskRegistry, memoryReader.Object, runReader.Object);
+
+        Assert.True(exists);
+    }
+
+    [Fact]
+    public async Task RunExistencePolicy_ImplicitRunViaPersistentTasks_SatisfiesExistence()
+    {
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+        var now = DateTimeOffset.UtcNow;
+
+        var memoryReader = new Moq.Mock<ITaskMemoryReader>();
+        memoryReader
+            .Setup(x => x.ListByRunIdAsync("run-implicit", 1, Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<TaskSnapshot>>(new[]
+            {
+                new TaskSnapshot("task-impl-1", "Task 1", "Desc", TaskState.Queued, now, now, RunId: "run-implicit")
+            }));
+        var runReader = new Moq.Mock<ISwarmRunReader>();
+        runReader
+            .Setup(x => x.GetAsync("run-implicit", Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<SwarmRun?>(null));
+
+        var exists = await RunExistsAsync("run-implicit", runRegistry, taskRegistry, memoryReader.Object, runReader.Object);
+
+        Assert.True(exists);
+    }
+
+    [Fact]
+    public async Task RunExistencePolicy_ImplicitRunViaRunRepository_SatisfiesExistence()
+    {
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+        var now = DateTimeOffset.UtcNow;
+
+        var memoryReader = new Moq.Mock<ITaskMemoryReader>();
+        memoryReader
+            .Setup(x => x.ListByRunIdAsync("run-from-repo", 1, Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<TaskSnapshot>>(Array.Empty<TaskSnapshot>()));
+        var runReader = new Moq.Mock<ISwarmRunReader>();
+        runReader
+            .Setup(x => x.GetAsync("run-from-repo", Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<SwarmRun?>(new SwarmRun("run-from-repo", "task-1", "builder", null, "running", now, now)));
+
+        var exists = await RunExistsAsync("run-from-repo", runRegistry, taskRegistry, memoryReader.Object, runReader.Object);
+
+        Assert.True(exists);
+    }
+
+    [Fact]
+    public async Task RunExistencePolicy_NoRunNoTasks_ReturnsFalse()
+    {
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+
+        var memoryReader = new Moq.Mock<ITaskMemoryReader>();
+        memoryReader
+            .Setup(x => x.ListByRunIdAsync("run-ghost", 1, Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<IReadOnlyList<TaskSnapshot>>(Array.Empty<TaskSnapshot>()));
+        var runReader = new Moq.Mock<ISwarmRunReader>();
+        runReader
+            .Setup(x => x.GetAsync("run-ghost", Moq.It.IsAny<CancellationToken>()))
+            .Returns(Task.FromResult<SwarmRun?>(null));
+
+        var exists = await RunExistsAsync("run-ghost", runRegistry, taskRegistry, memoryReader.Object, runReader.Object);
+
+        Assert.False(exists);
+    }
+
+    private static async Task<bool> RunExistsAsync(
+        string runId,
+        RunRegistry runRegistry,
+        TaskRegistry taskRegistry,
+        ITaskMemoryReader memoryReader,
+        ISwarmRunReader runReader,
+        CancellationToken cancellationToken = default)
+    {
+        return runRegistry.GetRun(runId) is not null
+            || taskRegistry.GetTasksByRunId(runId, 1).Count > 0
+            || (await memoryReader.ListByRunIdAsync(runId, 1, cancellationToken)).Count > 0
+            || await runReader.GetAsync(runId, cancellationToken) is not null;
+    }
+
     private sealed class NoOpWriter : ITaskMemoryWriter
     {
         public Task WriteAsync(TaskSnapshot snapshot, CancellationToken cancellationToken = default) =>
