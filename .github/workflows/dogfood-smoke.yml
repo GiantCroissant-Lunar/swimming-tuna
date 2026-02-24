@@ -1,0 +1,65 @@
+name: Dogfooding smoke run
+
+on:
+  schedule:
+    - cron: "0 9 * * 0"  # Weekly, Sunday 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke-run:
+    name: Weekly dogfooding smoke run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore project/dotnet/SwarmAssistant.sln
+
+      - name: Run dogfooding smoke
+        id: smoke
+        run: bash scripts/dogfood-smoke.sh
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-run-artifacts-${{ github.run_id }}
+          path: /tmp/smoke-artifacts/
+          if-no-files-found: ignore
+
+      - name: Open issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Ensure the label exists before creating the issue (no-op if already present)
+          gh label create "ci-failure" \
+            --color "d93f0b" \
+            --description "CI smoke run failure" \
+            --force || true
+
+          LOG_SNIPPET="$(tail -n 50 /tmp/swarm_dogfood_runtime.log 2>/dev/null || echo 'no runtime log available')"
+          gh issue create \
+            --title "dogfood smoke failure — $(date -u +%Y-%m-%d)" \
+            --label "ci-failure" \
+            --body "## Dogfood Smoke Run Failure
+
+**Workflow run:** ${RUN_URL}
+**Date:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+### Runtime Log Tail
+
+\`\`\`
+${LOG_SNIPPET}
+\`\`\`
+
+Please investigate the workflow run for full logs and archived smoke artifacts."
