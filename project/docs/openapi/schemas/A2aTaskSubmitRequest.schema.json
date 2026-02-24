@@ -32,6 +32,13 @@
       ],
       "additionalProperties": true,
       "description": "Arbitrary caller-supplied metadata attached to the task."
+    },
+    "runId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional run identifier to associate this task with an existing run."
     }
   }
 }

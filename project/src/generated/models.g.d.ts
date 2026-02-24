@@ -13,6 +13,10 @@ export interface A2ATaskSubmitRequest {
         [key: string]: any;
     } | null;
     /**
+     * Optional run identifier to associate this task with an existing run.
+     */
+    runId?: null | string;
+    /**
      * Optional caller-supplied task identifier. Auto-generated if omitted.
      */
     taskId?: null | string;
@@ -148,6 +152,10 @@ export interface TaskSnapshot {
      * Output produced by the reviewer role.
      */
     reviewOutput?: null | string;
+    /**
+     * Run identifier this task belongs to.
+     */
+    runId?: null | string;
     status: TaskState;
     /**
      * Final summary when the task is completed.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SwarmAssistant.Runtime.A2A;
 using SwarmAssistant.Runtime.Dto;
 using SwarmAssistant.Runtime.Tasks;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
@@ -172,5 +173,56 @@ public sealed class ContractMappingTests
         Assert.True(root.TryGetProperty("traceId", out _), "Missing: traceId");
         Assert.True(root.TryGetProperty("spanId", out _), "Missing: spanId");
         Assert.Equal(10, root.EnumerateObject().Count());
+    }
+
+    // ---------------------------------------------------------------
+    // A2aTaskSubmitRequest serialization — fail on field rename or removal
+    // ---------------------------------------------------------------
+
+    [Fact]
+    public void A2aTaskSubmitRequest_WithRunId_SerializesRunId()
+    {
+        var request = new A2aTaskSubmitRequest(
+            TaskId: null,
+            Title: "Test Task",
+            Description: "desc",
+            Metadata: null,
+            RunId: "run-submit-1");
+
+        var json = JsonSerializer.Serialize(request, _jsonOptions);
+        var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.TryGetProperty("runId", out var runIdProp), "Missing: runId");
+        Assert.Equal("run-submit-1", runIdProp.GetString());
+    }
+
+    [Fact]
+    public void A2aTaskSubmitRequest_WithoutRunId_RunIdIsNull()
+    {
+        var request = new A2aTaskSubmitRequest(
+            TaskId: null,
+            Title: "Test Task",
+            Description: null,
+            Metadata: null);
+
+        Assert.Null(request.RunId);
+
+        var json = JsonSerializer.Serialize(request, _jsonOptions);
+        var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.TryGetProperty("runId", out var runIdProp), "Missing: runId");
+        Assert.Equal(JsonValueKind.Null, runIdProp.ValueKind);
+    }
+
+    [Fact]
+    public void A2aTaskSubmitRequest_DeserializesRunId()
+    {
+        const string json = """{"title":"T","runId":"run-xyz"}""";
+        var request = JsonSerializer.Deserialize<A2aTaskSubmitRequest>(json, _jsonOptions);
+
+        Assert.NotNull(request);
+        Assert.Equal("run-xyz", request!.RunId);
     }
 }

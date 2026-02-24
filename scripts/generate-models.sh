@@ -53,6 +53,20 @@ text = re.sub(
     count=1,
     flags=re.S,
 )
+text = re.sub(
+    r"(public partial class A2ATaskSubmitRequest\s*\{.*?\[JsonProperty\(\"runId\"\)\]\s*public )string( RunId \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+text = re.sub(
+    r"(public partial class TaskSnapshot\s*\{.*?\[JsonProperty\(\"runId\"\)\]\s*public )string( RunId \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
 
 path.write_text(text, encoding="utf-8")
 PY
