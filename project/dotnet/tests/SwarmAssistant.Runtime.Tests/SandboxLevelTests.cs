@@ -18,4 +18,26 @@ public sealed class SandboxLevelTests
     {
         Assert.Equal(0, (int)default(SandboxLevel));
     }
+
+    [Fact]
+    public void SandboxRequirements_DefaultsAreFalseAndEmpty()
+    {
+        var requirements = new SandboxRequirements();
+
+        Assert.False(requirements.NeedsOAuth);
+        Assert.False(requirements.NeedsKeychain);
+        Assert.Empty(requirements.NeedsNetwork);
+        Assert.False(requirements.NeedsGpuAccess);
+    }
+
+    [Fact]
+    public void SandboxRequirements_CanSpecifyNetworkHosts()
+    {
+        var requirements = new SandboxRequirements
+        {
+            NeedsNetwork = ["api.github.com", "copilot-proxy.githubusercontent.com"]
+        };
+
+        Assert.Equal(2, requirements.NeedsNetwork.Length);
+    }
 }
