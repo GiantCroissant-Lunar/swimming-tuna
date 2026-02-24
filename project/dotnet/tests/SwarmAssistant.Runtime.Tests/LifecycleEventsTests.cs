@@ -449,7 +449,7 @@ public sealed class LifecycleEventsTests : TestKit
         var blackboardProbe = CreateTestProbe($"bb-{suffix}");
 
         var workerActor = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry)),
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null)),
             $"worker-{suffix}");
 
         var reviewerActor = Sys.ActorOf(

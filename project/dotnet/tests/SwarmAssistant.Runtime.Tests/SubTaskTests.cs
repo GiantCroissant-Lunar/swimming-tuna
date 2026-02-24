@@ -569,7 +569,7 @@ public sealed class SubTaskTests : TestKit
             $"blackboard-{suffix}");
 
         var workerActor = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             $"worker-{suffix}");
 

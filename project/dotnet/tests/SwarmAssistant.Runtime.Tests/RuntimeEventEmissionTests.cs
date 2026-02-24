@@ -61,7 +61,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
             $"sv{suffix}-{Guid.NewGuid():N}");
 
         var worker = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, recorder))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             $"wk{suffix}-{Guid.NewGuid():N}");
 
@@ -329,6 +329,44 @@ public sealed class RuntimeEventEmissionTests : TestKit
     }
 
     [Fact]
+    public async Task HappyPath_EmitsAdapterDiagnosticEvent()
+    {
+        var (dispatcher, writer) = BuildDispatcher("adapter");
+        var taskId = $"emit-adapter-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "Adapter Diag Test", "Verify adapter diagnostic event.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+        await Task.Delay(200);
+
+        var adapterEvents = writer.Events
+            .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticAdapter)
+            .ToList();
+
+        // Happy-path should emit at least one adapter diagnostic event (Plan + Build worker executions)
+        Assert.True(adapterEvents.Count >= 1, $"Expected at least 1 adapter diagnostic event but got {adapterEvents.Count}");
+
+        // Each adapter diagnostic event should have a non-empty payload with expected PascalCase fields
+        foreach (var evt in adapterEvents)
+        {
+            Assert.NotNull(evt.Payload);
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
+            Assert.True(payload.TryGetProperty("AdapterId", out _), "Payload should contain 'AdapterId'");
+            Assert.True(payload.TryGetProperty("OutputLength", out _), "Payload should contain 'OutputLength'");
+            Assert.True(payload.TryGetProperty("Role", out _), "Payload should contain 'Role'");
+            Assert.True(payload.TryGetProperty("ExitCode", out _), "Payload should contain 'ExitCode'");
+        }
+
+        // Assert concrete values on the first adapter diagnostic event
+        var firstPayload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(adapterEvents[0].Payload!);
+        var adapterId = firstPayload.GetProperty("AdapterId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(adapterId), "AdapterId should be a non-empty string");
+        Assert.True(firstPayload.GetProperty("OutputLength").GetInt32() > 0, "OutputLength should be > 0");
+        Assert.Equal(0, firstPayload.GetProperty("ExitCode").GetInt32());
+    }
+
+    [Fact]
     public async Task HappyPath_NoEventWriterInjected_DoesNotThrow()
     {
         // Dispatcher without event recorder — should execute normally
@@ -343,7 +381,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
             $"sv-noop-{Guid.NewGuid():N}");
 
         var worker = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             $"wk-noop-{Guid.NewGuid():N}");
 

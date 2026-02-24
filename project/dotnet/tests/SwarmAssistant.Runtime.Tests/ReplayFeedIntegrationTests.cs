@@ -62,7 +62,7 @@ public sealed class ReplayFeedIntegrationTests : TestKit
             $"rf-sv{suffix}-{Guid.NewGuid():N}");
 
         var worker = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             $"rf-wk{suffix}-{Guid.NewGuid():N}");
 

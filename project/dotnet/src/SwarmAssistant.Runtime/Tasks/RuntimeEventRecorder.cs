@@ -31,6 +31,7 @@ public sealed class RuntimeEventRecorder
     public const string TaskDone = "task.done";
     public const string TaskFailed = "task.failed";
     public const string DiagnosticContext = "diagnostic.context";
+    public const string DiagnosticAdapter = "diagnostic.adapter";
 
     private sealed record TaskSubmittedEventPayload(string Title);
     private sealed record RoleEventPayload(string Role);
@@ -45,6 +46,11 @@ public sealed class RuntimeEventRecorder
         int CodeChunkCount,
         bool HasStrategyAdvice,
         IReadOnlyList<string> TargetFiles);
+    private sealed record DiagnosticAdapterPayload(
+        string AdapterId,
+        int OutputLength,
+        string Role,
+        int ExitCode);
 
     // ── public record methods ─────────────────────────────────────────────────
 
@@ -87,6 +93,17 @@ public sealed class RuntimeEventRecorder
         AppendAsync(DiagnosticContext, taskId, runId,
             JsonSerializer.Serialize(
                 new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles)));
+
+    public Task RecordDiagnosticAdapterAsync(
+        string taskId,
+        string? runId,
+        string adapterId,
+        int outputLength,
+        string role,
+        int exitCode) =>
+        AppendAsync(DiagnosticAdapter, taskId, runId,
+            JsonSerializer.Serialize(
+                new DiagnosticAdapterPayload(adapterId, outputLength, role, exitCode)));
 
     // ── internal append helper ────────────────────────────────────────────────
 
