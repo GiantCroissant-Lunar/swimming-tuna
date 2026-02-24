@@ -5,6 +5,7 @@ using Akka.Routing;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
+using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Tasks;
@@ -149,19 +150,60 @@ public sealed class Worker : BackgroundService
             SwarmRole.Tester
         };
 
-        _ = _actorSystem.ActorOf(
-            Props.Create(() => new SwarmAgentActor(
-                    _options,
-                    _loggerFactory,
-                    agentFrameworkRoleEngine,
-                    _telemetry,
-                    capabilityRegistry,
-                    capabilities,
-                    default(TimeSpan),
-                    null,
-                    (int?)null))
-                .WithRouter(new SmallestMailboxPool(swarmAgentPoolSize)),
-            "swarm-agent");
+        PortAllocator? portAllocator = null;
+        if (_options.AgentEndpointEnabled)
+        {
+            portAllocator = new PortAllocator(_options.AgentEndpointPortRange);
+            _logger.LogInformation("Agent endpoints enabled, port range: {Range}",
+                _options.AgentEndpointPortRange);
+        }
+
+        if (_options.AgentEndpointEnabled && portAllocator is not null)
+        {
+            // Create individual agents with identity and allocated ports
+            var agents = new List<IActorRef>();
+            for (int i = 0; i < swarmAgentPoolSize; i++)
+            {
+                var agentId = $"agent-{i:D2}";
+                var port = portAllocator.Allocate();
+                var agent = _actorSystem.ActorOf(
+                    Props.Create(() => new SwarmAgentActor(
+                        _options,
+                        _loggerFactory,
+                        agentFrameworkRoleEngine,
+                        _telemetry,
+                        capabilityRegistry,
+                        capabilities,
+                        default(TimeSpan),
+                        agentId,
+                        port)),
+                    $"swarm-agent-{agentId}");
+                agents.Add(agent);
+            }
+
+            // Create a round-robin router over the individual agents
+            _ = _actorSystem.ActorOf(
+                Props.Empty.WithRouter(new RoundRobinGroup(
+                    agents.Select(a => a.Path.ToString()))),
+                "swarm-agent");
+        }
+        else
+        {
+            // Keep existing pool router (backward compatible)
+            _ = _actorSystem.ActorOf(
+                Props.Create(() => new SwarmAgentActor(
+                        _options,
+                        _loggerFactory,
+                        agentFrameworkRoleEngine,
+                        _telemetry,
+                        capabilityRegistry,
+                        capabilities,
+                        default(TimeSpan),
+                        null,
+                        (int?)null))
+                    .WithRouter(new SmallestMailboxPool(swarmAgentPoolSize)),
+                "swarm-agent");
+        }
 
         _logger.LogInformation(
             "Actor pools created swarmAgentPoolSize={SwarmAgentPoolSize} maxCliConcurrency={MaxCliConcurrency}",
