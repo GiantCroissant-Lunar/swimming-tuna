@@ -49,7 +49,7 @@ namespace SwarmAssistant.Contracts.Generated
         /// Optional run identifier to associate this task with an existing run.
         /// </summary>
         [JsonProperty("runId")]
-        public string RunId { get; set; }
+        public string? RunId { get; set; }
 
         /// <summary>
         /// Optional caller-supplied task identifier. Auto-generated if omitted.
@@ -235,7 +235,7 @@ namespace SwarmAssistant.Contracts.Generated
         /// Run identifier this task belongs to.
         /// </summary>
         [JsonProperty("runId")]
-        public string RunId { get; set; }
+        public string? RunId { get; set; }
 
         [JsonProperty("status")]
         public TaskStateEnum Status { get; set; }
