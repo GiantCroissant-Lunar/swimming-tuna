@@ -14,8 +14,11 @@ internal sealed record ExecuteRoleTask(
     string? OrchestratorPrompt = null,
     string? PreferredAdapter = null,
     double? PreviousConfidence = null,
-    string? RunId = null
+    string? RunId = null,
+    string? Prompt = null  // Pre-built prompt (optional, used with code context)
 );
+
+
 
 internal sealed record RoleTaskSucceeded(
     string TaskId,
@@ -245,4 +248,13 @@ internal sealed record RoleLifecycleEvent(
     string Phase,
     DateTimeOffset At,
     string? ActorName = null
+);
+
+/// <summary>
+/// Internal message to trigger code context enrichment before dispatching a role task.
+/// Sent by TaskCoordinatorActor to itself when ready to dispatch with code context.
+/// </summary>
+internal sealed record DispatchWithCodeContext(
+    string ActionName,
+    CodeIndexResult? CodeContext = null
 );

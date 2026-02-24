@@ -145,7 +145,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
@@ -198,7 +198,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -246,7 +246,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         // Send a consensus result directly
         var votes = new List<ConsensusVote>
@@ -291,7 +291,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         // Start coordination so PreStart() runs and event stream subscription is established
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -337,7 +337,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         // Start coordination so PreStart() runs and event stream subscription is established
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -414,6 +414,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
                 _taskRegistry,
                 Options.Create(_options),
                 null,
+                null,
                 null)),
             $"dispatcher-probe-{suffix}");
 
@@ -459,6 +460,7 @@ public sealed class GraphAndTelemetryEventTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Options.Create(_options),
+                null,
                 null,
                 null)),
             $"dispatcher-ge-{suffix}");

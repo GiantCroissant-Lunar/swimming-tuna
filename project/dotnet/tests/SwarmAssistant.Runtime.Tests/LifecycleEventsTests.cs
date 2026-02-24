@@ -112,7 +112,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -161,7 +161,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -210,7 +210,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 0, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 0, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -253,7 +253,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -296,7 +296,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -337,7 +337,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -383,7 +383,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -432,7 +432,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)));
 
         return (taskId, coordinator);
     }
@@ -465,7 +465,7 @@ public sealed class LifecycleEventsTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Task", "desc",
                 workerActor, reviewerActor, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, 2, 0)),
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, uiEvents, registry, _options, null, null, null, 2, 0)),
             $"coord-{taskId}");
 
         return coordinator;

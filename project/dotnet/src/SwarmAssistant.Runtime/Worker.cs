@@ -189,6 +189,23 @@ public sealed class Worker : BackgroundService
         }
 
         var tracker = _options.ArcadeDbEnabled ? _outcomeTracker : null;
+
+        // Create CodeIndexActor if code index is enabled
+        IActorRef? codeIndexActor = null;
+        if (_options.CodeIndexEnabled)
+        {
+            var codeIndexHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
+            codeIndexActor = _actorSystem.ActorOf(
+                Props.Create(() => new CodeIndexActor(
+                    codeIndexHttpClient,
+                    _loggerFactory.CreateLogger<CodeIndexActor>(),
+                    _optionsInstance)),
+                "code-index");
+        }
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -203,7 +220,8 @@ public sealed class Worker : BackgroundService
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
                 tracker,
-                strategyAdvisorActor)),
+                strategyAdvisorActor,
+                codeIndexActor)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

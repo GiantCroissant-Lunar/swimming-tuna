@@ -8,10 +8,15 @@ internal static class RolePromptFactory
 {
     public static string BuildPrompt(ExecuteRoleTask command)
     {
-        return BuildPrompt(command, strategyAdvice: null);
+        return BuildPrompt(command, strategyAdvice: null, codeContext: null);
     }
 
     public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice)
+    {
+        return BuildPrompt(command, strategyAdvice, codeContext: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext)
     {
         var basePrompt = command.Role switch
         {
@@ -61,16 +66,32 @@ internal static class RolePromptFactory
             _ => $"Unsupported role {command.Role}"
         };
 
-        // Append historical context if available for relevant roles
+        var contextParts = new List<string>();
+
+        // Historical context (3rd layer)
         if (strategyAdvice is not null &&
             strategyAdvice.SimilarTaskCount > 0 &&
             command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
         {
-            var historicalContext = BuildHistoricalContext(strategyAdvice);
-            return string.Join(Environment.NewLine, basePrompt, string.Empty, historicalContext);
+            contextParts.Add(BuildHistoricalContext(strategyAdvice));
         }
 
-        return basePrompt;
+        // Code context (4th layer)
+        if (codeContext is not null &&
+            codeContext.HasResults &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            contextParts.Add(BuildCodeContext(codeContext));
+        }
+
+        if (contextParts.Count == 0)
+        {
+            return basePrompt;
+        }
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            new[] { basePrompt }.Concat(contextParts));
     }
 
     /// <summary>
@@ -124,6 +145,60 @@ internal static class RolePromptFactory
         }
 
         lines.Add("--- End Historical Insights ---");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Builds a code context section from code index results.
+    /// This is the 4th context layer: relevant codebase structure for the task.
+    /// Total budget is capped at 40,000 characters to avoid overwhelming the LLM context window.
+    /// </summary>
+    private static string BuildCodeContext(CodeIndexResult result)
+    {
+        const int maxTotalChars = 40_000;
+        const int maxPerChunkChars = 2_000;
+
+        var lines = new List<string>
+        {
+            "--- Relevant Code Context ---",
+            $"Query: {result.Query}",
+            $"Found {result.Chunks.Count} relevant code units:",
+            string.Empty
+        };
+
+        var totalChars = 0;
+        foreach (var chunk in result.Chunks)
+        {
+            var content = chunk.Content.Length > maxPerChunkChars
+                ? chunk.Content[..maxPerChunkChars] + "\n... (truncated)"
+                : chunk.Content;
+
+            if (totalChars + content.Length > maxTotalChars)
+                break;
+
+            var langTag = chunk.Language switch
+            {
+                "csharp" => "csharp",
+                "javascript" => "javascript",
+                "typescript" => "typescript",
+                "python" => "python",
+                _ => ""
+            };
+
+            lines.Add($"### {chunk.FullyQualifiedName}");
+            lines.Add($"File: {chunk.FilePath} (lines {chunk.StartLine}-{chunk.EndLine})");
+            lines.Add($"Type: {chunk.NodeType} | Language: {chunk.Language} | Relevance: {chunk.SimilarityScore:P0}");
+            lines.Add($"```{langTag}");
+            lines.Add(content);
+            lines.Add("```");
+            lines.Add(string.Empty);
+
+            totalChars += content.Length;
+        }
+
+        lines.Add("--- End Code Context ---");
+        lines.Add("Use these code patterns as reference when planning, building, or reviewing.");
 
         return string.Join(Environment.NewLine, lines);
     }
