@@ -192,6 +192,110 @@ export enum Source {
 }
 
 /**
+ * An immutable, append-only event recorded during task execution. Used for audit trails and
+ * replay feeds.
+ */
+export interface TaskExecutionEvent {
+    /**
+     * Unique event identifier.
+     */
+    eventId: string;
+    /**
+     * Event type discriminator (e.g. `task.started`, `role.completed`).
+     */
+    eventType: string;
+    /**
+     * ISO 8601 timestamp when the event occurred.
+     */
+    occurredAt: Date;
+    /**
+     * JSON-encoded event payload, when present.
+     */
+    payload?: null | string;
+    /**
+     * Identifier of the swarm run this event belongs to.
+     */
+    runId: string;
+    /**
+     * Monotonically increasing sequence number scoped to the run.
+     */
+    runSequence: number;
+    /**
+     * Identifier of the task this event belongs to.
+     */
+    taskId: string;
+    /**
+     * Monotonically increasing sequence number scoped to the task.
+     */
+    taskSequence: number;
+    [property: string]: any;
+}
+
+/**
+ * Paginated feed of task execution events returned by replay endpoints.
+ */
+export interface TaskExecutionEventFeed {
+    /**
+     * Ordered list of events (ascending by sequence).
+     */
+    items: ItemObject[];
+    /**
+     * Sequence number of the last returned event; pass as `cursor` in the next request to
+     * continue pagination. `null` when no events were returned.
+     */
+    nextCursor?: number | null;
+    /**
+     * Run identifier, present for run-scoped feeds.
+     */
+    runId?: null | string;
+    /**
+     * Task identifier, present for task-scoped feeds.
+     */
+    taskId?: null | string;
+    [property: string]: any;
+}
+
+/**
+ * An immutable, append-only event recorded during task execution. Used for audit trails and
+ * replay feeds.
+ */
+export interface ItemObject {
+    /**
+     * Unique event identifier.
+     */
+    eventId: string;
+    /**
+     * Event type discriminator (e.g. `task.started`, `role.completed`).
+     */
+    eventType: string;
+    /**
+     * ISO 8601 timestamp when the event occurred.
+     */
+    occurredAt: Date;
+    /**
+     * JSON-encoded event payload, when present.
+     */
+    payload?: null | string;
+    /**
+     * Identifier of the swarm run this event belongs to.
+     */
+    runId: string;
+    /**
+     * Monotonically increasing sequence number scoped to the run.
+     */
+    runSequence: number;
+    /**
+     * Identifier of the task this event belongs to.
+     */
+    taskId: string;
+    /**
+     * Monotonically increasing sequence number scoped to the task.
+     */
+    taskSequence: number;
+    [property: string]: any;
+}
+
+/**
  * Full snapshot of a swarm task including all role outputs.
  */
 export interface TaskSnapshot {

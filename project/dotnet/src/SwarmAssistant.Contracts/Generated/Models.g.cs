@@ -10,6 +10,8 @@
 //    var errorEnvelope = ErrorEnvelope.FromJson(jsonString);
 //    var healthResponse = HealthResponse.FromJson(jsonString);
 //    var memoryTaskListResponse = MemoryTaskListResponse.FromJson(jsonString);
+//    var taskExecutionEvent = TaskExecutionEvent.FromJson(jsonString);
+//    var taskExecutionEventFeed = TaskExecutionEventFeed.FromJson(jsonString);
 //    var taskSnapshot = TaskSnapshot.FromJson(jsonString);
 //    var taskState = TaskState.FromJson(jsonString);
 //    var taskSummary = TaskSummary.FromJson(jsonString);
@@ -249,6 +251,147 @@ namespace SwarmAssistant.Contracts.Generated
         /// </summary>
         [JsonProperty("updatedAt")]
         public DateTimeOffset UpdatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// An immutable, append-only event recorded during task execution. Used for audit trails and
+    /// replay feeds.
+    /// </summary>
+    public partial class TaskExecutionEvent
+    {
+        /// <summary>
+        /// Unique event identifier.
+        /// </summary>
+        [JsonProperty("eventId")]
+        public string EventId { get; set; }
+
+        /// <summary>
+        /// Event type discriminator (e.g. `task.started`, `role.completed`).
+        /// </summary>
+        [JsonProperty("eventType")]
+        public string EventType { get; set; }
+
+        /// <summary>
+        /// ISO 8601 timestamp when the event occurred.
+        /// </summary>
+        [JsonProperty("occurredAt")]
+        public DateTimeOffset OccurredAt { get; set; }
+
+        /// <summary>
+        /// JSON-encoded event payload, when present.
+        /// </summary>
+        [JsonProperty("payload")]
+        public string Payload { get; set; }
+
+        /// <summary>
+        /// Identifier of the swarm run this event belongs to.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
+
+        /// <summary>
+        /// Monotonically increasing sequence number scoped to the run.
+        /// </summary>
+        [JsonProperty("runSequence")]
+        public long RunSequence { get; set; }
+
+        /// <summary>
+        /// Identifier of the task this event belongs to.
+        /// </summary>
+        [JsonProperty("taskId")]
+        public string TaskId { get; set; }
+
+        /// <summary>
+        /// Monotonically increasing sequence number scoped to the task.
+        /// </summary>
+        [JsonProperty("taskSequence")]
+        public long TaskSequence { get; set; }
+    }
+
+    /// <summary>
+    /// Paginated feed of task execution events returned by replay endpoints.
+    /// </summary>
+    public partial class TaskExecutionEventFeed
+    {
+        /// <summary>
+        /// Ordered list of events (ascending by sequence).
+        /// </summary>
+        [JsonProperty("items")]
+        public List<ItemClass> Items { get; set; }
+
+        /// <summary>
+        /// Sequence number of the last returned event; pass as `cursor` in the next request to
+        /// continue pagination. `null` when no events were returned.
+        /// </summary>
+        [JsonProperty("nextCursor")]
+        public long? NextCursor { get; set; }
+
+        /// <summary>
+        /// Run identifier, present for run-scoped feeds.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
+
+        /// <summary>
+        /// Task identifier, present for task-scoped feeds.
+        /// </summary>
+        [JsonProperty("taskId")]
+        public string TaskId { get; set; }
+    }
+
+    /// <summary>
+    /// An immutable, append-only event recorded during task execution. Used for audit trails and
+    /// replay feeds.
+    /// </summary>
+    public partial class ItemClass
+    {
+        /// <summary>
+        /// Unique event identifier.
+        /// </summary>
+        [JsonProperty("eventId")]
+        public string EventId { get; set; }
+
+        /// <summary>
+        /// Event type discriminator (e.g. `task.started`, `role.completed`).
+        /// </summary>
+        [JsonProperty("eventType")]
+        public string EventType { get; set; }
+
+        /// <summary>
+        /// ISO 8601 timestamp when the event occurred.
+        /// </summary>
+        [JsonProperty("occurredAt")]
+        public DateTimeOffset OccurredAt { get; set; }
+
+        /// <summary>
+        /// JSON-encoded event payload, when present.
+        /// </summary>
+        [JsonProperty("payload")]
+        public string Payload { get; set; }
+
+        /// <summary>
+        /// Identifier of the swarm run this event belongs to.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
+
+        /// <summary>
+        /// Monotonically increasing sequence number scoped to the run.
+        /// </summary>
+        [JsonProperty("runSequence")]
+        public long RunSequence { get; set; }
+
+        /// <summary>
+        /// Identifier of the task this event belongs to.
+        /// </summary>
+        [JsonProperty("taskId")]
+        public string TaskId { get; set; }
+
+        /// <summary>
+        /// Monotonically increasing sequence number scoped to the task.
+        /// </summary>
+        [JsonProperty("taskSequence")]
+        public long TaskSequence { get; set; }
     }
 
     /// <summary>
@@ -494,6 +637,16 @@ namespace SwarmAssistant.Contracts.Generated
         public static MemoryTaskListResponse FromJson(string json) => JsonConvert.DeserializeObject<MemoryTaskListResponse>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
     }
 
+    public partial class TaskExecutionEvent
+    {
+        public static TaskExecutionEvent FromJson(string json) => JsonConvert.DeserializeObject<TaskExecutionEvent>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
+    }
+
+    public partial class TaskExecutionEventFeed
+    {
+        public static TaskExecutionEventFeed FromJson(string json) => JsonConvert.DeserializeObject<TaskExecutionEventFeed>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
+    }
+
     public partial class TaskSnapshot
     {
         public static TaskSnapshot FromJson(string json) => JsonConvert.DeserializeObject<TaskSnapshot>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
@@ -532,6 +685,8 @@ namespace SwarmAssistant.Contracts.Generated
         public static string ToJson(this ErrorEnvelope self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this HealthResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this MemoryTaskListResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
+        public static string ToJson(this TaskExecutionEvent self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
+        public static string ToJson(this TaskExecutionEventFeed self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this TaskSnapshot self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this TaskStateEnum self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this TaskSummary self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
