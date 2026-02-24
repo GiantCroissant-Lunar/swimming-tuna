@@ -143,7 +143,7 @@ for _ in $(seq 1 "${TASK_POLL_ITERATIONS}"); do
     "${BASE_URL}/a2a/tasks/${task_id}")" || true
 
   if [[ "${task_query_code}" == "200" ]]; then
-    task_status="$(sed -n 's/.*"status":"\([^"]*\)".*/\1/p' /tmp/smoke_task_get.json)"
+    task_status="$(python3 -c "import json; print(json.load(open('/tmp/smoke_task_get.json')).get('status', ''))" 2>/dev/null || echo "")"
     if [[ "${task_status}" == "done" || "${task_status}" == "failed" ]]; then
       task_terminal="true"
       break
