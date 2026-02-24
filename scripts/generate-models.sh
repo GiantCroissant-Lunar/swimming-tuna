@@ -22,6 +22,42 @@ TS_OUT="$REPO_ROOT/project/src/generated/models.g.ts"
 OPENAPI_SPEC="$REPO_ROOT/project/docs/openapi/runtime.v1.yaml"
 QUICKTYPE_VERSION="${QUICKTYPE_VERSION:-23.2.6}"
 
+patch_csharp_nullability() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+text = re.sub(
+    r"(public partial class TaskExecutionEventFeed\s*\{.*?\[JsonProperty\(\"runId\"\)\]\s*public )string( RunId \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+text = re.sub(
+    r"(public partial class TaskExecutionEventFeed\s*\{.*?\[JsonProperty\(\"taskId\"\)\]\s*public )string( TaskId \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+text = re.sub(
+    r"(public partial class TaskExecutionEvent\s*\{.*?\[JsonProperty\(\"payload\"\)\]\s*public )string( Payload \{ get; set; \})",
+    r"\1string?\2",
+    text,
+    count=1,
+    flags=re.S,
+)
+
+path.write_text(text, encoding="utf-8")
+PY
+}
+
 echo "==> Extracting JSON schemas from OpenAPI spec..."
 node "$REPO_ROOT/scripts/extract-schemas.mjs" \
   --input "$OPENAPI_SPEC" \
@@ -38,6 +74,7 @@ npx --yes "quicktype@${QUICKTYPE_VERSION}" \
   --array-type list \
   --features complete \
   --out "$CS_OUT"
+patch_csharp_nullability "$CS_OUT"
 echo "  wrote $CS_OUT"
 
 echo ""
@@ -53,7 +90,7 @@ echo "  wrote $TS_OUT"
 
 echo ""
 echo "==> Compiling TypeScript models to JavaScript..."
-(cd "$REPO_ROOT/project" && npx --yes tsc --project tsconfig.json)
+(cd "$REPO_ROOT/project" && npx --yes -p "typescript@5.8.3" tsc --project tsconfig.json)
 echo "  wrote ${TS_OUT%.ts}.js"
 echo "  wrote ${TS_OUT%.ts}.d.ts"
 

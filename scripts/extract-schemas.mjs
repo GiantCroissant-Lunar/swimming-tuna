@@ -39,8 +39,8 @@ async function loadYaml(filePath) {
 
 // ---------------------------------------------------------------------------
 // Re-write OpenAPI-style $ref values
-//   "#/components/schemas/Foo" → "#/definitions/Foo"
-// so the extracted schemas are valid stand-alone JSON Schema documents.
+//   "#/components/schemas/Foo" → "Foo.schema.json"
+// so extracted schemas can reference each other directly.
 // ---------------------------------------------------------------------------
 function rewriteRefs(node) {
   if (Array.isArray(node)) {
@@ -50,7 +50,10 @@ function rewriteRefs(node) {
     const out = {};
     for (const [k, v] of Object.entries(node)) {
       if (k === "$ref" && typeof v === "string") {
-        out[k] = v.replace(/^#\/components\/schemas\//, "#/definitions/");
+        out[k] = v.replace(
+          /^#\/components\/schemas\/(.+)$/,
+          (_, schemaName) => `${schemaName}.schema.json`
+        );
       } else {
         out[k] = rewriteRefs(v);
       }
@@ -109,6 +112,7 @@ function buildTransitiveDefinitions(rootName, schemas) {
 
   return Object.fromEntries(
     Array.from(needed)
+      .filter((name) => name !== rootName)
       .sort((a, b) => a.localeCompare(b))
       .map((name) => [name, schemas[name]])
   );
@@ -150,7 +154,6 @@ for (const name of Object.keys(schemas).sort((a, b) => a.localeCompare(b))) {
   const document = {
     $schema: "http://json-schema.org/draft-07/schema#",
     title: name,
-    definitions: buildTransitiveDefinitions(name, schemas),
     ...schema,
   };
 

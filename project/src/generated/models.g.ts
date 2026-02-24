@@ -107,7 +107,7 @@ export interface HealthResponse {
  * Response body for `GET /memory/tasks` containing a list of task snapshots.
  */
 export interface MemoryTaskListResponse {
-    items: ItemElement[];
+    items: TaskSnapshot[];
     /**
      * Backend that served the results (`arcadedb` or `registry`).
      */
@@ -118,7 +118,7 @@ export interface MemoryTaskListResponse {
 /**
  * Full snapshot of a swarm task including all role outputs.
  */
-export interface ItemElement {
+export interface TaskSnapshot {
     /**
      * Output produced by the builder role.
      */
@@ -192,58 +192,66 @@ export enum Source {
 }
 
 /**
- * Full snapshot of a swarm task including all role outputs.
+ * Paginated feed of task execution events returned by replay endpoints.
  */
-export interface TaskSnapshot {
+export interface TaskExecutionEventFeed {
     /**
-     * Output produced by the builder role.
+     * Ordered list of events (ascending by sequence).
      */
-    buildOutput?: null | string;
+    items: TaskExecutionEvent[];
     /**
-     * Identifiers of child sub-tasks spawned by this task.
+     * Sequence number of the last returned event; pass as `cursor` in the next request to
+     * continue pagination. `null` when no events were returned.
      */
-    childTaskIds?: string[] | null;
+    nextCursor?: number | null;
     /**
-     * ISO 8601 timestamp when the task was created.
+     * Run identifier, present for run-scoped feeds.
      */
-    createdAt: Date;
+    runId?: null | string;
     /**
-     * Full task description.
+     * Task identifier, present for task-scoped feeds.
      */
-    description: string;
+    taskId?: null | string;
+    [property: string]: any;
+}
+
+/**
+ * An immutable, append-only event recorded during task execution. Used for audit trails and
+ * replay feeds.
+ */
+export interface TaskExecutionEvent {
     /**
-     * Error message when the task has failed.
+     * Unique event identifier.
      */
-    error?: null | string;
+    eventId: string;
     /**
-     * Identifier of the parent task, if this is a sub-task.
+     * Event type discriminator (e.g. `task.started`, `role.completed`).
      */
-    parentTaskId?: null | string;
+    eventType: string;
     /**
-     * Output produced by the planner role.
+     * ISO 8601 timestamp when the event occurred.
      */
-    planningOutput?: null | string;
+    occurredAt: Date;
     /**
-     * Output produced by the reviewer role.
+     * JSON-encoded event payload, when present.
      */
-    reviewOutput?: null | string;
-    status:        TaskState;
+    payload?: null | string;
     /**
-     * Final summary when the task is completed.
+     * Identifier of the swarm run this event belongs to.
      */
-    summary?: null | string;
+    runId: string;
     /**
-     * Unique task identifier.
+     * Monotonically increasing sequence number scoped to the run.
+     */
+    runSequence: number;
+    /**
+     * Identifier of the task this event belongs to.
      */
     taskId: string;
     /**
-     * Short human-readable task title.
+     * Monotonically increasing sequence number scoped to the task.
      */
-    title: string;
-    /**
-     * ISO 8601 timestamp of the last status update.
-     */
-    updatedAt: Date;
+    taskSequence: number;
     [property: string]: any;
 }
 

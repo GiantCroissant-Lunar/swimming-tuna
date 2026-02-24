@@ -189,6 +189,38 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
     }
 
     [Fact]
+    public async Task ListByTaskAsync_WithCursor_PassesAfterSequenceToQuery()
+    {
+        var capturedCommands = new List<string>();
+        var handler = new CapturingCommandHandler(capturedCommands);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+        await repository.ListByTaskAsync("task-cursor", afterSequence: 5L, limit: 10);
+
+        var query = Assert.Single(capturedCommands, c => c.Contains("WHERE taskId", StringComparison.Ordinal));
+        Assert.Contains("taskSequence > :afterSequence", query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ListByRunAsync_WithCursor_PassesAfterSequenceToQuery()
+    {
+        var capturedCommands = new List<string>();
+        var handler = new CapturingCommandHandler(capturedCommands);
+        using var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("arcadedb")).Returns(client);
+
+        var repository = CreateRepository(factory.Object, autoCreateSchema: false);
+        await repository.ListByRunAsync("run-cursor", afterSequence: 3L, limit: 20);
+
+        var query = Assert.Single(capturedCommands, c => c.Contains("WHERE runId", StringComparison.Ordinal));
+        Assert.Contains("runSequence > :afterSequence", query, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ListByTaskAsync_ArcadeDbDisabled_ReturnsEmpty()
     {
         var factory = new Mock<IHttpClientFactory>();
@@ -376,7 +408,15 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            if (request.Content is null)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"result\":[]}", Encoding.UTF8, "application/json")
+                };
+            }
+
+            var body = await request.Content.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
             var command = root.GetProperty("command").GetString();
@@ -491,6 +531,34 @@ public sealed class ArcadeDbTaskExecutionEventRepositoryTests
             public void Dispose()
             {
             }
+        }
+    }
+
+    private sealed class CapturingCommandHandler : HttpMessageHandler
+    {
+        private readonly List<string> _commands;
+
+        public CapturingCommandHandler(List<string> commands)
+        {
+            _commands = commands;
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(body);
+            var command = document.RootElement.GetProperty("command").GetString();
+            if (!string.IsNullOrWhiteSpace(command))
+            {
+                _commands.Add(command);
+            }
+
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"result\":[]}", Encoding.UTF8, "application/json")
+            };
         }
     }
 }

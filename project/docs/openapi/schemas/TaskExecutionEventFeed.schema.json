@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskExecutionEventFeed",
+  "type": "object",
+  "description": "Paginated feed of task execution events returned by replay endpoints.\n",
+  "required": [
+    "items"
+  ],
+  "properties": {
+    "runId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Run identifier, present for run-scoped feeds."
+    },
+    "taskId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Task identifier, present for task-scoped feeds."
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "TaskExecutionEvent.schema.json"
+      },
+      "description": "Ordered list of events (ascending by sequence)."
+    },
+    "nextCursor": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64",
+      "description": "Sequence number of the last returned event; pass as `cursor` in the next request to continue pagination. `null` when no events were returned.\n"
+    }
+  }
+}

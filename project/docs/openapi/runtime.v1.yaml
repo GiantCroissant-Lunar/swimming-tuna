@@ -339,6 +339,84 @@ components:
           type: string
           description: Relative URL to poll for task status.
 
+    # ── Task execution event ───────────────────────────────────────────────
+    TaskExecutionEvent:
+      type: object
+      description: >
+        An immutable, append-only event recorded during task execution.
+        Used for audit trails and replay feeds.
+      required:
+        - eventId
+        - runId
+        - taskId
+        - eventType
+        - occurredAt
+        - taskSequence
+        - runSequence
+      properties:
+        eventId:
+          type: string
+          description: Unique event identifier.
+        runId:
+          type: string
+          description: Identifier of the swarm run this event belongs to.
+        taskId:
+          type: string
+          description: Identifier of the task this event belongs to.
+        eventType:
+          type: string
+          description: Event type discriminator (e.g. `task.started`, `role.completed`).
+        payload:
+          type:
+            - string
+            - "null"
+          description: JSON-encoded event payload, when present.
+        occurredAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the event occurred.
+        taskSequence:
+          type: integer
+          format: int64
+          description: Monotonically increasing sequence number scoped to the task.
+        runSequence:
+          type: integer
+          format: int64
+          description: Monotonically increasing sequence number scoped to the run.
+
+    # ── Replay feed response ───────────────────────────────────────────────
+    TaskExecutionEventFeed:
+      type: object
+      description: >
+        Paginated feed of task execution events returned by replay endpoints.
+      required:
+        - items
+      properties:
+        runId:
+          type:
+            - string
+            - "null"
+          description: Run identifier, present for run-scoped feeds.
+        taskId:
+          type:
+            - string
+            - "null"
+          description: Task identifier, present for task-scoped feeds.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskExecutionEvent"
+          description: Ordered list of events (ascending by sequence).
+        nextCursor:
+          type:
+            - integer
+            - "null"
+          format: int64
+          description: >
+            Sequence number of the last returned event; pass as `cursor` in
+            the next request to continue pagination. `null` when no events
+            were returned.
+
     # ── A2A agent card ─────────────────────────────────────────────────────
     AgentCard:
       type: object
@@ -728,6 +806,266 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Runs ──────────────────────────────────────────────────────────────────
+  /runs:
+    post:
+      operationId: createRun
+      summary: Create a new swarm run
+      description: >
+        Creates and registers a new run context. Tasks can then be associated
+        with this run by passing the `runId` on task submission.
+      tags:
+        - Runs
+      security:
+        - ApiKeyAuth: []
+        - {}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                runId:
+                  type:
+                    - string
+                    - "null"
+                  description: Optional caller-supplied run identifier.
+                title:
+                  type:
+                    - string
+                    - "null"
+                  description: Human-readable run title.
+      responses:
+        "201":
+          description: Run created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - runId
+                  - createdAt
+                properties:
+                  runId:
+                    type: string
+                  title:
+                    type:
+                      - string
+                      - "null"
+                  createdAt:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /runs/{runId}:
+    get:
+      operationId: getRun
+      summary: Get run details
+      description: Returns metadata and task counts for a single run.
+      tags:
+        - Runs
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: Run identifier.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Run metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - runId
+                  - createdAt
+                  - updatedAt
+                  - taskCount
+                properties:
+                  runId:
+                    type: string
+                  title:
+                    type:
+                      - string
+                      - "null"
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  taskCount:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /runs/{runId}/tasks:
+    get:
+      operationId: listRunTasks
+      summary: List tasks for a run
+      description: Returns a summary list of all tasks associated with the given run.
+      tags:
+        - Runs
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: Run identifier.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of tasks to return (default 50, clamped to [1, 500]).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+      responses:
+        "200":
+          description: Task summary list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - runId
+                  - source
+                  - items
+                properties:
+                  runId:
+                    type: string
+                  source:
+                    type: string
+                    enum:
+                      - registry
+                      - arcadedb
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /runs/{runId}/events:
+    get:
+      operationId: listRunEvents
+      summary: Run-level replay event feed
+      description: >
+        Returns execution events for the given run in ascending `runSequence`
+        order. Supports cursor-based pagination: pass the `nextCursor` value
+        from the previous response as `cursor` to retrieve the next page.
+      tags:
+        - Runs
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: Run identifier.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          description: >
+            Sequence cursor: only events with `runSequence` greater than this
+            value are returned. Omit or pass `0` to start from the beginning.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of events to return (default 200, clamped to [1, 1000]).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 200
+      responses:
+        "200":
+          description: Ordered event feed for the run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskExecutionEventFeed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /memory/tasks/{taskId}/events:
+    get:
+      operationId: listTaskEvents
+      summary: Task-level replay event feed
+      description: >
+        Returns execution events for the given task in ascending `taskSequence`
+        order. Supports cursor-based pagination: pass the `nextCursor` value
+        from the previous response as `cursor` to retrieve the next page.
+      tags:
+        - Memory
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          description: Task identifier.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          description: >
+            Sequence cursor: only events with `taskSequence` greater than this
+            value are returned. Omit or pass `0` to start from the beginning.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of events to return (default 200, clamped to [1, 1000]).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 200
+      responses:
+        "200":
+          description: Ordered event feed for the task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskExecutionEventFeed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 tags:
   - name: Health
     description: Runtime health and readiness probes.
@@ -743,3 +1081,7 @@ tags:
     description: >
       Read access to persisted task snapshots via ArcadeDB or the in-process
       task registry.
+  - name: Runs
+    description: >
+      Run management and replay feeds — create runs, inspect run metadata,
+      list associated tasks, and stream execution events for audit and replay.

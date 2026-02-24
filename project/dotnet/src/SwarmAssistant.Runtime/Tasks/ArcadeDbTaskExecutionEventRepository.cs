@@ -127,6 +127,7 @@ public sealed class ArcadeDbTaskExecutionEventRepository
     /// <inheritdoc />
     public async Task<IReadOnlyList<TaskExecutionEvent>> ListByTaskAsync(
         string taskId,
+        long afterSequence = 0,
         int limit = 200,
         CancellationToken cancellationToken = default)
     {
@@ -140,11 +141,12 @@ public sealed class ArcadeDbTaskExecutionEventRepository
             var client = _httpClientFactory.CreateClient("arcadedb");
             var body = await ExecuteCommandAsync(
                 client,
-                "SELECT FROM TaskExecutionEvent WHERE taskId = :taskId " +
+                "SELECT FROM TaskExecutionEvent WHERE taskId = :taskId AND taskSequence > :afterSequence " +
                 "ORDER BY taskSequence ASC LIMIT :limit",
                 new Dictionary<string, object?>
                 {
                     ["taskId"] = taskId,
+                    ["afterSequence"] = afterSequence,
                     ["limit"] = Math.Clamp(limit, 1, 1000)
                 },
                 cancellationToken);
@@ -162,6 +164,7 @@ public sealed class ArcadeDbTaskExecutionEventRepository
     /// <inheritdoc />
     public async Task<IReadOnlyList<TaskExecutionEvent>> ListByRunAsync(
         string runId,
+        long afterSequence = 0,
         int limit = 200,
         CancellationToken cancellationToken = default)
     {
@@ -175,11 +178,12 @@ public sealed class ArcadeDbTaskExecutionEventRepository
             var client = _httpClientFactory.CreateClient("arcadedb");
             var body = await ExecuteCommandAsync(
                 client,
-                "SELECT FROM TaskExecutionEvent WHERE runId = :runId " +
+                "SELECT FROM TaskExecutionEvent WHERE runId = :runId AND runSequence > :afterSequence " +
                 "ORDER BY runSequence ASC LIMIT :limit",
                 new Dictionary<string, object?>
                 {
                     ["runId"] = runId,
+                    ["afterSequence"] = afterSequence,
                     ["limit"] = Math.Clamp(limit, 1, 1000)
                 },
                 cancellationToken);
