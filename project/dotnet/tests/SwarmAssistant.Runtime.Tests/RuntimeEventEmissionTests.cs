@@ -89,7 +89,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 Microsoft.Extensions.Options.Options.Create(_options),
                 null,
                 null,
-                recorder)),
+                recorder,
+                null)),
             $"dp{suffix}-{Guid.NewGuid():N}");
 
         return (dispatcher, writer);
@@ -329,8 +330,9 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
                 null,
+                null,
+                null,
                 null
-                // no eventRecorder — defaults to null
             )),
             $"dp-noop-{Guid.NewGuid():N}");
 

@@ -13,16 +13,29 @@ def main() -> None:
         payload = {}
 
     tool_name = payload.get("tool_name", "unknown")
-    adapter = os.environ.get("ADAPTER") or os.environ.get("PRE_TOOL_ADAPTER") or "default"
+    adapter = (
+        os.environ.get("ADAPTER") or os.environ.get("PRE_TOOL_ADAPTER") or "default"
+    )
 
     # Placeholder: future validation logic would set approved = False to block
     approved = True
 
     if adapter == "copilot":
         if approved:
-            print(json.dumps({"permissionDecision": "approve", "permissionDecisionReason": ""}))
+            print(
+                json.dumps(
+                    {"permissionDecision": "approve", "permissionDecisionReason": ""}
+                )
+            )
         else:
-            print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": f"tool '{tool_name}' not permitted"}))
+            print(
+                json.dumps(
+                    {
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": f"tool '{tool_name}' not permitted",
+                    }
+                )
+            )
     else:
         if approved:
             print(json.dumps({"result": "ok", "tool_name": tool_name}))

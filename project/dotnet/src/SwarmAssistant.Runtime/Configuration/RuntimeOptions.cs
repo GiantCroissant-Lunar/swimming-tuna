@@ -176,6 +176,51 @@ public sealed class RuntimeOptions
     /// <c>SecureLocal</c> and <c>CI</c> profiles to avoid exposing the API schema.
     /// </summary>
     public bool SwaggerEnabled { get; init; } = false;
+
+    /// <summary>
+    /// When true, enables the code index integration for codebase-aware agent prompts.
+    /// Requires the code-index container to be running.
+    /// </summary>
+    public bool CodeIndexEnabled { get; init; } = false;
+
+    /// <summary>
+    /// URL of the code-index retrieval API.
+    /// Default: http://localhost:8080
+    /// </summary>
+    public string CodeIndexUrl { get; init; } = "http://localhost:8080";
+
+    /// <summary>
+    /// Maximum number of code chunks to include in agent prompts.
+    /// Values are clamped to [0, 50].
+    /// </summary>
+    private int _codeIndexMaxChunks = 10;
+    public int CodeIndexMaxChunks
+    {
+        get => _codeIndexMaxChunks;
+        init => _codeIndexMaxChunks = Math.Clamp(value, 0, 50);
+    }
+
+    /// <summary>
+    /// When true, includes code context in planner prompts.
+    /// </summary>
+    public bool CodeIndexForPlanner { get; init; } = true;
+
+    /// <summary>
+    /// When true, includes code context in builder prompts.
+    /// </summary>
+    public bool CodeIndexForBuilder { get; init; } = true;
+
+    /// <summary>
+    /// When true, includes code context in reviewer prompts.
+    /// </summary>
+    public bool CodeIndexForReviewer { get; init; } = true;
+
+    /// <summary>
+    /// Languages to include in code index queries.
+    /// When empty or null, no language filter is applied (all indexed languages are searched).
+    /// Example: ["csharp", "javascript", "python"]
+    /// </summary>
+    public string[] CodeIndexLanguages { get; init; } = [];
 }
 
 public sealed class SandboxWrapperOptions

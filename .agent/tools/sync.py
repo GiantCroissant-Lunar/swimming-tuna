@@ -125,7 +125,10 @@ def execute_copy_file(source: Path, target: Path) -> str:
 
 
 def execute_merge_claude_hooks(
-    settings_path: Path, hooks_dir: Path, mapping: dict, project_root: Path | None = None
+    settings_path: Path,
+    hooks_dir: Path,
+    mapping: dict,
+    project_root: Path | None = None,
 ) -> str:
     """Merge hook entries into Claude settings.json.
 
@@ -283,7 +286,9 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
                 mapping = entry.get("mapping", {})
                 settings_path = project_root / target_rel
                 hooks_dir = project_root / ".agent" / "hooks"
-                result = execute_merge_claude_hooks(settings_path, hooks_dir, mapping, project_root)
+                result = execute_merge_claude_hooks(
+                    settings_path, hooks_dir, mapping, project_root
+                )
                 results.append(result)
             else:
                 results.append(f"skip: unknown merge format '{fmt}'")

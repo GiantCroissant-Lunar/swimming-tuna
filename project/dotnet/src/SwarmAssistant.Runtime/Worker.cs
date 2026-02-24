@@ -195,6 +195,23 @@ public sealed class Worker : BackgroundService
         var eventRecorder = _eventWriter is not null
             ? new RuntimeEventRecorder(_eventWriter, _loggerFactory.CreateLogger<RuntimeEventRecorder>())
             : null;
+
+        // Create CodeIndexActor if code index is enabled
+        IActorRef? codeIndexActor = null;
+        if (_options.CodeIndexEnabled)
+        {
+            var codeIndexHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
+            codeIndexActor = _actorSystem.ActorOf(
+                Props.Create(() => new CodeIndexActor(
+                    codeIndexHttpClient,
+                    _loggerFactory.CreateLogger<CodeIndexActor>(),
+                    _optionsInstance)),
+                "code-index");
+        }
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -210,7 +227,8 @@ public sealed class Worker : BackgroundService
                 Microsoft.Extensions.Options.Options.Create(_options),
                 tracker,
                 strategyAdvisorActor,
-                eventRecorder)),
+                eventRecorder,
+                codeIndexActor)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

@@ -34,6 +34,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly OutcomeTracker? _outcomeTracker;
     private readonly IActorRef? _strategyAdvisorActor;
     private readonly RuntimeEventRecorder? _eventRecorder;
+    private readonly IActorRef? _codeIndexActor;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -58,7 +59,8 @@ public sealed class DispatcherActor : ReceiveActor
         IOptions<RuntimeOptions> options,
         OutcomeTracker? outcomeTracker = null,
         IActorRef? strategyAdvisorActor = null,
-        RuntimeEventRecorder? eventRecorder = null)
+        RuntimeEventRecorder? eventRecorder = null,
+        IActorRef? codeIndexActor = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -74,6 +76,7 @@ public sealed class DispatcherActor : ReceiveActor
         _outcomeTracker = outcomeTracker;
         _strategyAdvisorActor = strategyAdvisorActor;
         _eventRecorder = eventRecorder;
+        _codeIndexActor = codeIndexActor;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -139,6 +142,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _options,
                 _outcomeTracker,
                 _strategyAdvisorActor,
+                _codeIndexActor,
                 DefaultMaxRetries,
                 0,
                 _eventRecorder)),
@@ -200,6 +204,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _options,
                 _outcomeTracker,
                 _strategyAdvisorActor,
+                _codeIndexActor,
                 DefaultMaxRetries,
                 message.Depth,
                 _eventRecorder)),
