@@ -73,22 +73,30 @@ public sealed class SwarmAgentActor : ReceiveActor
 
         if (_options.AgentEndpointEnabled && _httpPort.HasValue)
         {
-            var card = new AgentCard
+            try
             {
-                AgentId = _agentId,
-                Name = "swarm-assistant",
-                Version = "phase-12",
-                Protocol = "a2a",
-                Capabilities = _capabilities.ToArray(),
-                Provider = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
-                SandboxLevel = 0,
-                EndpointUrl = $"http://127.0.0.1:{_httpPort.Value}"
-            };
-            _endpointHost = new AgentEndpointHost(card, _httpPort.Value);
-            _endpointHost.StartAsync(CancellationToken.None).Wait();
+                var card = new AgentCard
+                {
+                    AgentId = _agentId,
+                    Name = "swarm-assistant",
+                    Version = "phase-12",
+                    Protocol = "a2a",
+                    Capabilities = _capabilities.ToArray(),
+                    Provider = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
+                    SandboxLevel = 0,
+                    EndpointUrl = $"http://127.0.0.1:{_httpPort.Value}"
+                };
+                _endpointHost = new AgentEndpointHost(card, _httpPort.Value);
+                _endpointHost.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
 
-            // Re-advertise with endpoint URL now that the host is started
-            AdvertiseCapability();
+                // Re-advertise with endpoint URL now that the host is started
+                AdvertiseCapability();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to start agent endpoint on port {Port}", _httpPort.Value);
+                _endpointHost = null;
+            }
         }
 
         base.PreStart();
@@ -96,7 +104,11 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     protected override void PostStop()
     {
-        _endpointHost?.StopAsync().Wait();
+        if (_endpointHost is not null)
+        {
+            _endpointHost.StopAsync().GetAwaiter().GetResult();
+            _endpointHost = null;
+        }
         base.PostStop();
     }
 

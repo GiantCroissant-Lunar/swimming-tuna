@@ -7,6 +7,11 @@ public sealed class PortAllocator
     private readonly SortedSet<int> _available;
     private readonly object _lock = new();
 
+    public int AvailableCount
+    {
+        get { lock (_lock) return _available.Count; }
+    }
+
     public PortAllocator(string range)
     {
         var parts = range.Split('-');

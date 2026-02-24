@@ -252,3 +252,7 @@ curl -s -X POST http://127.0.0.1:8001/a2a/tasks \
   -H 'content-type: application/json' \
   -d '{"title":"test task"}'
 ```
+
+> **Security:** Per-agent endpoints bind to `127.0.0.1` only and do not require
+> `X-API-Key` authentication (unlike the runtime-level A2A endpoints on port 5080).
+> Do not expose per-agent ports beyond localhost without adding authentication middleware.

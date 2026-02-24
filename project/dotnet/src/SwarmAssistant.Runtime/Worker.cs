@@ -160,6 +160,12 @@ public sealed class Worker : BackgroundService
 
         if (_options.AgentEndpointEnabled && portAllocator is not null)
         {
+            if (portAllocator.AvailableCount < swarmAgentPoolSize)
+            {
+                throw new InvalidOperationException(
+                    $"Port range {_options.AgentEndpointPortRange} provides {portAllocator.AvailableCount} ports but {swarmAgentPoolSize} agents require {swarmAgentPoolSize} ports");
+            }
+
             // Create individual agents with identity and allocated ports
             var agents = new List<IActorRef>();
             for (int i = 0; i < swarmAgentPoolSize; i++)

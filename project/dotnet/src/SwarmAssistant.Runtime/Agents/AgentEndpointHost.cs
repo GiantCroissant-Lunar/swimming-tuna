@@ -4,7 +4,7 @@ using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 
-public sealed class AgentEndpointHost
+public sealed class AgentEndpointHost : IAsyncDisposable
 {
     private readonly AgentCard _card;
     private readonly int _requestedPort;
@@ -47,7 +47,16 @@ public sealed class AgentEndpointHost
     public async Task StopAsync()
     {
         if (_app is not null)
+        {
             await _app.StopAsync();
+            await _app.DisposeAsync();
+            _app = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
     }
 
     public bool TryDequeueTask(out AgentTaskRequest? task)

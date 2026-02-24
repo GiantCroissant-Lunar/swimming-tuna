@@ -25,7 +25,7 @@ public sealed class AgentEndpointIntegrationTests : TestKit
         };
 
     [Fact]
-    public void AgentWithEndpointEnabled_ExposesAgentCard()
+    public async Task AgentWithEndpointEnabled_ExposesAgentCard()
     {
         var options = CreateOptions(endpointEnabled: true);
         var registry = Sys.ActorOf(
@@ -63,10 +63,10 @@ public sealed class AgentEndpointIntegrationTests : TestKit
 
         // Query the agent card from the HTTP endpoint
         using var client = new HttpClient();
-        var response = client.GetAsync($"{endpointUrl}/.well-known/agent-card.json").Result;
+        var response = await client.GetAsync($"{endpointUrl}/.well-known/agent-card.json");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var card = response.Content.ReadFromJsonAsync<AgentCard>().Result;
+        var card = await response.Content.ReadFromJsonAsync<AgentCard>();
         Assert.NotNull(card);
         Assert.Equal(agentId, card.AgentId);
         Assert.Equal("swarm-assistant", card.Name);
@@ -74,7 +74,7 @@ public sealed class AgentEndpointIntegrationTests : TestKit
         Assert.Contains(SwarmRole.Builder, card.Capabilities);
 
         // Verify health endpoint as well
-        var healthResponse = client.GetAsync($"{endpointUrl}/a2a/health").Result;
+        var healthResponse = await client.GetAsync($"{endpointUrl}/a2a/health");
         Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
 
         // Clean up: stop the actor so the endpoint shuts down

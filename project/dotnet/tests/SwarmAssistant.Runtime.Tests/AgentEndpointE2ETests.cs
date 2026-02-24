@@ -30,8 +30,8 @@ public sealed class AgentEndpointE2ETests : IAsyncDisposable
             EndpointUrl = "http://localhost:0"
         };
 
-        var host1 = new AgentEndpointHost(card1, port: 0);
-        var host2 = new AgentEndpointHost(card2, port: 0);
+        await using var host1 = new AgentEndpointHost(card1, port: 0);
+        await using var host2 = new AgentEndpointHost(card2, port: 0);
 
         await host1.StartAsync(CancellationToken.None);
         await host2.StartAsync(CancellationToken.None);
@@ -53,9 +53,6 @@ public sealed class AgentEndpointE2ETests : IAsyncDisposable
         // Verify Agent 2 received the task
         Assert.True(host2.TryDequeueTask(out var receivedTask));
         Assert.Equal("Build the API", receivedTask!.Title);
-
-        await host1.StopAsync();
-        await host2.StopAsync();
     }
 
     [Fact]
@@ -69,7 +66,7 @@ public sealed class AgentEndpointE2ETests : IAsyncDisposable
             Provider = "cline", SandboxLevel = 0,
             EndpointUrl = "http://localhost:0"
         };
-        var host = new AgentEndpointHost(card, port: 0);
+        await using var host = new AgentEndpointHost(card, port: 0);
         await host.StartAsync(CancellationToken.None);
 
         var response = await _client.GetAsync($"{host.BaseUrl}/a2a/health");
@@ -79,8 +76,6 @@ public sealed class AgentEndpointE2ETests : IAsyncDisposable
         Assert.Contains("reviewer-01", json);
         Assert.Contains("Reviewer", json);
         Assert.Contains("Tester", json);
-
-        await host.StopAsync();
     }
 
     public async ValueTask DisposeAsync()
