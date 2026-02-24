@@ -14,9 +14,22 @@ public sealed class PortAllocator
 
     public PortAllocator(string range)
     {
-        var parts = range.Split('-');
-        _min = int.Parse(parts[0]);
-        _max = int.Parse(parts[1]);
+        if (string.IsNullOrWhiteSpace(range))
+            throw new ArgumentException("Port range must be in 'min-max' format.", nameof(range));
+
+        var parts = range.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], out var min)
+            || !int.TryParse(parts[1], out var max))
+        {
+            throw new ArgumentException($"Port range '{range}' must be in 'min-max' format.", nameof(range));
+        }
+
+        if (min < 0 || max > 65535 || min > max)
+            throw new ArgumentOutOfRangeException(nameof(range), $"Port range {min}-{max} must be within 0-65535 and min <= max.");
+
+        _min = min;
+        _max = max;
         _available = new SortedSet<int>(Enumerable.Range(_min, _max - _min + 1));
     }
 

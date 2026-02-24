@@ -2,16 +2,20 @@ namespace SwarmAssistant.Runtime.Agents;
 
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 public sealed class AgentEndpointHost : IAsyncDisposable
 {
     private readonly AgentCard _card;
     private readonly int _requestedPort;
     private WebApplication? _app;
+    private string? _baseUrl;
     private readonly ConcurrentQueue<AgentTaskRequest> _taskQueue = new();
 
-    public string BaseUrl => _app?.Urls.First() ?? throw new InvalidOperationException("Host not started");
+    public string BaseUrl => _baseUrl ?? throw new InvalidOperationException("Host not started");
 
     public AgentEndpointHost(AgentCard card, int port)
     {
@@ -42,6 +46,12 @@ public sealed class AgentEndpointHost : IAsyncDisposable
         });
 
         await _app.StartAsync(ct);
+
+        var addresses = _app.Services
+            .GetRequiredService<IServer>()
+            .Features
+            .Get<IServerAddressesFeature>();
+        _baseUrl = addresses?.Addresses.FirstOrDefault() ?? _app.Urls.First();
     }
 
     public async Task StopAsync()
@@ -51,6 +61,7 @@ public sealed class AgentEndpointHost : IAsyncDisposable
             await _app.StopAsync();
             await _app.DisposeAsync();
             _app = null;
+            _baseUrl = null;
         }
     }
 
