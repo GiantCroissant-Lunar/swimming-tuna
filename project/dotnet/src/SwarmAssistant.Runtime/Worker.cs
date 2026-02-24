@@ -158,7 +158,8 @@ public sealed class Worker : BackgroundService
                     capabilityRegistry,
                     capabilities,
                     default(TimeSpan),
-                    null))
+                    null,
+                    (int?)null))
                 .WithRouter(new SmallestMailboxPool(swarmAgentPoolSize)),
             "swarm-agent");
 

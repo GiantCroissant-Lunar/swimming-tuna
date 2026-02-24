@@ -37,7 +37,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Planner, SwarmRole.Reviewer },
             default(TimeSpan),
-            null)));
+            null,
+            (int?)null)));
 
         AwaitAssert(() =>
         {
@@ -64,7 +65,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Planner, SwarmRole.Researcher },
             default(TimeSpan),
-            null)));
+            null,
+            (int?)null)));
         AwaitAgentRegistration(registry);
 
         registry.Tell(new ExecuteRoleTask("task-plan", SwarmRole.Planner, "Plan", "desc", null, null));
@@ -96,7 +98,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Planner, SwarmRole.Builder, SwarmRole.Reviewer, SwarmRole.Orchestrator },
             default(TimeSpan),
-            null)));
+            null,
+            (int?)null)));
         AwaitAgentRegistration(registry);
 
         registry.Tell(new ExecuteRoleTask(
@@ -128,7 +131,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Builder },
             default(TimeSpan),
-            null)));
+            null,
+            (int?)null)));
         AwaitAgentRegistration(registry);
 
         agent.Tell(new NegotiationOffer("task-negotiation", SwarmRole.Builder, "peer-a"));
@@ -152,7 +156,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Builder },
             default(TimeSpan),
-            null)));
+            null,
+            (int?)null)));
         AwaitAgentRegistration(registry);
 
         agent.Tell(new HelpRequest("task-help", "Need additional implementation support", "peer-a"));
@@ -267,7 +272,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Planner },
             default,
-            explicitId)));
+            explicitId,
+            (int?)null)));
 
         AwaitAssert(() =>
         {
@@ -293,7 +299,8 @@ public sealed class SwarmAgentActorTests : TestKit
             registry,
             new[] { SwarmRole.Builder },
             default(TimeSpan),
-            null)));
+            null,
+            (int?)null)));
 
         AwaitAssert(() =>
         {

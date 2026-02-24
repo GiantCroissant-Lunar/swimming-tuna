@@ -177,7 +177,8 @@ public sealed class DynamicTopologyTests : TestKit
                 registry,
                 new[] { SwarmRole.Planner },
                 ttl,
-                null)),
+                null,
+                (int?)null)),
             "ttl-agent");
 
         Watch(agent);
@@ -202,7 +203,8 @@ public sealed class DynamicTopologyTests : TestKit
                 registry,
                 new[] { SwarmRole.Builder },
                 default(TimeSpan),
-                null)),
+                null,
+                (int?)null)),
             "no-ttl-agent");
 
         Watch(agentActor);

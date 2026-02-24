@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Akka.Actor;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Telemetry;
 
@@ -19,10 +20,12 @@ public sealed class SwarmAgentActor : ReceiveActor
     private readonly IReadOnlyList<SwarmRole> _capabilities;
     private readonly ILogger _logger;
     private readonly string _agentId;
+    private readonly int? _httpPort;
     private readonly Dictionary<string, int> _reservedContractCounts = new(StringComparer.Ordinal);
 
     private int _currentLoad;
     private readonly TimeSpan _idleTtl;
+    private AgentEndpointHost? _endpointHost;
 
     public SwarmAgentActor(
         RuntimeOptions options,
@@ -32,7 +35,8 @@ public sealed class SwarmAgentActor : ReceiveActor
         IActorRef capabilityRegistry,
         SwarmRole[] capabilities,
         TimeSpan idleTtl = default,
-        string? agentId = null)
+        string? agentId = null,
+        int? httpPort = null)
     {
         _options = options;
         _agentFrameworkRoleEngine = agentFrameworkRoleEngine;
@@ -42,6 +46,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         _logger = loggerFactory.CreateLogger<SwarmAgentActor>();
         _agentId = agentId ?? $"agent-{Guid.NewGuid():N}"[..16];
         _idleTtl = idleTtl;
+        _httpPort = httpPort;
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
         Receive<HealthCheckRequest>(HandleHealthCheck);
@@ -65,7 +70,34 @@ public sealed class SwarmAgentActor : ReceiveActor
             Context.SetReceiveTimeout(_idleTtl);
         }
         AdvertiseCapability();
+
+        if (_options.AgentEndpointEnabled && _httpPort.HasValue)
+        {
+            var card = new AgentCard
+            {
+                AgentId = _agentId,
+                Name = "swarm-assistant",
+                Version = "phase-12",
+                Protocol = "a2a",
+                Capabilities = _capabilities.ToArray(),
+                Provider = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
+                SandboxLevel = 0,
+                EndpointUrl = $"http://127.0.0.1:{_httpPort.Value}"
+            };
+            _endpointHost = new AgentEndpointHost(card, _httpPort.Value);
+            _endpointHost.StartAsync(CancellationToken.None).Wait();
+
+            // Re-advertise with endpoint URL now that the host is started
+            AdvertiseCapability();
+        }
+
         base.PreStart();
+    }
+
+    protected override void PostStop()
+    {
+        _endpointHost?.StopAsync().Wait();
+        base.PostStop();
     }
 
     private void HandleHealthCheck(HealthCheckRequest request)
@@ -271,6 +303,7 @@ public sealed class SwarmAgentActor : ReceiveActor
             Self.Path.ToStringWithoutAddress(),
             _capabilities,
             _currentLoad,
-            AgentId: _agentId), Self);
+            AgentId: _agentId,
+            EndpointUrl: _endpointHost?.BaseUrl), Self);
     }
 }
