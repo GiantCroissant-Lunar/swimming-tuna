@@ -223,11 +223,12 @@ class TestSessionEnd:
         with mock.patch.object(
             session_end, "_save_session_memory", return_value=True
         ) as mock_save:
+            transcript_path = tmp_path / "transcript.json"
             result = _run_hook(
                 session_end,
                 {
                     "session_id": "s2",
-                    "transcript_path": "/tmp/transcript.json",
+                    "transcript_path": str(transcript_path),
                 },
             )
             assert result["result"] == "ok"

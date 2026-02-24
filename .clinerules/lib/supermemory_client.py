@@ -240,7 +240,6 @@ def _api_request(
         urllib.error.HTTPError,
         OSError,
         json.JSONDecodeError,
-        Exception,
     ):
         return None
 

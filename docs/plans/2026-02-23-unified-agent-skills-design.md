@@ -20,7 +20,7 @@ Additionally, codebase knowledge should live in project files (not Supermemory),
 
 ## Directory Structure
 
-```
+```text
 .agent/
 ├── adapters/                    # Per-tool sync configurations
 │   ├── claude/

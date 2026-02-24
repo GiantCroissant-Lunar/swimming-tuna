@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Create CLAUDE.md pointer file
+## Task 1: Create CLAUDE.md pointer file
 
 **Files:**
 - Create: `CLAUDE.md`

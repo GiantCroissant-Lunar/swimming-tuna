@@ -7,9 +7,9 @@ namespace SwarmAssistant.Runtime.Execution;
 public sealed partial class WorkspaceBranchManager
 {
     private readonly bool _enabled;
-    private readonly ILogger? _logger;
+    private readonly ILogger<WorkspaceBranchManager>? _logger;
 
-    public WorkspaceBranchManager(bool enabled, ILogger? logger = null)
+    public WorkspaceBranchManager(bool enabled, ILogger<WorkspaceBranchManager>? logger = null)
     {
         _enabled = enabled;
         _logger = logger;
@@ -62,11 +62,12 @@ public sealed partial class WorkspaceBranchManager
                 return null;
             }
 
-            // Drain streams to avoid OS pipe-buffer deadlock
+            // Drain stdout and stderr concurrently to prevent pipe-buffer deadlock,
+            // then wait for the process to exit with a timeout.
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await process.WaitForExitAsync(cts.Token);
             await Task.WhenAll(stdoutTask, stderrTask);
 
@@ -74,7 +75,7 @@ public sealed partial class WorkspaceBranchManager
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to create workspace branch {Branch} for task {TaskId}", branchName, taskId);
+            _logger?.LogWarning(ex, "git checkout -b {Branch} failed for task {TaskId}", branchName, taskId);
             return null;
         }
     }
