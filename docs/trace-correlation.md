@@ -77,7 +77,7 @@ feature was introduced, or when no active span was present at write time.
    trace ID from the Langfuse UI and query ArcadeDB:
 
    ```sql
-   SELECT FROM TaskExecutionEvent WHERE traceId = '<trace-id>'
+   SELECT * FROM TaskExecutionEvent WHERE traceId = '<trace-id>'
    ORDER BY runSequence ASC
    ```
 
