@@ -37,6 +37,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly IActorRef? _codeIndexActor;
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
+    private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -64,7 +65,8 @@ public sealed class DispatcherActor : ReceiveActor
         RuntimeEventRecorder? eventRecorder = null,
         IActorRef? codeIndexActor = null,
         string? projectContext = null,
-        WorkspaceBranchManager? workspaceBranchManager = null)
+        WorkspaceBranchManager? workspaceBranchManager = null,
+        SandboxLevelEnforcer? sandboxEnforcer = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -83,6 +85,7 @@ public sealed class DispatcherActor : ReceiveActor
         _codeIndexActor = codeIndexActor;
         _projectContext = projectContext;
         _workspaceBranchManager = workspaceBranchManager;
+        _sandboxEnforcer = sandboxEnforcer;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -148,7 +151,8 @@ public sealed class DispatcherActor : ReceiveActor
                 0,
                 _eventRecorder,
                 _projectContext,
-                _workspaceBranchManager)),
+                _workspaceBranchManager,
+                _sandboxEnforcer)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -207,7 +211,8 @@ public sealed class DispatcherActor : ReceiveActor
                 message.Depth,
                 _eventRecorder,
                 _projectContext,
-                _workspaceBranchManager)),
+                _workspaceBranchManager,
+                _sandboxEnforcer)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;

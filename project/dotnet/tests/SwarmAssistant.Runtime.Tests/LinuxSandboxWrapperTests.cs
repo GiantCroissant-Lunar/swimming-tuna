@@ -10,7 +10,7 @@ public sealed class LinuxSandboxWrapperTests
         var result = LinuxSandboxWrapper.WrapCommand(
             command: "copilot",
             args: ["--prompt", "hello"],
-            workspacePath: "/tmp/workspace",
+            workspacePath: Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar),
             allowedHosts: []);
 
         Assert.Equal("unshare", result.Command);
@@ -24,7 +24,7 @@ public sealed class LinuxSandboxWrapperTests
         var result = LinuxSandboxWrapper.WrapCommand(
             command: "copilot",
             args: ["--prompt", "hello"],
-            workspacePath: "/tmp/workspace",
+            workspacePath: Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar),
             allowedHosts: []);
 
         Assert.Contains("sh", result.Args);
@@ -47,16 +47,17 @@ public sealed class LinuxSandboxWrapperTests
     [Fact]
     public void WrapCommand_IncludesWorkspacePathInMountArgs()
     {
+        var tmpPath = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
         var result = LinuxSandboxWrapper.WrapCommand(
             command: "copilot",
             args: ["--prompt", "hello"],
-            workspacePath: "/tmp/workspace",
+            workspacePath: tmpPath,
             allowedHosts: []);
 
         Assert.Contains("--mount-proc", result.Args);
         var shellCmdArg = result.Args.FirstOrDefault(a => a.Contains("mount --bind"));
         Assert.NotNull(shellCmdArg);
-        Assert.Contains("/tmp/workspace", shellCmdArg);
+        Assert.Contains(Path.GetFullPath(tmpPath), shellCmdArg);
     }
 
     [Fact]
@@ -95,7 +96,7 @@ public sealed class LinuxSandboxWrapperTests
 
             var shellCmdArg = result.Args.FirstOrDefault(a => a.Contains("&&"));
             Assert.NotNull(shellCmdArg);
-            Assert.Contains("hello'world", shellCmdArg);
+            Assert.Contains("hello'\\''world", shellCmdArg);
         }
         finally
         {

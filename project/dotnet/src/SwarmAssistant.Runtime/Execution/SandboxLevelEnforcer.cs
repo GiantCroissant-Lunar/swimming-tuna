@@ -2,7 +2,7 @@ using SwarmAssistant.Contracts.Messaging;
 
 namespace SwarmAssistant.Runtime.Execution;
 
-internal sealed class SandboxLevelEnforcer
+public sealed class SandboxLevelEnforcer
 {
     private readonly bool _containerAvailable;
 

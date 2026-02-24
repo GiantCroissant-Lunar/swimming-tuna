@@ -93,6 +93,7 @@ public sealed class ReplayFeedIntegrationTests : TestKit
                 recorder,
                 null,
                 null,
+                null,
                 null)),
             $"rf-dp{suffix}-{Guid.NewGuid():N}");
 

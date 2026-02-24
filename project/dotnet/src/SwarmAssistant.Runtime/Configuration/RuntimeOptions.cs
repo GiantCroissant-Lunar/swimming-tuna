@@ -1,5 +1,8 @@
 namespace SwarmAssistant.Runtime.Configuration;
 
+using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Execution;
+
 public sealed class RuntimeOptions
 {
     public const string SectionName = "Runtime";
@@ -33,6 +36,15 @@ public sealed class RuntimeOptions
     public bool ArcadeDbAutoCreateSchema { get; init; } = true;
     public bool MemoryBootstrapEnabled { get; init; } = true;
     public int MemoryBootstrapLimit { get; init; } = 200;
+
+    private int _memoryBootstrapSurfaceLimit = 50;
+    public int MemoryBootstrapSurfaceLimit
+    {
+        get => _memoryBootstrapSurfaceLimit;
+        init => _memoryBootstrapSurfaceLimit = Math.Clamp(value, 1, 200);
+    }
+
+    public string MemoryBootstrapOrderBy { get; init; } = "updated";
     public string LangfuseBaseUrl { get; init; } = "http://localhost:3000";
     public int HealthHeartbeatSeconds { get; init; } = 30;
 
@@ -238,6 +250,8 @@ public sealed class RuntimeOptions
     /// Example: ["csharp", "javascript", "python"]
     /// </summary>
     public string[] CodeIndexLanguages { get; init; } = [];
+
+    public SandboxLevel SandboxLevel => SandboxCommandBuilder.ParseLevel(SandboxMode);
 }
 
 public sealed class SandboxWrapperOptions

@@ -213,7 +213,7 @@ if (options.AgUiEnabled)
         CancellationToken cancellationToken) =>
     {
         var requestedLimit = Math.Clamp(limit ?? 50, 1, 500);
-        var memoryTasks = await memoryReader.ListAsync(requestedLimit, cancellationToken);
+        var memoryTasks = await memoryReader.ListAsync(requestedLimit, "updated", cancellationToken);
         var source = memoryTasks.Count > 0 ? "arcadedb" : "registry";
         var snapshots = memoryTasks.Count > 0
             ? memoryTasks
@@ -451,7 +451,7 @@ if (options.AgUiEnabled)
             case "load_memory":
                 var requestedLimit = UiActionPayload.GetInt(action.Payload, "limit") ?? 50;
                 var limit = Math.Clamp(requestedLimit, 1, 500);
-                var memoryTasks = await memoryReader.ListAsync(limit, cancellationToken);
+                var memoryTasks = await memoryReader.ListAsync(limit, "updated", cancellationToken);
                 var source = memoryTasks.Count > 0 ? "arcadedb" : "registry";
                 var snapshots = memoryTasks.Count > 0
                     ? memoryTasks

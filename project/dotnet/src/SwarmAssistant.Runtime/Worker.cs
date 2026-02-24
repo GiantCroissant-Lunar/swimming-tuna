@@ -295,6 +295,9 @@ public sealed class Worker : BackgroundService
             _options.WorkspaceBranchEnabled,
             _loggerFactory.CreateLogger<WorkspaceBranchManager>());
 
+        var sandboxEnforcer = new SandboxLevelEnforcer(
+            containerAvailable: _options.SandboxMode is "docker" or "apple-container");
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -313,7 +316,8 @@ public sealed class Worker : BackgroundService
                 eventRecorder,
                 codeIndexActor,
                 projectContext,
-                workspaceBranchManager)),
+                workspaceBranchManager,
+                sandboxEnforcer)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;
@@ -321,6 +325,8 @@ public sealed class Worker : BackgroundService
         await _startupMemoryBootstrapper.RestoreAsync(
             _options.MemoryBootstrapEnabled,
             _options.MemoryBootstrapLimit,
+            _options.MemoryBootstrapSurfaceLimit,
+            _options.MemoryBootstrapOrderBy,
             stoppingToken);
 
         if (StartupMemoryBootstrapper.ShouldAutoSubmitDemoTask(_options.AutoSubmitDemoTask, _taskRegistry.Count))

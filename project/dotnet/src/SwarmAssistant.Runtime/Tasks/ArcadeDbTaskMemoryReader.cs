@@ -29,7 +29,7 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<TaskSnapshot>> ListAsync(int limit = 50, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TaskSnapshot>> ListAsync(int limit = 50, string orderBy = "updated", CancellationToken cancellationToken = default)
     {
         if (!_options.ArcadeDbEnabled)
         {
@@ -38,10 +38,17 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
 
         try
         {
+            var orderByClause = orderBy.ToLowerInvariant() switch
+            {
+                "created" => "ORDER BY createdAt DESC",
+                "status" => "ORDER BY status ASC, updatedAt DESC",
+                _ => "ORDER BY updatedAt DESC"
+            };
+
             var client = _httpClientFactory.CreateClient("arcadedb");
             var body = await ExecuteCommandAsync(
                 client,
-                "SELECT FROM SwarmTask ORDER BY updatedAt DESC LIMIT :limit",
+                $"SELECT FROM SwarmTask {orderByClause} LIMIT :limit",
                 new Dictionary<string, object?>
                 {
                     ["limit"] = Math.Clamp(limit, 1, 5000)

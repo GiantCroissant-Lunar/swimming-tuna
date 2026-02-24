@@ -460,7 +460,8 @@ public sealed class InterventionReliabilityTests : TestKit
                 /* subTaskDepth: */ 0,
                 /* eventRecorder: */ null,
                 /* projectContext: */ null,
-                /* workspaceBranchManager: */ null)));
+                /* workspaceBranchManager: */ null,
+                /* sandboxEnforcer: */ null)));
 
         _registries[suffix] = registry;
         return (taskId, coordinator, registry, uiEvents);
@@ -495,6 +496,7 @@ public sealed class InterventionReliabilityTests : TestKit
                 uiEvents,
                 registry,
                 Options.Create(_options),
+                null,
                 null,
                 null,
                 null,
