@@ -1,0 +1,57 @@
+services:
+  # Code Index Retrieval API - long-running service for querying code chunks
+  code-index:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: swarm-assistant/code-index:latest
+    restart: unless-stopped
+    ports:
+      - ${HOST_BIND_IP:-127.0.0.1}:${CODE_INDEX_PORT:-8080}:8080
+    environment:
+      - CODE_INDEX_MODE=service
+      - ARCADEDB_URL=${ARCADEDB_URL:-http://arcadedb:2480}
+      - ARCADEDB_DATABASE=${ARCADEDB_DATABASE:-swarm_assistant}
+      - ARCADEDB_USERNAME=${ARCADEDB_USERNAME:-root}
+      - ARCADEDB_PASSWORD=${ARCADEDB_PASSWORD:-playwithdata}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-384}
+      - CHUNK_MAX_TOKENS=${CHUNK_MAX_TOKENS:-512}
+      - CHUNK_OVERLAP_TOKENS=${CHUNK_OVERLAP_TOKENS:-50}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      # Mount source code for development/live indexing
+      - ${SOURCE_CODE_PATH:-../../dotnet}:/source:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      - arcadedb
+    networks:
+      - swarm_assistant_network
+
+  # ArcadeDB - shared with main project
+  arcadedb:
+    image: docker.io/arcadedata/arcadedb:${ARCADEDB_IMAGE_TAG:-25.9.1}
+    restart: unless-stopped
+    ports:
+      - ${HOST_BIND_IP:-127.0.0.1}:${ARCADEDB_HTTP_PORT:-2480}:2480
+      - ${HOST_BIND_IP:-127.0.0.1}:${ARCADEDB_BINARY_PORT:-2424}:2424
+    environment:
+      JAVA_OPTS: >-
+        -Darcadedb.server.rootPassword=${ARCADEDB_ROOT_PASSWORD:-playwithdata}
+        -Darcadedb.server.defaultDatabases=${ARCADEDB_DATABASE:-swarm_assistant}[root]
+    volumes:
+      - arcadedb_data:/home/arcadedb/databases
+    networks:
+      - swarm_assistant_network
+
+volumes:
+  arcadedb_data:
+
+networks:
+  swarm_assistant_network:
+    driver: bridge

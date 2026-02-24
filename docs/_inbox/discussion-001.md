@@ -247,31 +247,31 @@ Below is a practical synthesis that fits your “agent swarm assistant” goal (
 
 0) What each thing is “best at” (in swarm-assistant terms)
 Runtime & sandbox
-apple/container: Run Linux containers as lightweight VMs on Apple silicon; OCI compatible images. Great for “agent runs untrusted tool in sandbox” locally. 
+apple/container: Run Linux containers as lightweight VMs on Apple silicon; OCI compatible images. Great for “agent runs untrusted tool in sandbox” locally.
 Agent framework + orchestration
-microsoft/agent-framework: A full agent + multi-agent workflow framework for .NET and Python, positioned as successor combining AutoGen-style patterns with more “enterprise” features (state/telemetry, etc.). 
+microsoft/agent-framework: A full agent + multi-agent workflow framework for .NET and Python, positioned as successor combining AutoGen-style patterns with more “enterprise” features (state/telemetry, etc.).
 Nanobot / Nanoclaw / Zeroclaw (your earlier list): these are “agent runtime / swarm coordination” experiments; useful as inspiration or as lightweight executors (especially if you want to keep your own protocol-first architecture).
 Durable workflows / background execution
 trigger.dev: Durable long-running jobs/workflows in TypeScript with retries/queues/observability aimed at AI workflows/agents. This is your “don’t lose progress, survive crashes, run for hours” layer.
 Observability / eval
-langfuse: Tracing + monitoring + evaluation for LLM apps (cost/latency, prompt mgmt, datasets/experiments, LLM-as-judge, etc.). 
+langfuse: Tracing + monitoring + evaluation for LLM apps (cost/latency, prompt mgmt, datasets/experiments, LLM-as-judge, etc.).
 Knowledge / RAG tools
-LlamaIndex: Agent framework where RAG pipelines are tools the agent can call; also has workflow-style control constructs. 
+LlamaIndex: Agent framework where RAG pipelines are tools the agent can call; also has workflow-style control constructs.
 Memory store (graph-ish)
 ArcadeDB: Multi-model DB (graph/doc/kv + vector embedding support) with multiple query languages/protocol compat claims. Useful for “agent memory as a graph” + embeddings in one place.
 Concurrency / distribution model
-Akka.NET: Actor-model runtime for highly concurrent / distributed / fault-tolerant apps in .NET. Excellent fit if your swarm is truly “many concurrent agents doing work + supervision.” 
+Akka.NET: Actor-model runtime for highly concurrent / distributed / fault-tolerant apps in .NET. Excellent fit if your swarm is truly “many concurrent agents doing work + supervision.”
 Planning (game-AI style)
-crashkonijn/GOAP: GOAP planner (goal-oriented action planning) for Unity, multi-threaded. Think of it as a deterministic plan generator you can reuse for agent task planning (especially for “tools/actions with preconditions/effects”). 
+crashkonijn/GOAP: GOAP planner (goal-oriented action planning) for Unity, multi-threaded. Think of it as a deterministic plan generator you can reuse for agent task planning (especially for “tools/actions with preconditions/effects”).
 UI / interaction protocols
-ag-ui: Event-based bi-directional protocol streaming agent ↔ UI events (messages, tool calls, lifecycle, state patches, etc.). Great as your transport and real-time sync model. 
-A2UI + A2A (the dev.to article): A2UI is a declarative UI description protocol (agent describes UI components), A2A is agent-to-agent communication with “trust boundary” framing; A2UI can ride over multiple transports (SSE/WebSocket/AG-UI/etc.). 
+ag-ui: Event-based bi-directional protocol streaming agent ↔ UI events (messages, tool calls, lifecycle, state patches, etc.). Great as your transport and real-time sync model.
+A2UI + A2A (the dev.to article): A2UI is a declarative UI description protocol (agent describes UI components), A2A is agent-to-agent communication with “trust boundary” framing; A2UI can ride over multiple transports (SSE/WebSocket/AG-UI/etc.).
 “Swarm that evolves its own workflow”
-Overstory: Very concrete swarm orchestration pattern for coding work: coordinator/supervisor/workers in isolated worktrees, SQLite “mail”, merge queue, watchdog tiers, and hard mechanical tool-enforcement hooks. Even if you don’t use it directly, it’s a goldmine of “what breaks in swarms and how to mitigate.” 
+Overstory: Very concrete swarm orchestration pattern for coding work: coordinator/supervisor/workers in isolated worktrees, SQLite “mail”, merge queue, watchdog tiers, and hard mechanical tool-enforcement hooks. Even if you don’t use it directly, it’s a goldmine of “what breaks in swarms and how to mitigate.”
 1) The key compatibility insight: AG-UI vs A2UI
 Treat them as different layers:
 AG-UI = how events stream between agent backend and UI (runtime connection + event types)
-A2UI = what UI to render (declarative UI components + state separation) 
+A2UI = what UI to render (declarative UI components + state separation)
 So a clean combo is:
 A2UI payloads traveling inside AG-UI events (or over your A2A channel).
 This matches what you’re already doing with “Open-JSON-UI → A2UI mapping”: keep UI declarative, keep transport/eventing separate.
@@ -287,13 +287,13 @@ Observability: Langfuse across all LLM calls
 Memory: ArcadeDB for graph + vectors
 Why this is coherent:
 
-Akka gives you concurrency/supervision semantics for swarms 
-Agent Framework gives standard agent/multi-agent abstractions 
-AG-UI gives real-time UI streaming 
-Langfuse gives “you can actually debug this” 
+Akka gives you concurrency/supervision semantics for swarms
+Agent Framework gives standard agent/multi-agent abstractions
+AG-UI gives real-time UI streaming
+Langfuse gives “you can actually debug this”
 Option B — TypeScript-first “durable swarm”
-Core runtime: trigger.dev (durable tasks & orchestration) 
-Swarm pattern inspiration: Overstory roles + mail/merge/watchdog ideas 
+Core runtime: trigger.dev (durable tasks & orchestration)
+Swarm pattern inspiration: Overstory roles + mail/merge/watchdog ideas
 UI: AG-UI + A2UI
 Memory: ArcadeDB
 RAG: LlamaIndex as tool service
@@ -304,33 +304,33 @@ This is strong if your swarm must run for hours/days and survive restarts withou
 Don’t make them “the platform.” Make them execution strategies.
 A good mental model:
 
-Nanobot / Overstory → swarm organizational patterns (manager/supervisor/workers, guardrails, escalation, merge/review loops) 
+Nanobot / Overstory → swarm organizational patterns (manager/supervisor/workers, guardrails, escalation, merge/review loops)
 Nanoclaw / Zeroclaw → lightweight agent executors (a worker runtime you can embed)
 Picoclaw → edge/embodied agents (only include if you truly need device-side autonomy)
 So your platform can be:
 “Actor/workflow orchestration + observability + UI protocol”
 and your “claws/bots” are just worker implementations that plug in.
 4) The “swarm finishing big tasks” recipe (the missing piece)
-Most swarms fail because they lack mechanical guardrails and closing loops. Overstory is explicit about this (tool enforcement, watchdog tiers, merge queue, typed messaging, etc.). 
+Most swarms fail because they lack mechanical guardrails and closing loops. Overstory is explicit about this (tool enforcement, watchdog tiers, merge queue, typed messaging, etc.).
 For your assistant, copy these patterns even if you don’t copy code:
 
 Typed message bus (not freeform chat)
-Role permissions (read-only scout/reviewer vs read-write builder/merger) 
-Supervisor + watchdog (stalled agent detection, escalation ladder) 
+Role permissions (read-only scout/reviewer vs read-write builder/merger)
+Supervisor + watchdog (stalled agent detection, escalation ladder)
 Commit gates (tests/evals must pass; human approval for risky tools)
 Durable state (task graph + artifacts + checkpoints)
-Telemetry (Langfuse traces + costs + eval scores per worker) 
+Telemetry (Langfuse traces + costs + eval scores per worker)
 5) A concrete “combined” blueprint (what I would build first)
 MVP Goal: a swarm that can plan → execute → report progress with a live UI, and reliably finish multi-step tasks.
 Components
-Swarm core: Akka.NET actors (Coordinator, Supervisor, Worker, ToolRunner, Memory) 
+Swarm core: Akka.NET actors (Coordinator, Supervisor, Worker, ToolRunner, Memory)
 UI streaming: AG-UI event stream
-UI structure: A2UI payloads embedded in AG-UI events 
-Observability: Langfuse for every LLM call + tool span 
-Memory: ArcadeDB for task graph + embeddings 
-RAG tool service: LlamaIndex microservice the swarm calls as a tool 
-Sandbox tools (local Mac): apple/container to run “dangerous/unknown” tools in isolated Linux VMs with OCI images 
-Planning: optional GOAP planner for deterministic action sequencing when actions have clear preconditions/effects 
+UI structure: A2UI payloads embedded in AG-UI events
+Observability: Langfuse for every LLM call + tool span
+Memory: ArcadeDB for task graph + embeddings
+RAG tool service: LlamaIndex microservice the swarm calls as a tool
+Sandbox tools (local Mac): apple/container to run “dangerous/unknown” tools in isolated Linux VMs with OCI images
+Planning: optional GOAP planner for deterministic action sequencing when actions have clear preconditions/effects
 Why this MVP is strong
 You get true concurrency + supervision (Akka)
 UI is protocolized (AG-UI + A2UI), matching your Open-JSON-UI mapping work
@@ -339,17 +339,17 @@ You have structured, queryable memory (ArcadeDB)
 You can safely run tools (apple/container)
 6) “Use directly” vs “borrow ideas” (my strong recommendation)
 Use directly:
-Langfuse (observability is non-negotiable at swarm scale) 
-AG-UI (great standard for real-time event streaming) 
-LlamaIndex (as a tool service for RAG pipelines) 
-apple/container (if you’re on Apple silicon and want sandboxed tool runs) 
+Langfuse (observability is non-negotiable at swarm scale)
+AG-UI (great standard for real-time event streaming)
+LlamaIndex (as a tool service for RAG pipelines)
+apple/container (if you’re on Apple silicon and want sandboxed tool runs)
 Borrow ideas (don’t adopt wholesale yet):
-Overstory (copy the guardrails + role system + watchdog + “mail” patterns) 
-GOAP (borrow the planning model; embed only if it fits) 
-ArcadeDB (good, but decide if you really need a DB here vs simpler stores first) 
+Overstory (copy the guardrails + role system + watchdog + “mail” patterns)
+GOAP (borrow the planning model; embed only if it fits)
+ArcadeDB (good, but decide if you really need a DB here vs simpler stores first)
 Pick ONE for orchestration “center”:
 Microsoft Agent Framework or Akka or Trigger.dev
-(you can integrate the others around it, but don’t make two of them “the boss”). 
+(you can integrate the others around it, but don’t make two of them “the boss”).
 If you tell me which direction you’re leaning (.NET-first with Akka/Agent Framework, or TypeScript-first with Trigger.dev), I’ll output a very concrete “swarm assistant” reference architecture:
 agent role definitions (Coordinator/Supervisor/Scout/Builder/Reviewer/Merger)
 message types + state machine
@@ -357,4 +357,3 @@ how A2UI screens map to AG-UI event streams
 memory schema in ArcadeDB (task graph + artifacts + evaluations)
 tool sandbox strategy using apple/container
 No extra questions needed — just pick A or B and I’ll lay it out.
-

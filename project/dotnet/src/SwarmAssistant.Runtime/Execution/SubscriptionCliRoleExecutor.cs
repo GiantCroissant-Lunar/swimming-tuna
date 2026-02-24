@@ -92,7 +92,8 @@ internal sealed class SubscriptionCliRoleExecutor
     {
         var timeout = TimeSpan.FromSeconds(Math.Clamp(_options.RoleExecutionTimeoutSeconds, 5, 900));
         var errors = new List<string>();
-        var prompt = RolePromptFactory.BuildPrompt(command);
+        // Use pre-built prompt if provided (with code context), otherwise build from scratch
+        var prompt = command.Prompt ?? RolePromptFactory.BuildPrompt(command);
 
         var adapterOrder = BuildAdapterOrder(command.PreferredAdapter);
 

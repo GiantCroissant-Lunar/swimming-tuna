@@ -1,0 +1,30 @@
+# Code Index Pipeline Dependencies
+# FastEmbed for local ONNX embeddings (no GPU required)
+fastembed>=0.3.0
+
+# Tree-sitter for AST parsing
+tree-sitter>=0.22.0
+tree-sitter-c-sharp>=0.23.0
+tree-sitter-javascript>=0.23.0
+tree-sitter-python>=0.23.0
+
+# HTTP API framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# HTTP client for ArcadeDB
+httpx>=0.27.0
+
+# Git integration for incremental indexing
+GitPython>=3.1.40
+
+# Utilities
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+numpy>=1.26.0
+tiktoken>=0.8.0
+python-multipart>=0.0.12
+
+# CLI framework (for index job)
+typer>=0.13.0
+rich>=13.9.0

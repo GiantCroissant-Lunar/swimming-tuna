@@ -8,10 +8,15 @@ internal static class RolePromptFactory
 {
     public static string BuildPrompt(ExecuteRoleTask command)
     {
-        return BuildPrompt(command, strategyAdvice: null);
+        return BuildPrompt(command, strategyAdvice: null, codeContext: null);
     }
 
     public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice)
+    {
+        return BuildPrompt(command, strategyAdvice, codeContext: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext)
     {
         var basePrompt = command.Role switch
         {
@@ -61,16 +66,32 @@ internal static class RolePromptFactory
             _ => $"Unsupported role {command.Role}"
         };
 
-        // Append historical context if available for relevant roles
+        var contextParts = new List<string>();
+
+        // Historical context (3rd layer)
         if (strategyAdvice is not null &&
             strategyAdvice.SimilarTaskCount > 0 &&
             command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
         {
-            var historicalContext = BuildHistoricalContext(strategyAdvice);
-            return string.Join(Environment.NewLine, basePrompt, string.Empty, historicalContext);
+            contextParts.Add(BuildHistoricalContext(strategyAdvice));
         }
 
-        return basePrompt;
+        // Code context (4th layer)
+        if (codeContext is not null &&
+            codeContext.HasResults &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            contextParts.Add(BuildCodeContext(codeContext));
+        }
+
+        if (contextParts.Count == 0)
+        {
+            return basePrompt;
+        }
+
+        return string.Join(
+            Environment.NewLine + Environment.NewLine,
+            new[] { basePrompt }.Concat(contextParts));
     }
 
     /// <summary>
@@ -124,6 +145,41 @@ internal static class RolePromptFactory
         }
 
         lines.Add("--- End Historical Insights ---");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Builds a code context section from code index results.
+    /// This is the 4th context layer: relevant codebase structure for the task.
+    /// </summary>
+    private static string BuildCodeContext(CodeIndexResult result)
+    {
+        var lines = new List<string>
+        {
+            "--- Relevant Code Context ---",
+            $"Query: {result.Query}",
+            $"Found {result.Chunks.Count} relevant code units:",
+            string.Empty
+        };
+
+        foreach (var chunk in result.Chunks)
+        {
+            lines.Add($"### {chunk.FullyQualifiedName}");
+            lines.Add($"File: {chunk.FilePath} (lines {chunk.StartLine}-{chunk.EndLine})");
+            lines.Add($"Type: {chunk.NodeType} | Language: {chunk.Language} | Relevance: {chunk.SimilarityScore:P0}");
+            lines.Add("```");
+            // Limit content length to avoid overwhelming the prompt
+            var content = chunk.Content.Length > 2000
+                ? chunk.Content[..2000] + "\n... (truncated)"
+                : chunk.Content;
+            lines.Add(content);
+            lines.Add("```");
+            lines.Add(string.Empty);
+        }
+
+        lines.Add("--- End Code Context ---");
+        lines.Add("Use these code patterns as reference when planning, building, or reviewing.");
 
         return string.Join(Environment.NewLine, lines);
     }

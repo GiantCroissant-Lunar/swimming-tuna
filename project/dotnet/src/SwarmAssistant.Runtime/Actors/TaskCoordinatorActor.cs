@@ -47,6 +47,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly IActorRef _blackboardActor;
     private readonly IActorRef _consensusActor;
     private readonly IActorRef? _strategyAdvisorActor;
+    private readonly IActorRef? _codeIndexActor;
     private readonly AgentFrameworkRoleEngine _roleEngine;
     private readonly IGoapPlanner _goapPlanner;
     private readonly RuntimeTelemetry _telemetry;
@@ -101,6 +102,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         RuntimeOptions options,
         OutcomeTracker? outcomeTracker = null,
         IActorRef? strategyAdvisorActor = null,
+        IActorRef? codeIndexActor = null,
         int maxRetries = 2,
         int subTaskDepth = 0)
     {
@@ -110,6 +112,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _blackboardActor = blackboardActor;
         _consensusActor = consensusActor;
         _strategyAdvisorActor = strategyAdvisorActor;
+        _codeIndexActor = codeIndexActor;
         _roleEngine = roleEngine;
         _goapPlanner = goapPlanner;
         _telemetry = telemetry;
@@ -142,6 +145,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Receive<QualityConcern>(OnQualityConcern);
         Receive<TaskInterventionCommand>(OnTaskInterventionCommand);
         Receive<RoleLifecycleEvent>(OnRoleLifecycleEvent);
+        Receive<DispatchWithCodeContext>(OnDispatchWithCodeContext);
     }
 
     protected override void PreStart()
@@ -853,6 +857,84 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             return;
         }
 
+        // For roles that benefit from code context, query the code index first
+        if (_codeIndexActor != null && ShouldQueryCodeIndex(actionName))
+        {
+            QueryCodeIndexAndDispatch(actionName);
+            return;
+        }
+
+        DoDispatchAction(actionName, null);
+    }
+
+    /// <summary>
+    /// Determines if a given action should query the code index for context.
+    /// </summary>
+    private bool ShouldQueryCodeIndex(string actionName) => actionName switch
+    {
+        "Plan" => _options.CodeIndexForPlanner,
+        "Build" => _options.CodeIndexForBuilder,
+        "Review" => _options.CodeIndexForReviewer,
+        "Rework" => _options.CodeIndexForBuilder,
+        "SecondOpinion" => _options.CodeIndexForReviewer,
+        _ => false
+    };
+
+    /// <summary>
+    /// Queries the code index and then dispatches the action with the results.
+    /// </summary>
+    private void QueryCodeIndexAndDispatch(string actionName)
+    {
+        if (_codeIndexActor == null)
+        {
+            DoDispatchAction(actionName, null);
+            return;
+        }
+
+        // Build a query from task title and description
+        var query = $"{_title} {_description}".Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            DoDispatchAction(actionName, null);
+            return;
+        }
+
+        _logger.LogInformation(
+            "Querying code index for action={Action} taskId={TaskId}",
+            actionName,
+            _taskId);
+
+        // Query code index asynchronously
+        var self = Self;
+        _codeIndexActor.Ask<CodeIndexResult>(
+            new CodeIndexQuery(
+                Query: query,
+                TopK: _options.CodeIndexMaxChunks,
+                Languages: new[] { "csharp" } // Primary language for now
+            ),
+            TimeSpan.FromSeconds(10)
+        ).ContinueWith(task =>
+        {
+            var result = task.Status == TaskStatus.RanToCompletion && task.Result != null
+                ? task.Result
+                : null;
+            return new DispatchWithCodeContext(actionName, result);
+        }).PipeTo(self);
+    }
+
+    /// <summary>
+    /// Handles the result of code index query and dispatches the action.
+    /// </summary>
+    private void OnDispatchWithCodeContext(DispatchWithCodeContext message)
+    {
+        DoDispatchAction(message.ActionName, message.CodeContext);
+    }
+
+    /// <summary>
+    /// Performs the actual dispatch with optional code context.
+    /// </summary>
+    private void DoDispatchAction(string actionName, CodeIndexResult? codeContext)
+    {
         switch (actionName)
         {
             case "Plan":
@@ -861,8 +943,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.role.dispatched",
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("planner", _taskId));
+                var planPrompt = RolePromptFactory.BuildPrompt(
+                    new ExecuteRoleTask(_taskId, SwarmRole.Planner, _title, _description, null, null, RunId: _runId),
+                    _strategyAdvice,
+                    codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Planner, _title, _description, null, null, RunId: _runId));
+                    _taskId, SwarmRole.Planner, _title, _description, null, null, Prompt: planPrompt, RunId: _runId));
                 break;
 
             case "Build":
@@ -871,8 +957,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.role.dispatched",
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("builder", _taskId));
+                var buildPrompt = RolePromptFactory.BuildPrompt(
+                    new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId),
+                    _strategyAdvice,
+                    codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId));
                 break;
 
             case "Review":
@@ -882,19 +972,22 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("reviewer", _taskId));
                 var reviewCount = _options.ReviewConsensusCount;
+                var reviewPrompt = RolePromptFactory.BuildPrompt(
+                    new ExecuteRoleTask(_taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
+                    _strategyAdvice,
+                    codeContext);
+                var reviewTask = new ExecuteRoleTask(
+                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId);
                 if (reviewCount == 1)
                 {
-                    _reviewerActor.Tell(new ExecuteRoleTask(
-                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
+                    _reviewerActor.Tell(reviewTask);
                 }
                 else
                 {
                     _consensusActor.Tell(new ConsensusRequest(_taskId, _buildOutput ?? string.Empty, reviewCount));
                     for (int i = 0; i < reviewCount; i++)
                     {
-                        // We use the same _reviewerActor pool but let it handle multiple messages.
-                        _reviewerActor.Tell(new ExecuteRoleTask(
-                            _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
+                        _reviewerActor.Tell(reviewTask);
                     }
                 }
                 break;
@@ -907,19 +1000,21 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     payload: new RoleDispatchedPayload("reviewer", _taskId));
                 _logger.LogInformation("Requesting SecondOpinion for task {TaskId}", _taskId);
 
-                // Cancel any stale session before starting the new one
                 _consensusActor.Tell(new CancelConsensusSession(_taskId));
 
-                // In SecondOpinion, we ask one more reviewer for their opinion
-                // We'll increment the required votes for consensus by 1
                 var additionalReviewCount = 1;
                 var currentRequiredVotes = _options.ReviewConsensusCount;
                 _consensusActor.Tell(new ConsensusRequest(_taskId, _buildOutput ?? string.Empty, currentRequiredVotes + additionalReviewCount));
 
+                var secondOpinionPrompt = RolePromptFactory.BuildPrompt(
+                    new ExecuteRoleTask(_taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
+                    _strategyAdvice,
+                    codeContext);
+                var secondOpinionTask = new ExecuteRoleTask(
+                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId);
                 for (int i = 0; i < currentRequiredVotes + additionalReviewCount; i++)
                 {
-                    _reviewerActor.Tell(new ExecuteRoleTask(
-                        _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
+                    _reviewerActor.Tell(secondOpinionTask);
                 }
                 break;
 
@@ -930,8 +1025,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.role.dispatched",
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("builder", _taskId));
+                var reworkPrompt = RolePromptFactory.BuildPrompt(
+                    new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
+                    _strategyAdvice,
+                    codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId));
                 break;
 
             case "Finalize":
@@ -943,7 +1042,6 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 break;
 
             case "WaitForSubTasks":
-                // Sub-task completions will drive the next DecideAndExecute call via OnSubTaskCompleted
                 _logger.LogInformation("Waiting for sub-tasks taskId={TaskId}", _taskId);
                 break;
 

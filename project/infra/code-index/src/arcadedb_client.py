@@ -1,0 +1,312 @@
+"""ArcadeDB client for vector storage and retrieval."""
+
+import json
+import os
+from datetime import datetime
+from typing import List, Optional
+
+import httpx
+
+from src.models import CodeChunk, SchemaStatus, Language, NodeType
+
+
+class ArcadeDbClient:
+    """Client for ArcadeDB vector operations."""
+
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        database: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ):
+        self.url = (url or os.getenv("ARCADEDB_URL", "http://localhost:2480")).rstrip(
+            "/"
+        )
+        self.database = database or os.getenv("ARCADEDB_DATABASE", "swarm_assistant")
+        self.username = username or os.getenv("ARCADEDB_USERNAME", "root")
+        self.password = password or os.getenv("ARCADEDB_PASSWORD", "playwithdata")
+        self._client: Optional[httpx.Client] = None
+
+    @property
+    def client(self) -> httpx.Client:
+        """Get or create HTTP client."""
+        if self._client is None:
+            self._client = httpx.Client(
+                base_url=self.url, auth=(self.username, self.password), timeout=60.0
+            )
+        return self._client
+
+    def close(self):
+        """Close HTTP client."""
+        if self._client:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def health_check(self) -> bool:
+        """Check if ArcadeDB is accessible."""
+        try:
+            response = self.client.get("/server")
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def check_schema(self) -> SchemaStatus:
+        """Check if CodeChunk vertex type and vector index exist."""
+        try:
+            # Check if vertex type exists
+            response = self.client.get(
+                f"/api/v1/query/{self.database}/sql",
+                params={"command": "SELECT FROM schema:types WHERE name = 'CodeChunk'"},
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            exists = bool(result.get("result", []))
+
+            if not exists:
+                return SchemaStatus(exists=False)
+
+            # Get indexes
+            response = self.client.get(
+                f"/api/v1/query/{self.database}/sql",
+                params={
+                    "command": "SELECT FROM schema:indexes WHERE type = 'CodeChunk'"
+                },
+            )
+            result = response.json()
+            indexes = [idx.get("name", "") for idx in result.get("result", [])]
+
+            return SchemaStatus(exists=True, vertex_type="CodeChunk", indexes=indexes)
+        except Exception as e:
+            return SchemaStatus(exists=False, indexes=[str(e)])
+
+    def create_schema(self, dimension: int = 384) -> bool:
+        """Create CodeChunk vertex type and vector index."""
+        try:
+            # Create vertex type
+            self._execute_command("""
+                CREATE VERTEX TYPE CodeChunk IF NOT EXISTS
+            """)
+
+            # Create properties
+            properties = [
+                ("filePath", "STRING"),
+                ("fullyQualifiedName", "STRING"),
+                ("nodeType", "STRING"),
+                ("language", "STRING"),
+                ("content", "STRING"),
+                ("startLine", "INTEGER"),
+                ("endLine", "INTEGER"),
+                ("lastModified", "DATETIME"),
+                ("metadata", "EMBEDDED"),
+                ("tokenCount", "INTEGER"),
+                ("charCount", "INTEGER"),
+            ]
+
+            for prop_name, prop_type in properties:
+                self._execute_command(f"""
+                    CREATE PROPERTY CodeChunk.{prop_name} IF NOT EXISTS {prop_type}
+                """)
+
+            # Create embedding property with vector type
+            self._execute_command("""
+                CREATE PROPERTY CodeChunk.embedding IF NOT EXISTS
+                ARRAY OF FLOAT
+            """)
+
+            # Create indexes
+            self._execute_command("""
+                CREATE INDEX CodeChunk.filePath IF NOT EXISTS ON CodeChunk(filePath) NOTUNIQUE
+            """)
+
+            self._execute_command("""
+                CREATE INDEX CodeChunk.fullyQualifiedName IF NOT EXISTS
+                ON CodeChunk(fullyQualifiedName) NOTUNIQUE
+            """)
+
+            self._execute_command("""
+                CREATE INDEX CodeChunk.language IF NOT EXISTS ON CodeChunk(language) NOTUNIQUE
+            """)
+
+            self._execute_command("""
+                CREATE INDEX CodeChunk.nodeType IF NOT EXISTS ON CodeChunk(nodeType) NOTUNIQUE
+            """)
+
+            # Create vector index for similarity search
+            # Using L2 distance for vector similarity
+            self._execute_command("""
+                CREATE INDEX CodeChunk.embedding_vector IF NOT EXISTS
+                ON CodeChunk(embedding) VECTOR ENGINE L2
+            """)
+
+            return True
+        except Exception as e:
+            print(f"Failed to create schema: {e}")
+            return False
+
+    def _execute_command(self, command: str) -> dict:
+        """Execute a SQL command."""
+        response = self.client.post(
+            f"/api/v1/command/{self.database}",
+            json={"language": "sql", "command": command.strip()},
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def upsert_chunk(self, chunk: CodeChunk) -> Optional[str]:
+        """Insert or update a code chunk. Returns record ID."""
+        try:
+            # Check if chunk exists by file_path + fully_qualified_name
+            query = """
+                SELECT @rid FROM CodeChunk
+                WHERE filePath = :filePath
+                AND fullyQualifiedName = :fqn
+            """
+            response = self.client.post(
+                f"/api/v1/query/{self.database}/sql",
+                json={
+                    "command": query,
+                    "params": {
+                        "filePath": chunk.file_path,
+                        "fqn": chunk.fully_qualified_name,
+                    },
+                },
+            )
+            result = response.json()
+            existing = result.get("result", [])
+
+            # Prepare embedding as JSON array
+            embedding_json = json.dumps(chunk.embedding) if chunk.embedding else "[]"
+
+            if existing:
+                # Update existing
+                rid = existing[0].get("@rid")
+                self._execute_command(f"""
+                    UPDATE CodeChunk SET
+                        content = {json.dumps(chunk.content)},
+                        startLine = {chunk.start_line},
+                        endLine = {chunk.end_line},
+                        embedding = {embedding_json},
+                        lastModified = datetime('{chunk.last_modified.isoformat()}'),
+                        tokenCount = {chunk.token_count or 0},
+                        charCount = {chunk.char_count}
+                    WHERE @rid = {rid}
+                """)
+                return rid
+            else:
+                # Insert new
+                cmd = f"""
+                    INSERT INTO CodeChunk SET
+                        filePath = {json.dumps(chunk.file_path)},
+                        fullyQualifiedName = {json.dumps(chunk.fully_qualified_name)},
+                        nodeType = {json.dumps(chunk.node_type.value)},
+                        language = {json.dumps(chunk.language.value)},
+                        content = {json.dumps(chunk.content)},
+                        startLine = {chunk.start_line},
+                        endLine = {chunk.end_line},
+                        embedding = {embedding_json},
+                        lastModified = datetime('{chunk.last_modified.isoformat()}'),
+                        tokenCount = {chunk.token_count or 0},
+                        charCount = {chunk.char_count}
+                """
+                result = self._execute_command(cmd)
+                return result.get("result", [{}])[0].get("@rid")
+        except Exception as e:
+            print(f"Failed to upsert chunk: {e}")
+            return None
+
+    def delete_chunks_by_file(self, file_path: str) -> int:
+        """Delete all chunks for a file. Returns count deleted."""
+        try:
+            result = self._execute_command(f"""
+                DELETE FROM CodeChunk WHERE filePath = {json.dumps(file_path)}
+            """)
+            return result.get("count", 0)
+        except Exception as e:
+            print(f"Failed to delete chunks: {e}")
+            return 0
+
+    def search_similar(
+        self,
+        embedding: List[float],
+        top_k: int = 10,
+        language_filter: Optional[List[Language]] = None,
+        node_type_filter: Optional[List[NodeType]] = None,
+        file_path_prefix: Optional[str] = None,
+    ) -> List[CodeChunk]:
+        """Search for similar code chunks using vector similarity."""
+        try:
+            # Build WHERE clause
+            where_conditions = []
+
+            if language_filter:
+                langs = [f"'{lang.value}'" for lang in language_filter]
+                where_conditions.append(f"language IN [{','.join(langs)}]")
+
+            if node_type_filter:
+                types = [f"'{t.value}'" for t in node_type_filter]
+                where_conditions.append(f"nodeType IN [{','.join(types)}]")
+
+            if file_path_prefix:
+                where_conditions.append(f"filePath LIKE '{file_path_prefix}%'")
+
+            where_clause = ""
+            if where_conditions:
+                where_clause = "WHERE " + " AND ".join(where_conditions)
+
+            # Execute vector search query
+            embedding_json = json.dumps(embedding)
+            query = f"""
+                SELECT *, vectorDistance(embedding, {embedding_json}) as score
+                FROM CodeChunk
+                {where_clause}
+                ORDER BY score ASC
+                LIMIT {top_k}
+            """
+
+            response = self.client.post(
+                f"/api/v1/query/{self.database}/sql", json={"command": query}
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            chunks = []
+            for record in result.get("result", []):
+                chunk = self._record_to_chunk(record)
+                if chunk:
+                    chunks.append(chunk)
+
+            return chunks
+        except Exception as e:
+            print(f"Search failed: {e}")
+            return []
+
+    def _record_to_chunk(self, record: dict) -> Optional[CodeChunk]:
+        """Convert ArcadeDB record to CodeChunk."""
+        try:
+            return CodeChunk(
+                id=record.get("@rid"),
+                file_path=record.get("filePath", ""),
+                fully_qualified_name=record.get("fullyQualifiedName", ""),
+                node_type=NodeType(record.get("nodeType", "unknown")),
+                language=Language(record.get("language", "csharp")),
+                content=record.get("content", ""),
+                start_line=record.get("startLine", 0),
+                end_line=record.get("endLine", 0),
+                embedding=record.get("embedding"),
+                last_modified=datetime.fromisoformat(
+                    record.get("lastModified", datetime.utcnow().isoformat())
+                ),
+                token_count=record.get("tokenCount"),
+                char_count=record.get("charCount", 0),
+            )
+        except Exception as e:
+            print(f"Failed to convert record: {e}")
+            return None
