@@ -686,7 +686,7 @@ if (options.A2AEnabled)
             {
                 runId,
                 source = "registry",
-                items = registryTasks.Select(MapTaskSummary)
+                items = registryTasks.Select(TaskSnapshotMapper.ToSummaryDto)
             });
         }
 
@@ -701,7 +701,7 @@ if (options.A2AEnabled)
         {
             runId,
             source = "arcadedb",
-            items = memoryTasks.Select(MapTaskSummary)
+            items = memoryTasks.Select(TaskSnapshotMapper.ToSummaryDto)
         });
     }).AddEndpointFilter(requireApiKey);
 }

@@ -22,6 +22,10 @@ public static partial class TaskSnapshotMapper
     [MapperIgnoreSource(nameof(TaskSnapshot.RunId))]
     public static partial TaskSummaryDto ToSummaryDto(TaskSnapshot snapshot);
 
+    public static partial RunDto ToDto(RunEntry run);
+
+    public static partial TaskExecutionEventDto ToDto(TaskExecutionEvent evt);
+
     private static string StatusToString(SwarmAssistant.Contracts.Tasks.TaskStatus status) =>
         status.ToString().ToLowerInvariant();
 }
