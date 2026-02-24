@@ -56,6 +56,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly RuntimeOptions _options;
     private readonly OutcomeTracker? _outcomeTracker;
     private readonly RuntimeEventRecorder? _eventRecorder;
+    private readonly string? _projectContext;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -106,7 +107,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         IActorRef? codeIndexActor = null,
         int maxRetries = 2,
         int subTaskDepth = 0,
-        RuntimeEventRecorder? eventRecorder = null)
+        RuntimeEventRecorder? eventRecorder = null,
+        string? projectContext = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -123,6 +125,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _options = options;
         _outcomeTracker = outcomeTracker;
         _eventRecorder = eventRecorder;
+        _projectContext = projectContext;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -967,7 +970,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 var planPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Planner, _title, _description, null, null, RunId: _runId),
                     _strategyAdvice,
-                    codeContext);
+                    codeContext,
+                    _projectContext);
                 EmitDiagnosticContext("Plan", SwarmRole.Planner, planPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Planner, _title, _description, null, null, Prompt: planPrompt, RunId: _runId));
@@ -982,7 +986,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 var buildPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId),
                     _strategyAdvice,
-                    codeContext);
+                    codeContext,
+                    _projectContext);
                 EmitDiagnosticContext("Build", SwarmRole.Builder, buildPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId));
@@ -998,7 +1003,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 var reviewPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
-                    codeContext);
+                    codeContext,
+                    _projectContext);
                 EmitDiagnosticContext("Review", SwarmRole.Reviewer, reviewPrompt, codeContext);
                 var reviewTask = new ExecuteRoleTask(
                     _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId);
@@ -1033,7 +1039,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 var secondOpinionPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
-                    codeContext);
+                    codeContext,
+                    _projectContext);
                 EmitDiagnosticContext("SecondOpinion", SwarmRole.Reviewer, secondOpinionPrompt, codeContext);
                 var secondOpinionTask = new ExecuteRoleTask(
                     _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId);
@@ -1053,7 +1060,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 var reworkPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
-                    codeContext);
+                    codeContext,
+                    _projectContext);
                 EmitDiagnosticContext("Rework", SwarmRole.Builder, reworkPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId));
@@ -1094,7 +1102,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             hasCodeContext: codeContext?.HasResults == true,
             codeChunkCount: codeContext?.Chunks.Count ?? 0,
             hasStrategyAdvice: _strategyAdvice is not null,
-            targetFiles);
+            targetFiles,
+            hasProjectContext: !string.IsNullOrWhiteSpace(_projectContext));
     }
 
     private void TransitionTo(TaskState target)

@@ -216,6 +216,14 @@ public sealed class RuntimeOptions
     public bool CodeIndexForReviewer { get; init; } = true;
 
     /// <summary>
+    /// Optional path to a project-level context file (e.g. AGENTS.md).
+    /// When set, the file content is loaded at startup and injected into agent prompts
+    /// as the 2nd context layer (project context).
+    /// Can be set via <c>Runtime__ProjectContextPath</c> environment variable.
+    /// </summary>
+    public string? ProjectContextPath { get; init; }
+
+    /// <summary>
     /// Languages to include in code index queries.
     /// When empty or null, no language filter is applied (all indexed languages are searched).
     /// Example: ["csharp", "javascript", "python"]

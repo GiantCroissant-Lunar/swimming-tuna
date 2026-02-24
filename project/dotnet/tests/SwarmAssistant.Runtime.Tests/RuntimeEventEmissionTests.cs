@@ -46,7 +46,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private (IActorRef dispatcher, InMemoryEventWriter writer) BuildDispatcher(string suffix = "")
+    private (IActorRef dispatcher, InMemoryEventWriter writer) BuildDispatcher(string suffix = "", string? projectContext = null)
     {
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var writer = new InMemoryEventWriter();
@@ -90,7 +90,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 null,
                 recorder,
-                null)),
+                null,
+                projectContext)),
             $"dp{suffix}-{Guid.NewGuid():N}");
 
         return (dispatcher, writer);
@@ -319,6 +320,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
             Assert.True(payload.TryGetProperty("CodeChunkCount", out _), "Payload should contain 'CodeChunkCount'");
             Assert.True(payload.TryGetProperty("HasStrategyAdvice", out _), "Payload should contain 'HasStrategyAdvice'");
             Assert.True(payload.TryGetProperty("TargetFiles", out _), "Payload should contain 'TargetFiles'");
+            Assert.True(payload.TryGetProperty("HasProjectContext", out _), "Payload should contain 'HasProjectContext'");
         }
 
         // Assert concrete values on the first diagnostic event
@@ -367,6 +369,41 @@ public sealed class RuntimeEventEmissionTests : TestKit
     }
 
     [Fact]
+    public async Task HappyPath_ProjectContextFlowsThroughPipeline()
+    {
+        const string knownContext = "# AGENTS.md\nUse PascalCase for C# types.\nPrefer sealed records for messages.";
+        var (dispatcher, writer) = BuildDispatcher("projctx", projectContext: knownContext);
+        var taskId = $"emit-projctx-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "ProjCtx Test", "Verify project context flows through.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+        await Task.Delay(200);
+
+        var diagEvents = writer.Events
+            .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticContext)
+            .ToList();
+
+        // Happy-path should emit at least Plan + Build + Review diagnostic events
+        Assert.True(diagEvents.Count >= 3, $"Expected at least 3 diagnostic events but got {diagEvents.Count}");
+
+        // Every diagnostic event should report HasProjectContext = true
+        foreach (var evt in diagEvents)
+        {
+            Assert.NotNull(evt.Payload);
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
+            Assert.True(payload.TryGetProperty("HasProjectContext", out var hasCtx), "Payload should contain 'HasProjectContext'");
+            Assert.True(hasCtx.GetBoolean(), $"HasProjectContext should be true for action={payload.GetProperty("Action").GetString()}");
+        }
+
+        // Prompt length should be larger than baseline (the project context text is injected)
+        var firstPayload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(diagEvents[0].Payload!);
+        Assert.True(firstPayload.GetProperty("PromptLength").GetInt32() > knownContext.Length,
+            "PromptLength should exceed the project context length (context is appended to base prompt)");
+    }
+
+    [Fact]
     public async Task HappyPath_NoEventWriterInjected_DoesNotThrow()
     {
         // Dispatcher without event recorder — should execute normally
@@ -407,6 +444,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
                 null,
                 null,
                 null,

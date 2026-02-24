@@ -45,7 +45,8 @@ public sealed class RuntimeEventRecorder
         bool HasCodeContext,
         int CodeChunkCount,
         bool HasStrategyAdvice,
-        IReadOnlyList<string> TargetFiles);
+        IReadOnlyList<string> TargetFiles,
+        bool HasProjectContext);
     private sealed record DiagnosticAdapterPayload(
         string AdapterId,
         int OutputLength,
@@ -89,10 +90,11 @@ public sealed class RuntimeEventRecorder
         bool hasCodeContext,
         int codeChunkCount,
         bool hasStrategyAdvice,
-        IReadOnlyList<string> targetFiles) =>
+        IReadOnlyList<string> targetFiles,
+        bool hasProjectContext = false) =>
         AppendAsync(DiagnosticContext, taskId, runId,
             JsonSerializer.Serialize(
-                new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles)));
+                new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles, hasProjectContext)));
 
     public Task RecordDiagnosticAdapterAsync(
         string taskId,

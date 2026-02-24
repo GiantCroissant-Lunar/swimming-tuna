@@ -212,6 +212,24 @@ public sealed class Worker : BackgroundService
                 "code-index");
         }
 
+        // Load project context file (e.g. AGENTS.md) if configured
+        string? projectContext = null;
+        if (!string.IsNullOrWhiteSpace(_options.ProjectContextPath))
+        {
+            if (File.Exists(_options.ProjectContextPath))
+            {
+                projectContext = await File.ReadAllTextAsync(_options.ProjectContextPath, stoppingToken);
+                _logger.LogInformation(
+                    "Project context loaded path={Path} chars={CharCount}",
+                    _options.ProjectContextPath, projectContext.Length);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Project context file not found path={Path}", _options.ProjectContextPath);
+            }
+        }
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -228,7 +246,8 @@ public sealed class Worker : BackgroundService
                 tracker,
                 strategyAdvisorActor,
                 eventRecorder,
-                codeIndexActor)),
+                codeIndexActor,
+                projectContext)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;
