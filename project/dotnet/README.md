@@ -196,6 +196,9 @@ From `Runtime` config:
 - `LangfuseBaseUrl`
 - `HealthHeartbeatSeconds`
 - `ApiKey`
+- `AgentEndpointEnabled`
+- `AgentEndpointPortRange`
+- `AgentHeartbeatIntervalSeconds`
 
 ## Security
 
@@ -228,3 +231,24 @@ curl -X POST http://<host>:5080/a2a/tasks \
 
 Do not commit `Runtime__ApiKey` to source control; supply it via environment variable or a
 secrets manager.
+
+## Agent Endpoints (RFC-001)
+
+When `Runtime__AgentEndpointEnabled=true`, each SwarmAgentActor spawns its own
+A2A HTTP endpoint within the configured port range. Each agent serves:
+
+- `GET /.well-known/agent-card.json` — agent identity and capabilities
+- `POST /a2a/tasks` — accept task submissions
+- `GET /a2a/health` — liveness check
+
+```bash
+export Runtime__AgentEndpointEnabled=true
+export Runtime__AgentEndpointPortRange=8001-8032
+
+# Query individual agent:
+curl -s http://127.0.0.1:8001/.well-known/agent-card.json
+curl -s http://127.0.0.1:8001/a2a/health
+curl -s -X POST http://127.0.0.1:8001/a2a/tasks \
+  -H 'content-type: application/json' \
+  -d '{"title":"test task"}'
+```

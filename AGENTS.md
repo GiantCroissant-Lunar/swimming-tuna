@@ -101,6 +101,9 @@ Key runtime config flags (set via `Runtime__<key>` env vars):
 | `SimulateBuilderFailure` / `SimulateReviewerFailure` | Fault injection |
 | `ProjectContextPath` | Path to project context file (e.g., AGENTS.md) injected into role prompts |
 | `WorkspaceBranchEnabled` | Create `swarm/task-{id}` git branches for builder isolation (default: false) |
+| `AgentEndpointEnabled` | Enable per-agent A2A HTTP endpoints |
+| `AgentEndpointPortRange` | Port range for agent endpoints (e.g., `8001-8032`) |
+| `AgentHeartbeatIntervalSeconds` | Agent health check heartbeat interval |
 
 ## API Endpoints
 

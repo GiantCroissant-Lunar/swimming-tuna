@@ -82,6 +82,9 @@ Runtime config includes:
 - `LangfuseBaseUrl`
 - `HealthHeartbeatSeconds`
 - `ApiKey`
+- `AgentEndpointEnabled`
+- `AgentEndpointPortRange`
+- `AgentHeartbeatIntervalSeconds`
 
 Enable tracing with environment variables:
 
