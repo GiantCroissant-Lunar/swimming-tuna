@@ -107,11 +107,7 @@ Startup memory bootstrap (Phase 11):
 - `GET /a2a/tasks/{taskId}`
 - `GET /a2a/tasks`
 - `TaskRegistry` captures lifecycle transitions and role outputs for both actor-driven and API-submitted tasks.
-- `ArcadeDbTaskMemoryWriter` persists snapshots as `SwarmTask` records using ArcadeDB command API delete+insert writes.
-  > **Known limitation:** DELETE and INSERT are issued as separate `autoCommit=true` commands.
-  > A crash between them will result in a missing snapshot for that task ID until the next write.
-  > This is acceptable for best-effort telemetry; do not use as the primary source of truth
-  > for critical task state.
+- `ArcadeDbTaskMemoryWriter` persists snapshots as `SwarmTask` records using an atomic ArcadeDB `UPDATE ... UPSERT WHERE taskId = :taskId` command.
 - ArcadeDB runtime configuration:
 - `Runtime__ArcadeDbEnabled`
 - `Runtime__ArcadeDbHttpUrl`
@@ -166,17 +162,18 @@ DOTNET_ENVIRONMENT=CI dotnet run --project project/dotnet/src/SwarmAssistant.Run
 
 From `Runtime` config:
 
+- `Profile`
+- `RoleSystem`
+- `AgentExecution`
+- `AgentFrameworkExecutionMode`
 - `AutoSubmitDemoTask`
 - `DemoTaskTitle`
 - `DemoTaskDescription`
 - `SimulateBuilderFailure`
 - `SimulateReviewerFailure`
-- `LangfuseTracingEnabled`
-- `LangfusePublicKey`
-- `LangfuseSecretKey`
-- `LangfuseOtlpEndpoint`
 - `RoleExecutionTimeoutSeconds`
 - `CliAdapterOrder`
+- `SandboxMode`
 - `DockerSandboxWrapper`
 - `AppleContainerSandboxWrapper`
 - `AgUiEnabled`
@@ -192,6 +189,12 @@ From `Runtime` config:
 - `ArcadeDbAutoCreateSchema`
 - `MemoryBootstrapEnabled`
 - `MemoryBootstrapLimit`
+- `LangfuseTracingEnabled`
+- `LangfusePublicKey`
+- `LangfuseSecretKey`
+- `LangfuseOtlpEndpoint`
+- `LangfuseBaseUrl`
+- `HealthHeartbeatSeconds`
 - `ApiKey`
 
 ## Security

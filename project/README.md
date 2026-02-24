@@ -48,6 +48,9 @@ Available .NET runtime profiles:
 
 Runtime config includes:
 
+- `Profile`
+- `RoleSystem`
+- `AgentExecution`
 - `AutoSubmitDemoTask`
 - `DemoTaskTitle`
 - `DemoTaskDescription`
@@ -56,6 +59,9 @@ Runtime config includes:
 - `AgentFrameworkExecutionMode`
 - `RoleExecutionTimeoutSeconds`
 - `CliAdapterOrder`
+- `SandboxMode`
+- `DockerSandboxWrapper`
+- `AppleContainerSandboxWrapper`
 - `AgUiEnabled`
 - `AgUiBindUrl`
 - `AgUiProtocolVersion`
@@ -73,6 +79,9 @@ Runtime config includes:
 - `LangfusePublicKey`
 - `LangfuseSecretKey`
 - `LangfuseOtlpEndpoint`
+- `LangfuseBaseUrl`
+- `HealthHeartbeatSeconds`
+- `ApiKey`
 
 Enable tracing with environment variables:
 

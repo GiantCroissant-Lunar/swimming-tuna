@@ -617,7 +617,7 @@ if (options.A2AEnabled)
         return Results.Ok(new
         {
             name = "swarm-assistant",
-            version = "phase-10",
+            version = "phase-12",
             protocol = "a2a",
             capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "ag-ui-actions", "arcadedb-memory" },
             endpoints = new

@@ -85,7 +85,7 @@ Typed contracts in `dotnet/src/SwarmAssistant.Contracts/Messaging/SwarmMessages.
 - `TaskRegistry` tracks in-memory task snapshots and role outputs (`planningOutput`, `buildOutput`, `reviewOutput`) plus summary/error state.
 - `RuntimeActorRegistry` bridges HTTP endpoint handlers to the live coordinator actor ref.
 - `ITaskMemoryWriter` abstraction is wired to `ArcadeDbTaskMemoryWriter` by default.
-- `ArcadeDbTaskMemoryWriter` writes `TaskRegistry` snapshots using ArcadeDB command API delete+insert operations and can bootstrap schema when `ArcadeDbAutoCreateSchema=true`.
+- `ArcadeDbTaskMemoryWriter` writes `TaskRegistry` snapshots using an atomic ArcadeDB `UPDATE ... UPSERT WHERE taskId = :taskId` command and can bootstrap schema when `ArcadeDbAutoCreateSchema=true`.
 
 ## AG-UI Action Loop (Phase 8)
 

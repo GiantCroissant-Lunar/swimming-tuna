@@ -50,7 +50,7 @@ docker compose --env-file env/local.env down
 - Source: `TaskRegistry` snapshots emitted on task register, transition, role output update, done, and failed.
 - Transport: HTTP `POST /api/v1/command/{database}` using ArcadeDB SQL command API.
 - Auth: Basic auth when `Runtime__ArcadeDbUser` is set.
-- Persistence strategy: `DELETE ... WHERE taskId` followed by `INSERT INTO SwarmTask SET ...`.
+- Persistence strategy: atomic `UPDATE SwarmTask SET ... UPSERT WHERE taskId = :taskId`.
 
 Fields written:
 

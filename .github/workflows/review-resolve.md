@@ -32,10 +32,13 @@ You are a code-fixing agent for the Swimming Tuna project. Your job is to read b
 
 This workflow fires when a pull request review is submitted. The pull request number and review details are available via the GitHub event context.
 
+**Important:** Bot reviewers often submit reviews asynchronously, sometimes after the PR has already been merged and its head branch deleted. The workflow must verify the PR is still open before attempting any code changes, otherwise patch application will fail against a stale or missing branch.
+
 ## Step 1 — Determine if this review needs action
 
-1. Check the review author. Only process reviews from **bot** accounts. Known bots: `gemini-code-assist[bot]`, `coderabbitai[bot]`, `github-actions[bot]`, `copilot[bot]`. If the review author is a human, do **nothing** and stop.
-2. Check the review state. Only process `commented` or `changes_requested` reviews. If the state is `approved` or `dismissed`, do **nothing** and stop.
+1. **Check if the pull request is still open.** Use the GitHub API to fetch the pull request details. If the PR state is `closed` or `merged` (i.e., `state != "open"`), do **nothing** and stop — the source branch may no longer exist, and patches cannot be applied to a merged PR.
+2. Check the review author. Only process reviews from **bot** accounts. Known bots: `gemini-code-assist[bot]`, `coderabbitai[bot]`, `github-actions[bot]`, `copilot[bot]`. If the review author is a human, do **nothing** and stop.
+3. Check the review state. Only process `commented` or `changes_requested` reviews. If the state is `approved` or `dismissed`, do **nothing** and stop.
 
 ## Step 2 — Collect inline review comments
 
@@ -99,6 +102,7 @@ The PR should branch from the pull request's head branch and target the same bas
 
 ## Output rules
 
+- If the pull request is already merged or closed, do **nothing**. Call `noop` with a message indicating the PR is no longer open.
 - If no bot review comments are found, do **nothing**. Do not create a PR.
 - If all comments are informational (no code changes needed), do **nothing**.
 - If fixes are needed, create exactly **one** PR addressing all comments.
