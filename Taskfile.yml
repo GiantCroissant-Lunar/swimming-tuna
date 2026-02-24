@@ -261,3 +261,8 @@ tasks:
     desc: Sync agent config to Copilot CLI
     cmds:
       - python .agent/tools/sync.py --adapter copilot
+
+  dogfood:diagnostic:
+    desc: Run dogfood diagnostic (submits real task, traces pipeline)
+    cmds:
+      - bash scripts/dogfood-diagnostic.sh {{.CLI_ARGS}}
