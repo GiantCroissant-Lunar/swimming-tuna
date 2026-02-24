@@ -387,16 +387,16 @@ public sealed class InterventionReliabilityTests : TestKit
         registry.Register(new TaskAssigned(taskId, "Test", "desc", DateTimeOffset.UtcNow));
         dispatcher.Tell(new TaskAssigned(taskId, "Test", "desc", DateTimeOffset.UtcNow));
 
-        // Give coordinator a moment to be created
-        await Task.Delay(200);
-
         // Pause intervention should be forwarded and acknowledged (task is in Queued)
-        var result = await dispatcher.Ask<TaskInterventionResult>(
-            new TaskInterventionCommand(taskId, "pause_task"),
-            TimeSpan.FromSeconds(5));
+        await AwaitAssertAsync(async () =>
+        {
+            var result = await dispatcher.Ask<TaskInterventionResult>(
+                new TaskInterventionCommand(taskId, "pause_task"),
+                TimeSpan.FromSeconds(5));
 
-        Assert.True(result.Accepted);
-        Assert.Equal("paused", result.ReasonCode);
+            Assert.True(result.Accepted);
+            Assert.Equal("paused", result.ReasonCode);
+        }, TimeSpan.FromSeconds(5));
     }
 
     // ── Approval workflow: approve_review emits agui.task.intervention exactly once ──
@@ -411,14 +411,14 @@ public sealed class InterventionReliabilityTests : TestKit
         coordinator.Tell(new TaskInterventionCommand(taskId, "approve_review"), parentProbe);
         parentProbe.ExpectMsg<TaskInterventionResult>(r => r.Accepted, TimeSpan.FromSeconds(5));
 
-        // Allow event propagation to settle before asserting count
-        Thread.Sleep(100);
+        AwaitAssert(() =>
+        {
+            var interventionEvents = uiEvents.GetRecent(200)
+                .Where(e => e.Type == "agui.task.intervention" && e.TaskId == taskId)
+                .ToList();
 
-        var interventionEvents = uiEvents.GetRecent(200)
-            .Where(e => e.Type == "agui.task.intervention" && e.TaskId == taskId)
-            .ToList();
-
-        Assert.Single(interventionEvents);
+            Assert.Single(interventionEvents);
+        }, TimeSpan.FromSeconds(5));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -513,6 +513,11 @@ public sealed class InterventionReliabilityTests : TestKit
     {
         if (disposing)
         {
+            foreach (var registry in _registries.Values)
+            {
+                // Safe in TestKit teardown: no synchronization context is captured here.
+                registry.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
             _loggerFactory.Dispose();
         }
 
