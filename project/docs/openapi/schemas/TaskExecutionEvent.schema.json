@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskExecutionEvent",
+  "definitions": {
+    "TaskExecutionEvent": {
+      "type": "object",
+      "description": "An immutable, append-only event recorded during task execution. Used for audit trails and replay feeds.\n",
+      "required": [
+        "eventId",
+        "runId",
+        "taskId",
+        "eventType",
+        "occurredAt",
+        "taskSequence",
+        "runSequence"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "Unique event identifier."
+        },
+        "runId": {
+          "type": "string",
+          "description": "Identifier of the swarm run this event belongs to."
+        },
+        "taskId": {
+          "type": "string",
+          "description": "Identifier of the task this event belongs to."
+        },
+        "eventType": {
+          "type": "string",
+          "description": "Event type discriminator (e.g. `task.started`, `role.completed`)."
+        },
+        "payload": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "JSON-encoded event payload, when present."
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the event occurred."
+        },
+        "taskSequence": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Monotonically increasing sequence number scoped to the task."
+        },
+        "runSequence": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Monotonically increasing sequence number scoped to the run."
+        }
+      }
+    }
+  },
+  "type": "object",
+  "description": "An immutable, append-only event recorded during task execution. Used for audit trails and replay feeds.\n",
+  "required": [
+    "eventId",
+    "runId",
+    "taskId",
+    "eventType",
+    "occurredAt",
+    "taskSequence",
+    "runSequence"
+  ],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "description": "Unique event identifier."
+    },
+    "runId": {
+      "type": "string",
+      "description": "Identifier of the swarm run this event belongs to."
+    },
+    "taskId": {
+      "type": "string",
+      "description": "Identifier of the task this event belongs to."
+    },
+    "eventType": {
+      "type": "string",
+      "description": "Event type discriminator (e.g. `task.started`, `role.completed`)."
+    },
+    "payload": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "JSON-encoded event payload, when present."
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the event occurred."
+    },
+    "taskSequence": {
+      "type": "integer",
+      "format": "int64",
+      "description": "Monotonically increasing sequence number scoped to the task."
+    },
+    "runSequence": {
+      "type": "integer",
+      "format": "int64",
+      "description": "Monotonically increasing sequence number scoped to the run."
+    }
+  }
+}
