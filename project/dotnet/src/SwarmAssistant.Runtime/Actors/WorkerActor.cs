@@ -51,6 +51,8 @@ public sealed class WorkerActor : ReceiveActor
                 ["actor.name"] = Self.Path.Name,
                 ["engine"] = "microsoft-agent-framework",
             });
+        var traceId = activity?.TraceId.ToHexString();
+        var spanId = activity?.SpanId.ToHexString();
 
         if (command.Role is not SwarmRole.Planner and not SwarmRole.Builder and not SwarmRole.Orchestrator)
         {
@@ -60,7 +62,10 @@ public sealed class WorkerActor : ReceiveActor
                 command.TaskId,
                 command.Role,
                 error,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                ActorName: Self.Path.Name,
+                TraceId: traceId,
+                SpanId: spanId));
             return;
         }
 
@@ -72,7 +77,10 @@ public sealed class WorkerActor : ReceiveActor
                 command.TaskId,
                 command.Role,
                 error,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                ActorName: Self.Path.Name,
+                TraceId: traceId,
+                SpanId: spanId));
             return;
         }
 
@@ -192,7 +200,9 @@ public sealed class WorkerActor : ReceiveActor
                 DateTimeOffset.UtcNow,
                 confidence,
                 adapterId,
-                Self.Path.Name));
+                Self.Path.Name,
+                traceId,
+                spanId));
         }
         catch (Exception exception)
         {
@@ -208,7 +218,10 @@ public sealed class WorkerActor : ReceiveActor
                 command.TaskId,
                 command.Role,
                 $"Agent Framework execution failed: {exception.Message}",
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                ActorName: Self.Path.Name,
+                TraceId: traceId,
+                SpanId: spanId));
         }
     }
 

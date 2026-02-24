@@ -7,6 +7,8 @@ namespace SwarmAssistant.Runtime;
 [Mapper]
 public static partial class TaskSnapshotMapper
 {
+    public static partial TaskArtifactDto ToDto(TaskArtifact artifact);
+
     [MapProperty(nameof(TaskSnapshot.Status), nameof(TaskSnapshotDto.Status), Use = nameof(StatusToString))]
     public static partial TaskSnapshotDto ToDto(TaskSnapshot snapshot);
 
@@ -20,6 +22,7 @@ public static partial class TaskSnapshotMapper
     [MapperIgnoreSource(nameof(TaskSnapshot.ParentTaskId))]
     [MapperIgnoreSource(nameof(TaskSnapshot.ChildTaskIds))]
     [MapperIgnoreSource(nameof(TaskSnapshot.RunId))]
+    [MapperIgnoreSource(nameof(TaskSnapshot.Artifacts))]
     public static partial TaskSummaryDto ToSummaryDto(TaskSnapshot snapshot);
 
     public static partial RunDto ToDto(RunEntry run);

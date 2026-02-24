@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
 
@@ -63,7 +64,10 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 ["childTaskIds"] = snapshot.ChildTaskIds is { Count: > 0 }
                     ? string.Join(ChildTaskIdDelimiter, snapshot.ChildTaskIds)
                     : null,
-                ["runId"] = snapshot.RunId
+                ["runId"] = snapshot.RunId,
+                ["artifacts"] = snapshot.Artifacts is { Count: > 0 }
+                    ? JsonSerializer.Serialize(snapshot.Artifacts)
+                    : null
             };
 
             // Atomic UPSERT: updates the existing record or inserts a new one in a single statement.
@@ -74,7 +78,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
                 "createdAt = :createdAt, updatedAt = :updatedAt, " +
                 "planningOutput = :planningOutput, buildOutput = :buildOutput, reviewOutput = :reviewOutput, " +
                 "summary = :summary, taskError = :taskError, " +
-                "parentTaskId = :parentTaskId, childTaskIds = :childTaskIds, runId = :runId " +
+                "parentTaskId = :parentTaskId, childTaskIds = :childTaskIds, runId = :runId, artifacts = :artifacts " +
                 "UPSERT WHERE taskId = :taskId",
                 parameters,
                 cancellationToken);
@@ -120,6 +124,7 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.parentTaskId IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.childTaskIds IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.runId IF NOT EXISTS STRING", cancellationToken);
+            allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE PROPERTY SwarmTask.artifacts IF NOT EXISTS STRING", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (taskId) UNIQUE IF NOT EXISTS", cancellationToken);
             allSucceeded &= await TryExecuteSchemaCommandAsync(client, "CREATE INDEX ON SwarmTask (runId) IF NOT EXISTS", cancellationToken);
 

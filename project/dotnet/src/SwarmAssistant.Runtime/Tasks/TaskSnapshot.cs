@@ -16,5 +16,6 @@ public sealed record TaskSnapshot(
     string? Error = null,
     string? ParentTaskId = null,
     IReadOnlyList<string>? ChildTaskIds = null,
-    string? RunId = null
+    string? RunId = null,
+    IReadOnlyList<TaskArtifact>? Artifacts = null
 );

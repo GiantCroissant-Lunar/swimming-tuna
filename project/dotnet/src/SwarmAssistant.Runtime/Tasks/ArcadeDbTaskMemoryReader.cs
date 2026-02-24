@@ -12,6 +12,10 @@ namespace SwarmAssistant.Runtime.Tasks;
 public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
 {
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
+    private static readonly JsonSerializerOptions ArtifactJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     private readonly RuntimeOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -206,12 +210,14 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
 
         var parentTaskId = GetString(item, "parentTaskId");
         var childTaskIdsRaw = GetString(item, "childTaskIds");
+        var artifactsRaw = GetString(item, "artifacts");
         var childTaskIds = string.IsNullOrWhiteSpace(childTaskIdsRaw)
             ? null
             : (IReadOnlyList<string>)childTaskIdsRaw
                 .Split(ArcadeDbTaskMemoryWriter.ChildTaskIdDelimiter,
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
+        var artifacts = ParseArtifacts(artifactsRaw);
 
         return new TaskSnapshot(
             TaskId: taskId,
@@ -227,7 +233,25 @@ public sealed class ArcadeDbTaskMemoryReader : ITaskMemoryReader
             Error: GetString(item, "taskError") ?? GetString(item, "error"),
             ParentTaskId: parentTaskId,
             ChildTaskIds: childTaskIds,
-            RunId: LegacyRunId.Resolve(GetString(item, "runId"), taskId));
+            RunId: LegacyRunId.Resolve(GetString(item, "runId"), taskId),
+            Artifacts: artifacts);
+    }
+
+    private static IReadOnlyList<TaskArtifact>? ParseArtifacts(string? artifactsRaw)
+    {
+        if (string.IsNullOrWhiteSpace(artifactsRaw))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<TaskArtifact>>(artifactsRaw, ArtifactJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static string? GetString(JsonElement item, string propertyName)

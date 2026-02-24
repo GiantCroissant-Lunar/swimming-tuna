@@ -134,6 +134,8 @@ public sealed class SwarmAgentActor : ReceiveActor
                 ["actor.name"] = Self.Path.Name,
                 ["engine"] = "microsoft-agent-framework",
             });
+        var traceId = activity?.TraceId.ToHexString();
+        var spanId = activity?.SpanId.ToHexString();
 
         // Contract awards reserve capacity before the execute message arrives.
         // If this execution consumes a reservation, avoid incrementing load again.
@@ -153,7 +155,10 @@ public sealed class SwarmAgentActor : ReceiveActor
                     command.TaskId,
                     command.Role,
                     error,
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow,
+                    ActorName: Self.Path.Name,
+                    TraceId: traceId,
+                    SpanId: spanId));
                 return;
             }
 
@@ -165,7 +170,10 @@ public sealed class SwarmAgentActor : ReceiveActor
                     command.TaskId,
                     command.Role,
                     error,
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow,
+                    ActorName: Self.Path.Name,
+                    TraceId: traceId,
+                    SpanId: spanId));
                 return;
             }
 
@@ -177,7 +185,10 @@ public sealed class SwarmAgentActor : ReceiveActor
                     command.TaskId,
                     command.Role,
                     error,
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow,
+                    ActorName: Self.Path.Name,
+                    TraceId: traceId,
+                    SpanId: spanId));
                 return;
             }
 
@@ -197,7 +208,9 @@ public sealed class SwarmAgentActor : ReceiveActor
                 result.Output,
                 DateTimeOffset.UtcNow,
                 AdapterId: result.AdapterId,
-                ActorName: Self.Path.Name));
+                ActorName: Self.Path.Name,
+                TraceId: traceId,
+                SpanId: spanId));
         }
         catch (Exception exception)
         {
@@ -213,7 +226,10 @@ public sealed class SwarmAgentActor : ReceiveActor
                 command.TaskId,
                 command.Role,
                 $"Agent Framework execution failed: {exception.Message}",
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                ActorName: Self.Path.Name,
+                TraceId: traceId,
+                SpanId: spanId));
         }
         finally
         {

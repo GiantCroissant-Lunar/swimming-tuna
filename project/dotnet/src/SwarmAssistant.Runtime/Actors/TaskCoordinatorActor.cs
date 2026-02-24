@@ -58,6 +58,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
+    private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -70,6 +71,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _planningOutput;
     private string? _buildOutput;
     private string? _reviewOutput;
+    private string? _workspaceBranchName;
 
     private int _retryCount;
     private readonly int _maxRetries;
@@ -129,6 +131,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _eventRecorder = eventRecorder;
         _projectContext = projectContext;
         _workspaceBranchManager = workspaceBranchManager;
+        _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -349,6 +352,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 message.Confidence,
                 _retryCount));
 
+        await CaptureRoleSuccessArtifactsAsync(message);
+
         switch (message.Role)
         {
             case SwarmRole.Orchestrator:
@@ -492,6 +497,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _logger.LogWarning(
             "Role failed taskId={TaskId} role={Role} error={Error}",
             _taskId, message.Role, message.Error);
+
+        CaptureRoleFailureArtifacts(message);
 
         // Orchestrator failures are non-fatal: fall back to GOAP deterministic execution
         if (message.Role == SwarmRole.Orchestrator)
@@ -985,7 +992,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 {
                     var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
                     if (branch != null)
+                    {
+                        _workspaceBranchName = branch;
                         _logger.LogInformation("Builder working on branch {Branch} for task {TaskId}", branch, _taskId);
+                    }
                 }
                 TransitionTo(TaskState.Building);
                 _uiEvents.Publish(
@@ -1444,6 +1454,185 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             });
 
         Context.Stop(Self);
+    }
+
+    private async Task CaptureRoleSuccessArtifactsAsync(RoleTaskSucceeded message)
+    {
+        var resolvedRunId = LegacyRunId.Resolve(_runId, _taskId);
+        var agentId = ResolveAgentId(message.ActorName, message.Role);
+        var role = message.Role.ToString().ToLowerInvariant();
+
+        var artifacts = new List<TaskArtifact>
+        {
+            CreateMessageArtifact(
+                runId: resolvedRunId,
+                role: role,
+                agentId: agentId,
+                output: message.Output,
+                createdAt: message.CompletedAt,
+                status: "completed",
+                adapterId: message.AdapterId),
+            CreateTraceArtifact(
+                runId: resolvedRunId,
+                role: role,
+                agentId: agentId,
+                createdAt: message.CompletedAt,
+                status: "completed",
+                traceId: message.TraceId,
+                spanId: message.SpanId,
+                adapterId: message.AdapterId)
+        };
+
+        if (message.Role == SwarmRole.Builder && _options.WorkspaceBranchEnabled)
+        {
+            var fileArtifacts = await _gitArtifactCollector.CollectFileArtifactsAsync(
+                _taskId,
+                _runId,
+                agentId,
+                role);
+
+            if (_workspaceBranchName is { Length: > 0 })
+            {
+                fileArtifacts = fileArtifacts
+                    .Select(artifact => artifact with
+                    {
+                        Metadata = WithMetadata(artifact.Metadata, "branch", _workspaceBranchName)
+                    })
+                    .ToList();
+            }
+
+            artifacts.AddRange(fileArtifacts);
+        }
+
+        _taskRegistry.AddArtifacts(_taskId, artifacts);
+    }
+
+    private void CaptureRoleFailureArtifacts(RoleTaskFailed message)
+    {
+        var resolvedRunId = LegacyRunId.Resolve(_runId, _taskId);
+        var role = message.Role.ToString().ToLowerInvariant();
+        var agentId = ResolveAgentId(message.ActorName, message.Role);
+        var artifacts = new List<TaskArtifact>
+        {
+            CreateMessageArtifact(
+                runId: resolvedRunId,
+                role: role,
+                agentId: agentId,
+                output: message.Error,
+                createdAt: message.FailedAt,
+                status: "failed"),
+            CreateTraceArtifact(
+                runId: resolvedRunId,
+                role: role,
+                agentId: agentId,
+                createdAt: message.FailedAt,
+                status: "failed",
+                traceId: message.TraceId,
+                spanId: message.SpanId)
+        };
+
+        _taskRegistry.AddArtifacts(_taskId, artifacts);
+    }
+
+    private TaskArtifact CreateMessageArtifact(
+        string runId,
+        string role,
+        string agentId,
+        string output,
+        DateTimeOffset createdAt,
+        string status,
+        string? adapterId = null)
+    {
+        var contentHash = TaskArtifact.ComputeContentHash(output);
+        return new TaskArtifact(
+            ArtifactId: TaskArtifact.BuildArtifactId(contentHash),
+            RunId: runId,
+            TaskId: _taskId,
+            AgentId: agentId,
+            Type: TaskArtifactTypes.Message,
+            Path: null,
+            ContentHash: contentHash,
+            CreatedAt: createdAt,
+            Metadata: BuildMetadata(role, status, output.Length, adapterId, traceId: null, spanId: null));
+    }
+
+    private TaskArtifact CreateTraceArtifact(
+        string runId,
+        string role,
+        string agentId,
+        DateTimeOffset createdAt,
+        string status,
+        string? traceId,
+        string? spanId,
+        string? adapterId = null)
+    {
+        var canonical = string.Join("|", _taskId, role, status, traceId ?? string.Empty, spanId ?? string.Empty);
+        var contentHash = TaskArtifact.ComputeContentHash(canonical);
+        return new TaskArtifact(
+            ArtifactId: TaskArtifact.BuildArtifactId(contentHash),
+            RunId: runId,
+            TaskId: _taskId,
+            AgentId: agentId,
+            Type: TaskArtifactTypes.Trace,
+            Path: null,
+            ContentHash: contentHash,
+            CreatedAt: createdAt,
+            Metadata: BuildMetadata(role, status, outputLength: 0, adapterId, traceId, spanId));
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildMetadata(
+        string role,
+        string status,
+        int outputLength,
+        string? adapterId,
+        string? traceId,
+        string? spanId)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["role"] = role,
+            ["status"] = status,
+            ["outputLength"] = outputLength.ToString()
+        };
+
+        if (!string.IsNullOrWhiteSpace(adapterId))
+        {
+            metadata["adapterId"] = adapterId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(traceId))
+        {
+            metadata["traceId"] = traceId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(spanId))
+        {
+            metadata["spanId"] = spanId;
+        }
+
+        return metadata;
+    }
+
+    private static IReadOnlyDictionary<string, string> WithMetadata(
+        IReadOnlyDictionary<string, string>? metadata,
+        string key,
+        string value)
+    {
+        var copy = metadata is not null
+            ? new Dictionary<string, string>(metadata, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+        copy[key] = value;
+        return copy;
+    }
+
+    private static string ResolveAgentId(string? actorName, SwarmRole role)
+    {
+        if (!string.IsNullOrWhiteSpace(actorName))
+        {
+            return actorName;
+        }
+
+        return $"{role.ToString().ToLowerInvariant()}-agent";
     }
 
     private string BuildSummary()

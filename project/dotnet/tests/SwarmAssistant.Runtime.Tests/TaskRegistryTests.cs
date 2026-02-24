@@ -119,6 +119,46 @@ public sealed class TaskRegistryTests
         Assert.Equal(TaskState.Queued, registry.GetTask("task-12")!.Status);
     }
 
+    [Fact]
+    public void Registry_AddArtifacts_MergesAndDeduplicatesByArtifactId()
+    {
+        var registry = new TaskRegistry(new InMemoryTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        var now = DateTimeOffset.UtcNow;
+        registry.Register(new TaskAssigned("task-20", "Artifacts", "Desc", now), runId: "run-20");
+
+        var artifactA = new TaskArtifact(
+            ArtifactId: "art-a",
+            RunId: "run-20",
+            TaskId: "task-20",
+            AgentId: "builder-01",
+            Type: TaskArtifactTypes.Message,
+            Path: null,
+            ContentHash: "sha256:a",
+            CreatedAt: now,
+            Metadata: null);
+        var artifactB = artifactA with
+        {
+            ArtifactId = "art-b",
+            ContentHash = "sha256:b",
+            CreatedAt = now.AddSeconds(1)
+        };
+        var artifactAUpdated = artifactA with
+        {
+            Metadata = new Dictionary<string, string> { ["status"] = "updated" }
+        };
+
+        registry.AddArtifacts("task-20", [artifactA, artifactB]);
+        registry.AddArtifacts("task-20", [artifactAUpdated]);
+
+        var snapshot = registry.GetTask("task-20");
+        Assert.NotNull(snapshot);
+        Assert.NotNull(snapshot!.Artifacts);
+        Assert.Equal(2, snapshot.Artifacts!.Count);
+        Assert.Contains(snapshot.Artifacts, a => a.ArtifactId == "art-a");
+        Assert.Contains(snapshot.Artifacts, a => a.ArtifactId == "art-b");
+        Assert.Equal("updated", snapshot.Artifacts.Single(a => a.ArtifactId == "art-a").Metadata!["status"]);
+    }
+
     private sealed class InMemoryTaskMemoryWriter : ITaskMemoryWriter
     {
         public Task WriteAsync(TaskSnapshot snapshot, CancellationToken cancellationToken = default)

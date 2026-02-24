@@ -54,7 +54,8 @@ public sealed class CapabilityRegistryActor : ReceiveActor, IWithTimers
                 message.TaskId,
                 message.Role,
                 error,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                ActorName: Self.Path.Name));
             return;
         }
 

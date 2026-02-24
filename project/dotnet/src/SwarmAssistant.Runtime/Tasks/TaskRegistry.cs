@@ -97,6 +97,45 @@ public sealed class TaskRegistry : IAsyncDisposable
         return updated;
     }
 
+    public TaskSnapshot? AddArtifacts(string taskId, IEnumerable<TaskArtifact> artifacts)
+    {
+        if (!_tasks.TryGetValue(taskId, out var previous))
+        {
+            return null;
+        }
+
+        var incoming = artifacts
+            .Where(a => a is not null)
+            .ToList();
+        if (incoming.Count == 0)
+        {
+            return previous;
+        }
+
+        var byId = new Dictionary<string, TaskArtifact>(StringComparer.Ordinal);
+        foreach (var artifact in previous.Artifacts ?? [])
+        {
+            byId[artifact.ArtifactId] = artifact;
+        }
+
+        foreach (var artifact in incoming)
+        {
+            byId[artifact.ArtifactId] = artifact;
+        }
+
+        var updated = previous with
+        {
+            Artifacts = byId.Values
+                .OrderBy(artifact => artifact.CreatedAt)
+                .ToList(),
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        _tasks[taskId] = updated;
+        PersistBestEffort(updated);
+        return updated;
+    }
+
     public TaskSnapshot? MarkFailed(string taskId, string error)
     {
         if (!_tasks.TryGetValue(taskId, out var previous))
