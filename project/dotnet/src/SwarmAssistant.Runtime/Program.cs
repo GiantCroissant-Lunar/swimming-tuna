@@ -752,18 +752,9 @@ if (options.A2AEnabled)
         string runId,
         long? cursor,
         int? limit,
-        RunRegistry runRegistry,
-        TaskRegistry taskRegistry,
         ITaskExecutionEventReader eventReader,
         CancellationToken cancellationToken) =>
     {
-        var run = runRegistry.GetRun(runId);
-        var registryTasks = taskRegistry.GetTasksByRunId(runId, 1);
-        if (run is null && registryTasks.Count == 0)
-        {
-            return Results.NotFound(new { error = "run not found", runId });
-        }
-
         var afterSequence = cursor ?? 0L;
         var requestedLimit = Math.Clamp(limit ?? 200, 1, 1000);
         var events = await eventReader.ListByRunAsync(runId, afterSequence, requestedLimit, cancellationToken);

@@ -107,7 +107,7 @@ export interface HealthResponse {
  * Response body for `GET /memory/tasks` containing a list of task snapshots.
  */
 export interface MemoryTaskListResponse {
-    items: ItemElement[];
+    items: TaskSnapshot[];
     /**
      * Backend that served the results (`arcadedb` or `registry`).
      */
@@ -118,7 +118,7 @@ export interface MemoryTaskListResponse {
 /**
  * Full snapshot of a swarm task including all role outputs.
  */
-export interface ItemElement {
+export interface TaskSnapshot {
     /**
      * Output produced by the builder role.
      */
@@ -192,6 +192,30 @@ export enum Source {
 }
 
 /**
+ * Paginated feed of task execution events returned by replay endpoints.
+ */
+export interface TaskExecutionEventFeed {
+    /**
+     * Ordered list of events (ascending by sequence).
+     */
+    items: TaskExecutionEvent[];
+    /**
+     * Sequence number of the last returned event; pass as `cursor` in the next request to
+     * continue pagination. `null` when no events were returned.
+     */
+    nextCursor?: number | null;
+    /**
+     * Run identifier, present for run-scoped feeds.
+     */
+    runId?: null | string;
+    /**
+     * Task identifier, present for task-scoped feeds.
+     */
+    taskId?: null | string;
+    [property: string]: any;
+}
+
+/**
  * An immutable, append-only event recorded during task execution. Used for audit trails and
  * replay feeds.
  */
@@ -228,126 +252,6 @@ export interface TaskExecutionEvent {
      * Monotonically increasing sequence number scoped to the task.
      */
     taskSequence: number;
-    [property: string]: any;
-}
-
-/**
- * Paginated feed of task execution events returned by replay endpoints.
- */
-export interface TaskExecutionEventFeed {
-    /**
-     * Ordered list of events (ascending by sequence).
-     */
-    items: ItemObject[];
-    /**
-     * Sequence number of the last returned event; pass as `cursor` in the next request to
-     * continue pagination. `null` when no events were returned.
-     */
-    nextCursor?: number | null;
-    /**
-     * Run identifier, present for run-scoped feeds.
-     */
-    runId?: null | string;
-    /**
-     * Task identifier, present for task-scoped feeds.
-     */
-    taskId?: null | string;
-    [property: string]: any;
-}
-
-/**
- * An immutable, append-only event recorded during task execution. Used for audit trails and
- * replay feeds.
- */
-export interface ItemObject {
-    /**
-     * Unique event identifier.
-     */
-    eventId: string;
-    /**
-     * Event type discriminator (e.g. `task.started`, `role.completed`).
-     */
-    eventType: string;
-    /**
-     * ISO 8601 timestamp when the event occurred.
-     */
-    occurredAt: Date;
-    /**
-     * JSON-encoded event payload, when present.
-     */
-    payload?: null | string;
-    /**
-     * Identifier of the swarm run this event belongs to.
-     */
-    runId: string;
-    /**
-     * Monotonically increasing sequence number scoped to the run.
-     */
-    runSequence: number;
-    /**
-     * Identifier of the task this event belongs to.
-     */
-    taskId: string;
-    /**
-     * Monotonically increasing sequence number scoped to the task.
-     */
-    taskSequence: number;
-    [property: string]: any;
-}
-
-/**
- * Full snapshot of a swarm task including all role outputs.
- */
-export interface TaskSnapshot {
-    /**
-     * Output produced by the builder role.
-     */
-    buildOutput?: null | string;
-    /**
-     * Identifiers of child sub-tasks spawned by this task.
-     */
-    childTaskIds?: string[] | null;
-    /**
-     * ISO 8601 timestamp when the task was created.
-     */
-    createdAt: Date;
-    /**
-     * Full task description.
-     */
-    description: string;
-    /**
-     * Error message when the task has failed.
-     */
-    error?: null | string;
-    /**
-     * Identifier of the parent task, if this is a sub-task.
-     */
-    parentTaskId?: null | string;
-    /**
-     * Output produced by the planner role.
-     */
-    planningOutput?: null | string;
-    /**
-     * Output produced by the reviewer role.
-     */
-    reviewOutput?: null | string;
-    status:        TaskState;
-    /**
-     * Final summary when the task is completed.
-     */
-    summary?: null | string;
-    /**
-     * Unique task identifier.
-     */
-    taskId: string;
-    /**
-     * Short human-readable task title.
-     */
-    title: string;
-    /**
-     * ISO 8601 timestamp of the last status update.
-     */
-    updatedAt: Date;
     [property: string]: any;
 }
 

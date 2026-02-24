@@ -1,34 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "A2aTaskSubmitResponse",
-  "definitions": {
-    "A2aTaskSubmitResponse": {
-      "type": "object",
-      "description": "Acknowledgement returned after an A2A task is accepted.",
-      "required": [
-        "taskId",
-        "status",
-        "statusUrl"
-      ],
-      "properties": {
-        "taskId": {
-          "type": "string",
-          "description": "Assigned task identifier."
-        },
-        "status": {
-          "type": "string",
-          "description": "Always `accepted` on a successful submission.",
-          "enum": [
-            "accepted"
-          ]
-        },
-        "statusUrl": {
-          "type": "string",
-          "description": "Relative URL to poll for task status."
-        }
-      }
-    }
-  },
   "type": "object",
   "description": "Acknowledgement returned after an A2A task is accepted.",
   "required": [

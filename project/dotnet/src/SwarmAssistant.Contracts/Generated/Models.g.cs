@@ -163,235 +163,13 @@ namespace SwarmAssistant.Contracts.Generated
     public partial class MemoryTaskListResponse
     {
         [JsonProperty("items")]
-        public List<ItemElement> Items { get; set; }
+        public List<TaskSnapshot> Items { get; set; }
 
         /// <summary>
         /// Backend that served the results (`arcadedb` or `registry`).
         /// </summary>
         [JsonProperty("source")]
         public Source Source { get; set; }
-    }
-
-    /// <summary>
-    /// Full snapshot of a swarm task including all role outputs.
-    /// </summary>
-    public partial class ItemElement
-    {
-        /// <summary>
-        /// Output produced by the builder role.
-        /// </summary>
-        [JsonProperty("buildOutput")]
-        public string BuildOutput { get; set; }
-
-        /// <summary>
-        /// Identifiers of child sub-tasks spawned by this task.
-        /// </summary>
-        [JsonProperty("childTaskIds")]
-        public List<string> ChildTaskIds { get; set; }
-
-        /// <summary>
-        /// ISO 8601 timestamp when the task was created.
-        /// </summary>
-        [JsonProperty("createdAt")]
-        public DateTimeOffset CreatedAt { get; set; }
-
-        /// <summary>
-        /// Full task description.
-        /// </summary>
-        [JsonProperty("description")]
-        public string Description { get; set; }
-
-        /// <summary>
-        /// Error message when the task has failed.
-        /// </summary>
-        [JsonProperty("error")]
-        public string Error { get; set; }
-
-        /// <summary>
-        /// Identifier of the parent task, if this is a sub-task.
-        /// </summary>
-        [JsonProperty("parentTaskId")]
-        public string ParentTaskId { get; set; }
-
-        /// <summary>
-        /// Output produced by the planner role.
-        /// </summary>
-        [JsonProperty("planningOutput")]
-        public string PlanningOutput { get; set; }
-
-        /// <summary>
-        /// Output produced by the reviewer role.
-        /// </summary>
-        [JsonProperty("reviewOutput")]
-        public string ReviewOutput { get; set; }
-
-        [JsonProperty("status")]
-        public TaskStateEnum Status { get; set; }
-
-        /// <summary>
-        /// Final summary when the task is completed.
-        /// </summary>
-        [JsonProperty("summary")]
-        public string Summary { get; set; }
-
-        /// <summary>
-        /// Unique task identifier.
-        /// </summary>
-        [JsonProperty("taskId")]
-        public string TaskId { get; set; }
-
-        /// <summary>
-        /// Short human-readable task title.
-        /// </summary>
-        [JsonProperty("title")]
-        public string Title { get; set; }
-
-        /// <summary>
-        /// ISO 8601 timestamp of the last status update.
-        /// </summary>
-        [JsonProperty("updatedAt")]
-        public DateTimeOffset UpdatedAt { get; set; }
-    }
-
-    /// <summary>
-    /// An immutable, append-only event recorded during task execution. Used for audit trails and
-    /// replay feeds.
-    /// </summary>
-    public partial class TaskExecutionEvent
-    {
-        /// <summary>
-        /// Unique event identifier.
-        /// </summary>
-        [JsonProperty("eventId")]
-        public string EventId { get; set; }
-
-        /// <summary>
-        /// Event type discriminator (e.g. `task.started`, `role.completed`).
-        /// </summary>
-        [JsonProperty("eventType")]
-        public string EventType { get; set; }
-
-        /// <summary>
-        /// ISO 8601 timestamp when the event occurred.
-        /// </summary>
-        [JsonProperty("occurredAt")]
-        public DateTimeOffset OccurredAt { get; set; }
-
-        /// <summary>
-        /// JSON-encoded event payload, when present.
-        /// </summary>
-        [JsonProperty("payload")]
-        public string Payload { get; set; }
-
-        /// <summary>
-        /// Identifier of the swarm run this event belongs to.
-        /// </summary>
-        [JsonProperty("runId")]
-        public string RunId { get; set; }
-
-        /// <summary>
-        /// Monotonically increasing sequence number scoped to the run.
-        /// </summary>
-        [JsonProperty("runSequence")]
-        public long RunSequence { get; set; }
-
-        /// <summary>
-        /// Identifier of the task this event belongs to.
-        /// </summary>
-        [JsonProperty("taskId")]
-        public string TaskId { get; set; }
-
-        /// <summary>
-        /// Monotonically increasing sequence number scoped to the task.
-        /// </summary>
-        [JsonProperty("taskSequence")]
-        public long TaskSequence { get; set; }
-    }
-
-    /// <summary>
-    /// Paginated feed of task execution events returned by replay endpoints.
-    /// </summary>
-    public partial class TaskExecutionEventFeed
-    {
-        /// <summary>
-        /// Ordered list of events (ascending by sequence).
-        /// </summary>
-        [JsonProperty("items")]
-        public List<ItemClass> Items { get; set; }
-
-        /// <summary>
-        /// Sequence number of the last returned event; pass as `cursor` in the next request to
-        /// continue pagination. `null` when no events were returned.
-        /// </summary>
-        [JsonProperty("nextCursor")]
-        public long? NextCursor { get; set; }
-
-        /// <summary>
-        /// Run identifier, present for run-scoped feeds.
-        /// </summary>
-        [JsonProperty("runId")]
-        public string RunId { get; set; }
-
-        /// <summary>
-        /// Task identifier, present for task-scoped feeds.
-        /// </summary>
-        [JsonProperty("taskId")]
-        public string TaskId { get; set; }
-    }
-
-    /// <summary>
-    /// An immutable, append-only event recorded during task execution. Used for audit trails and
-    /// replay feeds.
-    /// </summary>
-    public partial class ItemClass
-    {
-        /// <summary>
-        /// Unique event identifier.
-        /// </summary>
-        [JsonProperty("eventId")]
-        public string EventId { get; set; }
-
-        /// <summary>
-        /// Event type discriminator (e.g. `task.started`, `role.completed`).
-        /// </summary>
-        [JsonProperty("eventType")]
-        public string EventType { get; set; }
-
-        /// <summary>
-        /// ISO 8601 timestamp when the event occurred.
-        /// </summary>
-        [JsonProperty("occurredAt")]
-        public DateTimeOffset OccurredAt { get; set; }
-
-        /// <summary>
-        /// JSON-encoded event payload, when present.
-        /// </summary>
-        [JsonProperty("payload")]
-        public string Payload { get; set; }
-
-        /// <summary>
-        /// Identifier of the swarm run this event belongs to.
-        /// </summary>
-        [JsonProperty("runId")]
-        public string RunId { get; set; }
-
-        /// <summary>
-        /// Monotonically increasing sequence number scoped to the run.
-        /// </summary>
-        [JsonProperty("runSequence")]
-        public long RunSequence { get; set; }
-
-        /// <summary>
-        /// Identifier of the task this event belongs to.
-        /// </summary>
-        [JsonProperty("taskId")]
-        public string TaskId { get; set; }
-
-        /// <summary>
-        /// Monotonically increasing sequence number scoped to the task.
-        /// </summary>
-        [JsonProperty("taskSequence")]
-        public long TaskSequence { get; set; }
     }
 
     /// <summary>
@@ -473,6 +251,92 @@ namespace SwarmAssistant.Contracts.Generated
         /// </summary>
         [JsonProperty("updatedAt")]
         public DateTimeOffset UpdatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Paginated feed of task execution events returned by replay endpoints.
+    /// </summary>
+    public partial class TaskExecutionEventFeed
+    {
+        /// <summary>
+        /// Ordered list of events (ascending by sequence).
+        /// </summary>
+        [JsonProperty("items")]
+        public List<TaskExecutionEvent> Items { get; set; }
+
+        /// <summary>
+        /// Sequence number of the last returned event; pass as `cursor` in the next request to
+        /// continue pagination. `null` when no events were returned.
+        /// </summary>
+        [JsonProperty("nextCursor")]
+        public long? NextCursor { get; set; }
+
+        /// <summary>
+        /// Run identifier, present for run-scoped feeds.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
+
+        /// <summary>
+        /// Task identifier, present for task-scoped feeds.
+        /// </summary>
+        [JsonProperty("taskId")]
+        public string TaskId { get; set; }
+    }
+
+    /// <summary>
+    /// An immutable, append-only event recorded during task execution. Used for audit trails and
+    /// replay feeds.
+    /// </summary>
+    public partial class TaskExecutionEvent
+    {
+        /// <summary>
+        /// Unique event identifier.
+        /// </summary>
+        [JsonProperty("eventId")]
+        public string EventId { get; set; }
+
+        /// <summary>
+        /// Event type discriminator (e.g. `task.started`, `role.completed`).
+        /// </summary>
+        [JsonProperty("eventType")]
+        public string EventType { get; set; }
+
+        /// <summary>
+        /// ISO 8601 timestamp when the event occurred.
+        /// </summary>
+        [JsonProperty("occurredAt")]
+        public DateTimeOffset OccurredAt { get; set; }
+
+        /// <summary>
+        /// JSON-encoded event payload, when present.
+        /// </summary>
+        [JsonProperty("payload")]
+        public string Payload { get; set; }
+
+        /// <summary>
+        /// Identifier of the swarm run this event belongs to.
+        /// </summary>
+        [JsonProperty("runId")]
+        public string RunId { get; set; }
+
+        /// <summary>
+        /// Monotonically increasing sequence number scoped to the run.
+        /// </summary>
+        [JsonProperty("runSequence")]
+        public long RunSequence { get; set; }
+
+        /// <summary>
+        /// Identifier of the task this event belongs to.
+        /// </summary>
+        [JsonProperty("taskId")]
+        public string TaskId { get; set; }
+
+        /// <summary>
+        /// Monotonically increasing sequence number scoped to the task.
+        /// </summary>
+        [JsonProperty("taskSequence")]
+        public long TaskSequence { get; set; }
     }
 
     /// <summary>
