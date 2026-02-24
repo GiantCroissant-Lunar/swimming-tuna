@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -212,6 +213,38 @@ public sealed class Worker : BackgroundService
                 "code-index");
         }
 
+        // Load project context file (e.g. AGENTS.md) if configured
+        string? projectContext = null;
+        if (!string.IsNullOrWhiteSpace(_options.ProjectContextPath))
+        {
+            if (File.Exists(_options.ProjectContextPath))
+            {
+                try
+                {
+                    projectContext = await File.ReadAllTextAsync(_options.ProjectContextPath, stoppingToken);
+                    _logger.LogInformation(
+                        "Project context loaded path={Path} chars={CharCount}",
+                        _options.ProjectContextPath, projectContext.Length);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Project context file could not be read path={Path}",
+                        _options.ProjectContextPath);
+                }
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Project context file not found path={Path}", _options.ProjectContextPath);
+            }
+        }
+
+        var workspaceBranchManager = new WorkspaceBranchManager(
+            _options.WorkspaceBranchEnabled,
+            _loggerFactory.CreateLogger<WorkspaceBranchManager>());
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -228,7 +261,9 @@ public sealed class Worker : BackgroundService
                 tracker,
                 strategyAdvisorActor,
                 eventRecorder,
-                codeIndexActor)),
+                codeIndexActor,
+                projectContext,
+                workspaceBranchManager)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

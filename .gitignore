@@ -37,3 +37,6 @@ repomix-output.*
 __pycache__/
 *.pyc
 *.pyo
+
+# Worktree local state
+.worktrees/

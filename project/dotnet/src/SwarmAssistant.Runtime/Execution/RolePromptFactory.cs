@@ -18,6 +18,11 @@ internal static class RolePromptFactory
 
     public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext)
     {
+        return BuildPrompt(command, strategyAdvice, codeContext, projectContext: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext)
+    {
         var basePrompt = command.Role switch
         {
             SwarmRole.Planner => string.Join(
@@ -28,11 +33,17 @@ internal static class RolePromptFactory
                 "Return a concise implementation plan with risks and validation steps."),
             SwarmRole.Builder => string.Join(
                 Environment.NewLine,
-                "You are the builder agent in a swarm runtime.",
-                $"Task title: {command.Title}",
-                $"Task description: {command.Description}",
-                $"Planner output: {command.PlanningOutput ?? "(none)"}",
-                "Return concrete implementation notes and execution details."),
+                "You are a builder agent. Given the task and implementation plan below, produce concrete",
+                "implementation. Write only the code changes needed. Do not explain — just implement.",
+                string.Empty,
+                "## Task",
+                $"Title: {command.Title}",
+                $"Description: {command.Description}",
+                string.Empty,
+                "## Implementation Plan",
+                command.PlanningOutput ?? "No plan provided. Infer the necessary changes from the task description.",
+                string.Empty,
+                "Produce the minimal code changes to complete this task. Include file paths for each change."),
             SwarmRole.Reviewer => string.Join(
                 Environment.NewLine,
                 "You are the reviewer agent in a swarm runtime.",
@@ -67,6 +78,13 @@ internal static class RolePromptFactory
         };
 
         var contextParts = new List<string>();
+
+        // Project context (2nd layer)
+        if (!string.IsNullOrWhiteSpace(projectContext) &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            contextParts.Add(BuildProjectContext(projectContext));
+        }
 
         // Historical context (3rd layer)
         if (strategyAdvice is not null &&
@@ -147,6 +165,19 @@ internal static class RolePromptFactory
         lines.Add("--- End Historical Insights ---");
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Builds a project context section from AGENTS.md or similar project-level guidance.
+    /// This is the 2nd context layer: static project knowledge injected before dynamic insights.
+    /// </summary>
+    private static string BuildProjectContext(string projectContext)
+    {
+        return string.Join(
+            Environment.NewLine,
+            "## Project Context",
+            projectContext,
+            "## End Project Context");
     }
 
     /// <summary>

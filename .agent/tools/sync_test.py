@@ -266,12 +266,13 @@ class TestMergeAction:
         assert "SessionStart" in data["hooks"]
         assert "Stop" in data["hooks"]
 
-        # Verify command format uses absolute path
-        commands = data["hooks"]["SessionStart"]
-        assert len(commands) == 1
-        assert commands[0]["type"] == "command"
+        # Verify nested Claude Code structure: [{ "hooks": [{ "type": "command", ... }] }]
+        blocks = data["hooks"]["SessionStart"]
+        assert len(blocks) == 1
+        assert "hooks" in blocks[0]
+        assert blocks[0]["hooks"][0]["type"] == "command"
         hook_path = str((self.hooks_dir / "session_start.py").resolve())
-        assert hook_path in commands[0]["command"]
+        assert hook_path in blocks[0]["hooks"][0]["command"]
 
     def test_preserves_existing_settings(self):
         """Preserve other keys in existing settings.json."""
@@ -294,7 +295,11 @@ class TestMergeAction:
         """Preserve existing hook entries that are not in the mapping."""
         settings_path = self.tmpdir / "settings.json"
         existing = {
-            "hooks": {"CustomHook": [{"type": "command", "command": "echo custom"}]}
+            "hooks": {
+                "CustomHook": [
+                    {"hooks": [{"type": "command", "command": "echo custom"}]}
+                ]
+            }
         }
         settings_path.write_text(json.dumps(existing))
 
@@ -313,8 +318,12 @@ class TestMergeAction:
             "hooks": {
                 "SessionStart": [
                     {
-                        "type": "command",
-                        "command": f'python3 "{hook_path}"',
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f'python3 "{hook_path}"',
+                            }
+                        ]
                     }
                 ]
             }

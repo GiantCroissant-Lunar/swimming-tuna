@@ -3,6 +3,7 @@ using Akka.Actor;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -17,17 +18,20 @@ public sealed class WorkerActor : ReceiveActor
     private readonly RuntimeOptions _options;
     private readonly AgentFrameworkRoleEngine _agentFrameworkRoleEngine;
     private readonly RuntimeTelemetry _telemetry;
+    private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly ILogger _logger;
 
     public WorkerActor(
         RuntimeOptions options,
         ILoggerFactory loggerFactory,
         AgentFrameworkRoleEngine agentFrameworkRoleEngine,
-        RuntimeTelemetry telemetry)
+        RuntimeTelemetry telemetry,
+        RuntimeEventRecorder? eventRecorder = null)
     {
         _options = options;
         _agentFrameworkRoleEngine = agentFrameworkRoleEngine;
         _telemetry = telemetry;
+        _eventRecorder = eventRecorder;
         _logger = loggerFactory.CreateLogger<WorkerActor>();
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
@@ -84,6 +88,17 @@ public sealed class WorkerActor : ReceiveActor
             var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
             var output = result.Output;
             var adapterId = result.AdapterId;
+
+            // TODO: CliRoleExecutionResult does not carry process exit code.
+            // Propagate exit code from SubscriptionCliRoleExecutor in a follow-up.
+            _ = _eventRecorder?.RecordDiagnosticAdapterAsync(
+                command.TaskId,
+                command.RunId ?? "",
+                result.AdapterId ?? "unknown",
+                result.Output?.Length ?? 0,
+                command.Role.ToString().ToLowerInvariant(),
+                exitCode: 0);
+
             var confidence = EvaluateQuality(output, command.Role, adapterId);
 
             activity?.SetTag("output.length", output.Length);

@@ -145,6 +145,12 @@ public sealed class RuntimeOptions
         init => _defaultMaxSubTaskDepth = Math.Clamp(value, 0, 10);
     }
 
+    /// <summary>
+    /// When true, creates an isolated git branch (swarm/{taskId}) for each builder
+    /// execution. Defaults to false; Task 8 will wire this into builder dispatch.
+    /// </summary>
+    public bool WorkspaceBranchEnabled { get; init; } = false;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
@@ -214,6 +220,14 @@ public sealed class RuntimeOptions
     /// When true, includes code context in reviewer prompts.
     /// </summary>
     public bool CodeIndexForReviewer { get; init; } = true;
+
+    /// <summary>
+    /// Optional path to a project-level context file (e.g. AGENTS.md).
+    /// When set, the file content is loaded at startup and injected into agent prompts
+    /// as the 2nd context layer (project context).
+    /// Can be set via <c>Runtime__ProjectContextPath</c> environment variable.
+    /// </summary>
+    public string? ProjectContextPath { get; init; }
 
     /// <summary>
     /// Languages to include in code index queries.

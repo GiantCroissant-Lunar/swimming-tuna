@@ -99,8 +99,6 @@ Key runtime config flags (set via `Runtime__<key>` env vars):
 | `MemoryBootstrapEnabled` | Restore persisted tasks on startup |
 | `LangfuseTracingEnabled` | OpenTelemetry export to Langfuse |
 | `SimulateBuilderFailure` / `SimulateReviewerFailure` | Fault injection |
-| `ProjectContextPath` | Path to project context file (e.g., AGENTS.md) injected into role prompts |
-| `WorkspaceBranchEnabled` | Create `swarm/task-{id}` git branches for builder isolation (default: false) |
 
 ## API Endpoints
 
@@ -176,29 +174,6 @@ Priority is subscription-backed local CLIs (no direct API keys in MVP):
 
 Adapter probes validate command availability; execution can still fail on auth or
 environment restrictions, triggering fallback to the next adapter.
-
-## CI/CD Workflows
-
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `auto-merge-non-main.yml` | PR opened/synced | Auto-squash-merge PRs to non-main branches |
-| `doc-sync.md` (gh-aw)¹ | Weekly (Sun 9am UTC) | Documentation freshness audit |
-| `phase11-health.md` (gh-aw)¹ | Weekly (Mon 9:30am UTC) | Repository hygiene audit |
-| `review-resolve.md` (gh-aw)¹ | `pull_request_review` submitted | Fix bot review comments and create follow-up PR |
-
-> ¹ `gh-aw` entries are markdown-driven workflow specs compiled via `gh aw compile`.
-
-### Review Comment Resolver
-
-When an automated reviewer (`gemini-code-assist[bot]`, `coderabbitai[bot]`) submits a
-review, the `review-resolve` gh-aw workflow spawns a Copilot CLI agent that:
-
-1. Filters to bot-authored inline review comments only
-2. Reads affected files and understands each comment
-3. Applies minimal code fixes addressing the feedback
-4. Creates a single follow-up PR via `create-pull-request` safe output
-
-Recompile after editing: `gh aw compile .github/workflows/review-resolve.md`
 
 ## Key References
 

@@ -46,7 +46,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private (IActorRef dispatcher, InMemoryEventWriter writer) BuildDispatcher(string suffix = "")
+    private (IActorRef dispatcher, InMemoryEventWriter writer) BuildDispatcher(string suffix = "", string? projectContext = null)
     {
         var roleEngine = new AgentFrameworkRoleEngine(_options, _loggerFactory, _telemetry);
         var writer = new InMemoryEventWriter();
@@ -61,7 +61,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
             $"sv{suffix}-{Guid.NewGuid():N}");
 
         var worker = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, recorder))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             $"wk{suffix}-{Guid.NewGuid():N}");
 
@@ -90,6 +90,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 null,
                 recorder,
+                null,
+                projectContext,
                 null)),
             $"dp{suffix}-{Guid.NewGuid():N}");
 
@@ -289,6 +291,120 @@ public sealed class RuntimeEventEmissionTests : TestKit
     }
 
     [Fact]
+    public async Task HappyPath_EmitsDiagnosticContextEvent()
+    {
+        var (dispatcher, writer) = BuildDispatcher("diag");
+        var taskId = $"emit-diag-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "Diag Test", "Verify diagnostic context event.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+        await Task.Delay(200);
+
+        var diagEvents = writer.Events
+            .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticContext)
+            .ToList();
+
+        // Happy-path should emit at least Plan + Build + Review diagnostic events
+        Assert.True(diagEvents.Count >= 3, $"Expected at least 3 diagnostic events but got {diagEvents.Count}");
+
+        // Each diagnostic event should have a non-empty payload with expected PascalCase fields
+        foreach (var evt in diagEvents)
+        {
+            Assert.NotNull(evt.Payload);
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
+            Assert.True(payload.TryGetProperty("Action", out _), "Payload should contain 'Action'");
+            Assert.True(payload.TryGetProperty("Role", out _), "Payload should contain 'Role'");
+            Assert.True(payload.TryGetProperty("PromptLength", out _), "Payload should contain 'PromptLength'");
+            Assert.True(payload.TryGetProperty("HasCodeContext", out _), "Payload should contain 'HasCodeContext'");
+            Assert.True(payload.TryGetProperty("CodeChunkCount", out _), "Payload should contain 'CodeChunkCount'");
+            Assert.True(payload.TryGetProperty("HasStrategyAdvice", out _), "Payload should contain 'HasStrategyAdvice'");
+            Assert.True(payload.TryGetProperty("TargetFiles", out _), "Payload should contain 'TargetFiles'");
+            Assert.True(payload.TryGetProperty("HasProjectContext", out _), "Payload should contain 'HasProjectContext'");
+        }
+
+        // Assert concrete values on the first diagnostic event
+        var firstPayload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(diagEvents[0].Payload!);
+        var action = firstPayload.GetProperty("Action").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(action), "First diagnostic event Action should be a non-empty string");
+        Assert.True(firstPayload.GetProperty("PromptLength").GetInt32() > 0, "First diagnostic event PromptLength should be > 0");
+    }
+
+    [Fact]
+    public async Task HappyPath_EmitsAdapterDiagnosticEvent()
+    {
+        var (dispatcher, writer) = BuildDispatcher("adapter");
+        var taskId = $"emit-adapter-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "Adapter Diag Test", "Verify adapter diagnostic event.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+        await Task.Delay(200);
+
+        var adapterEvents = writer.Events
+            .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticAdapter)
+            .ToList();
+
+        // Happy-path should emit at least one adapter diagnostic event (Plan + Build worker executions)
+        Assert.True(adapterEvents.Count >= 1, $"Expected at least 1 adapter diagnostic event but got {adapterEvents.Count}");
+
+        // Each adapter diagnostic event should have a non-empty payload with expected PascalCase fields
+        foreach (var evt in adapterEvents)
+        {
+            Assert.NotNull(evt.Payload);
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
+            Assert.True(payload.TryGetProperty("AdapterId", out _), "Payload should contain 'AdapterId'");
+            Assert.True(payload.TryGetProperty("OutputLength", out _), "Payload should contain 'OutputLength'");
+            Assert.True(payload.TryGetProperty("Role", out _), "Payload should contain 'Role'");
+            Assert.True(payload.TryGetProperty("ExitCode", out _), "Payload should contain 'ExitCode'");
+        }
+
+        // Assert concrete values on the first adapter diagnostic event
+        var firstPayload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(adapterEvents[0].Payload!);
+        var adapterId = firstPayload.GetProperty("AdapterId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(adapterId), "AdapterId should be a non-empty string");
+        Assert.True(firstPayload.GetProperty("OutputLength").GetInt32() > 0, "OutputLength should be > 0");
+        Assert.Equal(0, firstPayload.GetProperty("ExitCode").GetInt32());
+    }
+
+    [Fact]
+    public async Task HappyPath_ProjectContextFlowsThroughPipeline()
+    {
+        const string knownContext = "# AGENTS.md\nUse PascalCase for C# types.\nPrefer sealed records for messages.";
+        var (dispatcher, writer) = BuildDispatcher("projctx", projectContext: knownContext);
+        var taskId = $"emit-projctx-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "ProjCtx Test", "Verify project context flows through.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+        await Task.Delay(200);
+
+        var diagEvents = writer.Events
+            .Where(e => e.TaskId == taskId && e.EventType == RuntimeEventRecorder.DiagnosticContext)
+            .ToList();
+
+        // Happy-path should emit at least Plan + Build + Review diagnostic events
+        Assert.True(diagEvents.Count >= 3, $"Expected at least 3 diagnostic events but got {diagEvents.Count}");
+
+        // Every diagnostic event should report HasProjectContext = true
+        foreach (var evt in diagEvents)
+        {
+            Assert.NotNull(evt.Payload);
+
+            var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.Payload!);
+            Assert.True(payload.TryGetProperty("HasProjectContext", out var hasCtx), "Payload should contain 'HasProjectContext'");
+            Assert.True(hasCtx.GetBoolean(), $"HasProjectContext should be true for action={payload.GetProperty("Action").GetString()}");
+        }
+
+        // Prompt length should be larger than baseline (the project context text is injected)
+        var firstPayload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(diagEvents[0].Payload!);
+        Assert.True(firstPayload.GetProperty("PromptLength").GetInt32() > knownContext.Length,
+            "PromptLength should exceed the project context length (context is appended to base prompt)");
+    }
+
+    [Fact]
     public async Task HappyPath_NoEventWriterInjected_DoesNotThrow()
     {
         // Dispatcher without event recorder — should execute normally
@@ -303,7 +419,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
             $"sv-noop-{Guid.NewGuid():N}");
 
         var worker = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             $"wk-noop-{Guid.NewGuid():N}");
 
@@ -332,6 +448,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 null,
                 null,
+                null,
+                null,
                 null
             )),
             $"dp-noop-{Guid.NewGuid():N}");
@@ -344,6 +462,27 @@ public sealed class RuntimeEventEmissionTests : TestKit
 
         var snapshot = _taskRegistry.GetTask(taskId);
         Assert.Equal(TaskState.Done, snapshot!.Status);
+    }
+
+    [Fact]
+    public async Task HappyPath_BuilderDispatch_WorkspaceBranchDisabled_StillCompletes()
+    {
+        var (dispatcher, writer) = BuildDispatcher("branch");
+        var taskId = $"emit-branch-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "Branch Test", "Verify disabled branch still completes.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+
+        var snapshot = _taskRegistry.GetTask(taskId);
+        Assert.NotNull(snapshot);
+        Assert.Equal(TaskState.Done, snapshot!.Status);
+
+        // Verify builder was dispatched (role.dispatched event for builder exists)
+        await Task.Delay(200);
+        var taskEvents = writer.Events.Where(e => e.TaskId == taskId).ToList();
+        Assert.Contains(taskEvents, e => e.EventType == RuntimeEventRecorder.RoleCompleted
+            && e.Payload != null && e.Payload.Contains("builder"));
     }
 
     // ── Fake writer ──────────────────────────────────────────────────────────

@@ -35,6 +35,8 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly IActorRef? _strategyAdvisorActor;
     private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly IActorRef? _codeIndexActor;
+    private readonly string? _projectContext;
+    private readonly WorkspaceBranchManager? _workspaceBranchManager;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -60,7 +62,9 @@ public sealed class DispatcherActor : ReceiveActor
         OutcomeTracker? outcomeTracker = null,
         IActorRef? strategyAdvisorActor = null,
         RuntimeEventRecorder? eventRecorder = null,
-        IActorRef? codeIndexActor = null)
+        IActorRef? codeIndexActor = null,
+        string? projectContext = null,
+        WorkspaceBranchManager? workspaceBranchManager = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -77,6 +81,8 @@ public sealed class DispatcherActor : ReceiveActor
         _strategyAdvisorActor = strategyAdvisorActor;
         _eventRecorder = eventRecorder;
         _codeIndexActor = codeIndexActor;
+        _projectContext = projectContext;
+        _workspaceBranchManager = workspaceBranchManager;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -140,7 +146,9 @@ public sealed class DispatcherActor : ReceiveActor
                 _codeIndexActor,
                 DefaultMaxRetries,
                 0,
-                _eventRecorder)),
+                _eventRecorder,
+                _projectContext,
+                _workspaceBranchManager)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -197,7 +205,9 @@ public sealed class DispatcherActor : ReceiveActor
                 _codeIndexActor,
                 DefaultMaxRetries,
                 message.Depth,
-                _eventRecorder)),
+                _eventRecorder,
+                _projectContext,
+                _workspaceBranchManager)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;

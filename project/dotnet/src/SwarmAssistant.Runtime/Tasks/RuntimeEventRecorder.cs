@@ -30,12 +30,28 @@ public sealed class RuntimeEventRecorder
     public const string RoleFailed = "role.failed";
     public const string TaskDone = "task.done";
     public const string TaskFailed = "task.failed";
+    public const string DiagnosticContext = "diagnostic.context";
+    public const string DiagnosticAdapter = "diagnostic.adapter";
 
     private sealed record TaskSubmittedEventPayload(string Title);
     private sealed record RoleEventPayload(string Role);
     private sealed record RoleCompletedEventPayload(string Role, double Confidence);
     private sealed record RoleFailedEventPayload(string Role, string Error);
     private sealed record TaskFailedEventPayload(string Error);
+    private sealed record DiagnosticContextPayload(
+        string Action,
+        string Role,
+        int PromptLength,
+        bool HasCodeContext,
+        int CodeChunkCount,
+        bool HasStrategyAdvice,
+        IReadOnlyList<string> TargetFiles,
+        bool HasProjectContext);
+    private sealed record DiagnosticAdapterPayload(
+        string AdapterId,
+        int OutputLength,
+        string Role,
+        int ExitCode);
 
     // ── public record methods ─────────────────────────────────────────────────
 
@@ -64,6 +80,32 @@ public sealed class RuntimeEventRecorder
     public Task RecordTaskFailedAsync(string taskId, string? runId, string error) =>
         AppendAsync(TaskFailed, taskId, runId,
             JsonSerializer.Serialize(new TaskFailedEventPayload(error)));
+
+    public Task RecordDiagnosticContextAsync(
+        string taskId,
+        string? runId,
+        string action,
+        string role,
+        int promptLength,
+        bool hasCodeContext,
+        int codeChunkCount,
+        bool hasStrategyAdvice,
+        IReadOnlyList<string> targetFiles,
+        bool hasProjectContext = false) =>
+        AppendAsync(DiagnosticContext, taskId, runId,
+            JsonSerializer.Serialize(
+                new DiagnosticContextPayload(action, role, promptLength, hasCodeContext, codeChunkCount, hasStrategyAdvice, targetFiles, hasProjectContext)));
+
+    public Task RecordDiagnosticAdapterAsync(
+        string taskId,
+        string? runId,
+        string adapterId,
+        int outputLength,
+        string role,
+        int exitCode) =>
+        AppendAsync(DiagnosticAdapter, taskId, runId,
+            JsonSerializer.Serialize(
+                new DiagnosticAdapterPayload(adapterId, outputLength, role, exitCode)));
 
     // ── internal append helper ────────────────────────────────────────────────
 

@@ -58,7 +58,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
             "supervisor");
 
         var workerActor = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             "worker-pool");
 
@@ -84,6 +84,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -124,7 +126,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
             "supervisor-ui");
 
         var workerActor = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             "worker-pool-ui");
 
@@ -150,6 +152,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -192,7 +196,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
             "supervisor-parallel");
 
         var workerActor = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             "worker-pool-parallel");
 
@@ -218,6 +222,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -264,7 +270,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
             "supervisor-tracking");
 
         var workerActor = Sys.ActorOf(
-            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry))
+            Props.Create(() => new WorkerActor(_options, _loggerFactory, roleEngine, _telemetry, null))
                 .WithRouter(new SmallestMailboxPool(_options.WorkerPoolSize)),
             "worker-pool-tracking");
 
@@ -290,6 +296,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
+                null,
                 null,
                 null,
                 null,
