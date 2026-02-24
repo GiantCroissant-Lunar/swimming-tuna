@@ -226,6 +226,56 @@ public sealed class RunEndpointsTests
         factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
     }
 
+    // Unified run existence policy tests (GET /runs/{runId}/events)
+
+    [Fact]
+    public void RunExistencePolicy_ExplicitRunCreation_SatisfiesExistence()
+    {
+        // Arrange: explicit POST /runs workflow
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+        runRegistry.CreateRun(runId: "run-explicit");
+
+        // Act: same check applied by GET /runs/{runId}/events after the fix
+        var runExists = runRegistry.GetRun("run-explicit") is not null
+            || taskRegistry.GetTasksByRunId("run-explicit", 1).Count > 0;
+
+        Assert.True(runExists);
+    }
+
+    [Fact]
+    public void RunExistencePolicy_ImplicitRunViaTasks_SatisfiesExistence()
+    {
+        // Arrange: POST /a2a/tasks with runId only (no POST /runs)
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+        var now = DateTimeOffset.UtcNow;
+        taskRegistry.ImportSnapshots(new[]
+        {
+            new TaskSnapshot("task-impl-1", "Task 1", "Desc", TaskState.Queued, now, now, RunId: "run-implicit")
+        }, overwrite: true);
+
+        // Act: same check applied by GET /runs/{runId}/events after the fix
+        var runExists = runRegistry.GetRun("run-implicit") is not null
+            || taskRegistry.GetTasksByRunId("run-implicit", 1).Count > 0;
+
+        Assert.True(runExists);
+    }
+
+    [Fact]
+    public void RunExistencePolicy_NoRunNoTasks_ReturnsFalse()
+    {
+        // Arrange: nothing submitted
+        var runRegistry = new RunRegistry();
+        var taskRegistry = new TaskRegistry(new NoOpWriter(), NullLogger<TaskRegistry>.Instance);
+
+        // Act: same check applied by GET /runs/{runId}/events after the fix
+        var runExists = runRegistry.GetRun("run-ghost") is not null
+            || taskRegistry.GetTasksByRunId("run-ghost", 1).Count > 0;
+
+        Assert.False(runExists);
+    }
+
     private sealed class NoOpWriter : ITaskMemoryWriter
     {
         public Task WriteAsync(TaskSnapshot snapshot, CancellationToken cancellationToken = default) =>
