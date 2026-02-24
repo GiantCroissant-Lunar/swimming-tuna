@@ -91,8 +91,8 @@ seeding query. Subsequent appends to the same key use a lock-free `AddOrUpdate`.
 **Mitigation**:
 - Pre-warm the sequence cache by calling `AppendAsync` with a synthetic event at startup, or
   by issuing a single `SELECT max(taskSequence)` query in `StartupMemoryBootstrapper`.
-- If the seed query fails (ArcadeDB unreachable), the counter starts at 0 and sequences restart
-  from 1; this is safe because the `eventId` field is also stored for deduplication.
+- If the seed query fails (ArcadeDB unreachable), `AppendAsync` aborts for that event and logs
+  a warning. No sequence is allocated until ArcadeDB is reachable again.
 
 ### 3. Sequence Cache Eviction (> 10,000 distinct keys)
 
@@ -104,9 +104,8 @@ evicted key re-seeds from the persisted max, which requires one extra ArcadeDB r
 slightly for re-seeded keys.
 
 **Mitigation**: This threshold handles ~10,000 concurrent unique task IDs. Long-running
-deployments with high task throughput should monitor cache-size pressure through the log
-message `ArcadeDB event seeding from persisted max` and tune `MaxInMemorySequenceEntries`
-if needed.
+deployments with high task throughput should monitor warning logs for repeated
+`ArcadeDB event ... failed` messages and tune `MaxInMemorySequenceEntries` if needed.
 
 ### 4. Large Response Payload / Memory Pressure
 
