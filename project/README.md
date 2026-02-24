@@ -16,6 +16,12 @@ Swarm assistant MVP implemented under `/project` with a CLI-first layer and a .N
 - `infra/langfuse/`: Docker stack and environment profiles for Langfuse.
 - `infra/arcadedb/`: Phase 7 task-persistence notes for ArcadeDB command API wiring.
 
+## UI/UX design system (optional)
+
+If you want to pair A2UI/GenUI surfaces with a generated design system (e.g., via `ui-ux-pro-max`), see:
+
+- `docs/ui-ux-pro-max-a2ui-genui.md`
+
 ## JavaScript MVP Commands
 
 From repository root:
