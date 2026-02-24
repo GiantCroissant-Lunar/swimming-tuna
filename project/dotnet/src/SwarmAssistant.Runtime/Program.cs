@@ -181,6 +181,18 @@ static IResult SubmitTask(
     });
 }
 
+static object MapEvent(SwarmAssistant.Runtime.Tasks.TaskExecutionEvent evt) => new
+{
+    eventId = evt.EventId,
+    runId = evt.RunId,
+    taskId = evt.TaskId,
+    eventType = evt.EventType,
+    payload = evt.Payload,
+    occurredAt = evt.OccurredAt,
+    taskSequence = evt.TaskSequence,
+    runSequence = evt.RunSequence
+};
+
 if (options.AgUiEnabled)
 {
     app.MapGet("/memory/tasks", async (
@@ -217,6 +229,35 @@ if (options.AgUiEnabled)
         }
 
         return Results.Ok(TaskSnapshotMapper.ToDto(snapshot));
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/memory/tasks/{taskId}/events", async (
+        string taskId,
+        long? cursor,
+        int? limit,
+        ITaskMemoryReader memoryReader,
+        TaskRegistry taskRegistry,
+        ITaskExecutionEventReader eventReader,
+        CancellationToken cancellationToken) =>
+    {
+        var snapshot = await memoryReader.GetAsync(taskId, cancellationToken)
+            ?? taskRegistry.GetTask(taskId);
+        if (snapshot is null)
+        {
+            return Results.NotFound(new { error = "task not found", taskId });
+        }
+
+        var afterSequence = cursor ?? 0L;
+        var requestedLimit = Math.Clamp(limit ?? 200, 1, 1000);
+        var events = await eventReader.ListByTaskAsync(taskId, afterSequence, requestedLimit, cancellationToken);
+        var nextCursor = events.Count > 0 ? (long?)events[^1].TaskSequence : null;
+
+        return Results.Ok(new
+        {
+            taskId,
+            items = events.Select(MapEvent),
+            nextCursor
+        });
     }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/ag-ui/recent", (int? count, UiEventStream stream) =>
@@ -588,7 +629,9 @@ if (options.A2AEnabled)
                 listTasks = "/a2a/tasks",
                 createRun = "/runs",
                 getRun = "/runs/{runId}",
-                listRunTasks = "/runs/{runId}/tasks"
+                listRunTasks = "/runs/{runId}/tasks",
+                listRunEvents = "/runs/{runId}/events",
+                listTaskEvents = "/memory/tasks/{taskId}/events"
             }
         });
     });
@@ -686,7 +729,7 @@ if (options.A2AEnabled)
             {
                 runId,
                 source = "registry",
-                items = registryTasks.Select(MapTaskSummary)
+                items = registryTasks.Select(TaskSnapshotMapper.ToSummaryDto)
             });
         }
 
@@ -701,7 +744,36 @@ if (options.A2AEnabled)
         {
             runId,
             source = "arcadedb",
-            items = memoryTasks.Select(MapTaskSummary)
+            items = memoryTasks.Select(TaskSnapshotMapper.ToSummaryDto)
+        });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/runs/{runId}/events", async (
+        string runId,
+        long? cursor,
+        int? limit,
+        RunRegistry runRegistry,
+        TaskRegistry taskRegistry,
+        ITaskExecutionEventReader eventReader,
+        CancellationToken cancellationToken) =>
+    {
+        var run = runRegistry.GetRun(runId);
+        var registryTasks = taskRegistry.GetTasksByRunId(runId, 1);
+        if (run is null && registryTasks.Count == 0)
+        {
+            return Results.NotFound(new { error = "run not found", runId });
+        }
+
+        var afterSequence = cursor ?? 0L;
+        var requestedLimit = Math.Clamp(limit ?? 200, 1, 1000);
+        var events = await eventReader.ListByRunAsync(runId, afterSequence, requestedLimit, cancellationToken);
+        var nextCursor = events.Count > 0 ? (long?)events[^1].RunSequence : null;
+
+        return Results.Ok(new
+        {
+            runId,
+            items = events.Select(MapEvent),
+            nextCursor
         });
     }).AddEndpointFilter(requireApiKey);
 }

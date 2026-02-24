@@ -148,6 +148,84 @@ public sealed class RunEndpointsTests
         factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
     }
 
+    // ITaskExecutionEventReader cursor pagination tests
+
+    [Fact]
+    public async Task ArcadeDbTaskExecutionEventRepository_ListByTaskAsync_DisabledReturnsEmpty()
+    {
+        var factory = new Moq.Mock<IHttpClientFactory>();
+        var options = Microsoft.Extensions.Options.Options.Create(new Configuration.RuntimeOptions
+        {
+            ArcadeDbEnabled = false
+        });
+        var repo = new ArcadeDbTaskExecutionEventRepository(
+            options, factory.Object,
+            NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
+
+        var result = await repo.ListByTaskAsync("task-1", afterSequence: 0, limit: 50);
+
+        Assert.Empty(result);
+        factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
+
+    [Fact]
+    public async Task ArcadeDbTaskExecutionEventRepository_ListByRunAsync_DisabledReturnsEmpty()
+    {
+        var factory = new Moq.Mock<IHttpClientFactory>();
+        var options = Microsoft.Extensions.Options.Options.Create(new Configuration.RuntimeOptions
+        {
+            ArcadeDbEnabled = false
+        });
+        var repo = new ArcadeDbTaskExecutionEventRepository(
+            options, factory.Object,
+            NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
+
+        var result = await repo.ListByRunAsync("run-1", afterSequence: 0, limit: 50);
+
+        Assert.Empty(result);
+        factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
+
+    [Fact]
+    public async Task ArcadeDbTaskExecutionEventRepository_ListByTaskAsync_EmptyTaskIdReturnsEmpty()
+    {
+        var factory = new Moq.Mock<IHttpClientFactory>();
+        var options = Microsoft.Extensions.Options.Options.Create(new Configuration.RuntimeOptions
+        {
+            ArcadeDbEnabled = true,
+            ArcadeDbHttpUrl = "http://arcadedb.test:2480",
+            ArcadeDbDatabase = "swarm_assistant"
+        });
+        var repo = new ArcadeDbTaskExecutionEventRepository(
+            options, factory.Object,
+            NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
+
+        var result = await repo.ListByTaskAsync("", afterSequence: 0);
+
+        Assert.Empty(result);
+        factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
+
+    [Fact]
+    public async Task ArcadeDbTaskExecutionEventRepository_ListByRunAsync_EmptyRunIdReturnsEmpty()
+    {
+        var factory = new Moq.Mock<IHttpClientFactory>();
+        var options = Microsoft.Extensions.Options.Options.Create(new Configuration.RuntimeOptions
+        {
+            ArcadeDbEnabled = true,
+            ArcadeDbHttpUrl = "http://arcadedb.test:2480",
+            ArcadeDbDatabase = "swarm_assistant"
+        });
+        var repo = new ArcadeDbTaskExecutionEventRepository(
+            options, factory.Object,
+            NullLogger<ArcadeDbTaskExecutionEventRepository>.Instance);
+
+        var result = await repo.ListByRunAsync("", afterSequence: 0);
+
+        Assert.Empty(result);
+        factory.Verify(f => f.CreateClient(Moq.It.IsAny<string>()), Moq.Times.Never);
+    }
+
     private sealed class NoOpWriter : ITaskMemoryWriter
     {
         public Task WriteAsync(TaskSnapshot snapshot, CancellationToken cancellationToken = default) =>
