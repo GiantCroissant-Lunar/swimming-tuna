@@ -129,7 +129,7 @@ Ensure the builder operates on an isolated branch:
 
 ## Dependency Graph
 
-```
+```text
 #123 (replay events) --+
 #124 (run semantics) --+--> Phase 1 (diagnostic) --> Phase 2 (context fix) --> Phase 3 (validation)
 #125 (OpenAPI sync)  --+

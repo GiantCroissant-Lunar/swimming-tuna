@@ -99,6 +99,8 @@ Key runtime config flags (set via `Runtime__<key>` env vars):
 | `MemoryBootstrapEnabled` | Restore persisted tasks on startup |
 | `LangfuseTracingEnabled` | OpenTelemetry export to Langfuse |
 | `SimulateBuilderFailure` / `SimulateReviewerFailure` | Fault injection |
+| `ProjectContextPath` | Path to project context file (e.g., AGENTS.md) injected into role prompts |
+| `WorkspaceBranchEnabled` | Create `swarm/task-{id}` git branches for builder isolation (default: false) |
 
 ## API Endpoints
 

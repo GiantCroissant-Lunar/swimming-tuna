@@ -1,5 +1,7 @@
 # Dogfood Diagnostic Sprint Implementation Plan
 
+> **Note:** This is the original implementation plan. Some APIs and code snippets may differ from the final implementation. Prefer the repository source code over plan snippets.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Enable the SwarmAssistant to execute real tasks on its own codebase by diagnosing the pipeline, fixing context injection, and validating with a real task.
