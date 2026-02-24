@@ -37,7 +37,7 @@ The script:
 2. Runs `quicktype` to generate `models.g.ts` (TypeScript) and `Models.g.cs` (C#)
 3. Compiles `models.g.ts` → `models.g.js` + `models.g.d.ts` via `tsc`
 
-Commit all four output files after regeneration.
+Commit all generated outputs after regeneration (schemas, `.ts`, `.js`, `.d.ts`, and `.cs`; see “Updating the OpenAPI spec” below).
 
 ## Verification (CI)
 

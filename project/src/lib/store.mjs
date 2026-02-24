@@ -6,7 +6,7 @@ import { TaskState } from "../generated/models.g.js";
  * @property {string} id
  * @property {string} title
  * @property {string} description
- * @property {string} status
+ * @property {import("../generated/models.g.js").TaskState | "pending" | "finalizing"} status
  * @property {string} createdAt
  * @property {string} updatedAt
  * @property {Object} artifacts

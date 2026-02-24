@@ -69,7 +69,7 @@ cat > "$TMP_TSCONFIG" <<EOF
   "files": ["$TMP_TS"]
 }
 EOF
-(cd "$TMPDIR" && npx --prefix "$REPO_ROOT/project" tsc --project "$TMP_TSCONFIG" 2>/dev/null)
+npx --yes -p "typescript@5.8.3" tsc --project "$TMP_TSCONFIG" 2>/dev/null
 
 EXIT_CODE=0
 
