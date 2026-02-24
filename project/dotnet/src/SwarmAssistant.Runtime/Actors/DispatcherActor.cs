@@ -114,12 +114,7 @@ public sealed class DispatcherActor : ReceiveActor
 
         _taskRegistry.Register(message);
 
-        // Persist task.submitted lifecycle event (best-effort, fire-and-forget)
-        if (_eventRecorder is not null)
-        {
-            var registeredRunId = _taskRegistry.GetTask(message.TaskId)?.RunId;
-            _ = _eventRecorder.RecordTaskSubmittedAsync(message.TaskId, registeredRunId, message.Title);
-        }
+        RecordTaskSubmitted(message.TaskId, message.Title);
 
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
@@ -176,12 +171,7 @@ public sealed class DispatcherActor : ReceiveActor
         _taskRegistry.RegisterSubTask(
             message.ChildTaskId, message.Title, message.Description, message.ParentTaskId);
 
-        // Persist task.submitted lifecycle event for sub-task (best-effort, fire-and-forget)
-        if (_eventRecorder is not null)
-        {
-            var registeredRunId = _taskRegistry.GetTask(message.ChildTaskId)?.RunId;
-            _ = _eventRecorder.RecordTaskSubmittedAsync(message.ChildTaskId, registeredRunId, message.Title);
-        }
+        RecordTaskSubmitted(message.ChildTaskId, message.Title);
 
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
@@ -348,5 +338,16 @@ public sealed class DispatcherActor : ReceiveActor
         }
 
         _logger.LogDebug("Coordinator removed taskId={TaskId}", taskId);
+    }
+
+    private void RecordTaskSubmitted(string taskId, string title)
+    {
+        if (_eventRecorder is null)
+        {
+            return;
+        }
+
+        var registeredRunId = _taskRegistry.GetTask(taskId)?.RunId;
+        _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, registeredRunId, title);
     }
 }

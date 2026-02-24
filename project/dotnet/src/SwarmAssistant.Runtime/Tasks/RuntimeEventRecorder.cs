@@ -31,33 +31,39 @@ public sealed class RuntimeEventRecorder
     public const string TaskDone = "task.done";
     public const string TaskFailed = "task.failed";
 
+    private sealed record TaskSubmittedEventPayload(string Title);
+    private sealed record RoleEventPayload(string Role);
+    private sealed record RoleCompletedEventPayload(string Role, double Confidence);
+    private sealed record RoleFailedEventPayload(string Role, string Error);
+    private sealed record TaskFailedEventPayload(string Error);
+
     // ── public record methods ─────────────────────────────────────────────────
 
     public Task RecordTaskSubmittedAsync(string taskId, string? runId, string title) =>
         AppendAsync(TaskSubmitted, taskId, runId,
-            JsonSerializer.Serialize(new { title }));
+            JsonSerializer.Serialize(new TaskSubmittedEventPayload(title)));
 
     public Task RecordCoordinationStartedAsync(string taskId, string? runId) =>
         AppendAsync(CoordinationStarted, taskId, runId, null);
 
     public Task RecordRoleStartedAsync(string taskId, string? runId, string role) =>
         AppendAsync(RoleStarted, taskId, runId,
-            JsonSerializer.Serialize(new { role }));
+            JsonSerializer.Serialize(new RoleEventPayload(role)));
 
     public Task RecordRoleCompletedAsync(string taskId, string? runId, string role, double confidence) =>
         AppendAsync(RoleCompleted, taskId, runId,
-            JsonSerializer.Serialize(new { role, confidence }));
+            JsonSerializer.Serialize(new RoleCompletedEventPayload(role, confidence)));
 
     public Task RecordRoleFailedAsync(string taskId, string? runId, string role, string error) =>
         AppendAsync(RoleFailed, taskId, runId,
-            JsonSerializer.Serialize(new { role, error }));
+            JsonSerializer.Serialize(new RoleFailedEventPayload(role, error)));
 
     public Task RecordTaskDoneAsync(string taskId, string? runId) =>
         AppendAsync(TaskDone, taskId, runId, null);
 
     public Task RecordTaskFailedAsync(string taskId, string? runId, string error) =>
         AppendAsync(TaskFailed, taskId, runId,
-            JsonSerializer.Serialize(new { error }));
+            JsonSerializer.Serialize(new TaskFailedEventPayload(error)));
 
     // ── internal append helper ────────────────────────────────────────────────
 

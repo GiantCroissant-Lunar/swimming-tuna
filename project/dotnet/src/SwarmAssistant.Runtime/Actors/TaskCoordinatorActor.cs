@@ -539,9 +539,6 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         _taskRegistry.MarkFailed(_taskId, message.Error);
 
-        // Persist task.failed lifecycle event (best-effort, fire-and-forget)
-        _ = _eventRecorder?.RecordTaskFailedAsync(_taskId, _runId, message.Error);
-
         _uiEvents.Publish(
             type: "agui.task.failed",
             taskId: _taskId,
