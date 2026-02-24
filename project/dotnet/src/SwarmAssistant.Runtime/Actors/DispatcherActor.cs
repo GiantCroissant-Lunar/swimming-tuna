@@ -33,6 +33,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly RuntimeOptions _options;
     private readonly OutcomeTracker? _outcomeTracker;
     private readonly IActorRef? _strategyAdvisorActor;
+    private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly IActorRef? _codeIndexActor;
     private readonly ILogger _logger;
 
@@ -58,6 +59,7 @@ public sealed class DispatcherActor : ReceiveActor
         IOptions<RuntimeOptions> options,
         OutcomeTracker? outcomeTracker = null,
         IActorRef? strategyAdvisorActor = null,
+        RuntimeEventRecorder? eventRecorder = null,
         IActorRef? codeIndexActor = null)
     {
         _workerActor = workerActor;
@@ -73,6 +75,7 @@ public sealed class DispatcherActor : ReceiveActor
         _options = options.Value;
         _outcomeTracker = outcomeTracker;
         _strategyAdvisorActor = strategyAdvisorActor;
+        _eventRecorder = eventRecorder;
         _codeIndexActor = codeIndexActor;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
@@ -111,6 +114,8 @@ public sealed class DispatcherActor : ReceiveActor
 
         _taskRegistry.Register(message);
 
+        RecordTaskSubmitted(message.TaskId, message.Title);
+
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
         var coordinator = Context.ActorOf(
@@ -134,7 +139,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _strategyAdvisorActor,
                 _codeIndexActor,
                 DefaultMaxRetries,
-                0)),
+                0,
+                _eventRecorder)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -165,6 +171,8 @@ public sealed class DispatcherActor : ReceiveActor
         _taskRegistry.RegisterSubTask(
             message.ChildTaskId, message.Title, message.Description, message.ParentTaskId);
 
+        RecordTaskSubmitted(message.ChildTaskId, message.Title);
+
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
         var coordinator = Context.ActorOf(
@@ -188,7 +196,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _strategyAdvisorActor,
                 _codeIndexActor,
                 DefaultMaxRetries,
-                message.Depth)),
+                message.Depth,
+                _eventRecorder)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;
@@ -329,5 +338,16 @@ public sealed class DispatcherActor : ReceiveActor
         }
 
         _logger.LogDebug("Coordinator removed taskId={TaskId}", taskId);
+    }
+
+    private void RecordTaskSubmitted(string taskId, string title)
+    {
+        if (_eventRecorder is null)
+        {
+            return;
+        }
+
+        var registeredRunId = _taskRegistry.GetTask(taskId)?.RunId;
+        _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, registeredRunId, title);
     }
 }

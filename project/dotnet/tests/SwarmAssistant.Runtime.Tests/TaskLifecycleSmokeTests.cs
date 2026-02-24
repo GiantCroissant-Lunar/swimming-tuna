@@ -86,6 +86,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 Microsoft.Extensions.Options.Options.Create(_options),
                 null,
                 null,
+                null,
                 null)),
             "dispatcher");
 
@@ -149,6 +150,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
                 null,
                 null,
                 null)),
@@ -216,6 +218,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
                 null,
                 null,
                 null)),
@@ -287,6 +290,7 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
                 null,
                 null,
                 null)),

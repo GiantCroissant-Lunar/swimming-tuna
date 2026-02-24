@@ -55,6 +55,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly TaskRegistry _taskRegistry;
     private readonly RuntimeOptions _options;
     private readonly OutcomeTracker? _outcomeTracker;
+    private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -104,7 +105,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         IActorRef? strategyAdvisorActor = null,
         IActorRef? codeIndexActor = null,
         int maxRetries = 2,
-        int subTaskDepth = 0)
+        int subTaskDepth = 0,
+        RuntimeEventRecorder? eventRecorder = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -120,6 +122,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _taskRegistry = taskRegistry;
         _options = options;
         _outcomeTracker = outcomeTracker;
+        _eventRecorder = eventRecorder;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -259,6 +262,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     {
         // Reset per-run flags so stale swarm signals don't carry over
         _worldState = (WorldState)_worldState.With(WorldKey.SimilarTaskSucceeded, false);
+
+        // Persist coordination.started lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordCoordinationStartedAsync(_taskId, _runId);
 
         _uiEvents.Publish(
             type: "agui.ui.surface",
@@ -435,6 +441,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _taskId,
                     message.Confidence,
                     message.AdapterId));
+
+            // Persist role.completed lifecycle event (best-effort, fire-and-forget)
+            _ = _eventRecorder?.RecordRoleCompletedAsync(
+                _taskId, _runId,
+                message.Role.ToString().ToLowerInvariant(),
+                message.Confidence);
         }
 
         // For multi-reviewer consensus, don't send per-vote TaskResult; OnConsensusResult handles it
@@ -493,6 +505,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 message.Role.ToString().ToLowerInvariant(),
                 _taskId,
                 message.Error));
+
+        // Persist role.failed lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordRoleFailedAsync(
+            _taskId, _runId,
+            message.Role.ToString().ToLowerInvariant(),
+            message.Error);
 
         // Send detailed failure report to supervisor for active retry decisions
         _supervisorActor.Tell(new RoleFailureReport(
@@ -1102,6 +1120,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // Learning: record successful outcome
         RecordOutcome(TaskState.Done, summary: summary);
 
+        // Persist task.done lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordTaskDoneAsync(_taskId, _runId);
+
         _uiEvents.Publish(
             type: "agui.task.done",
             taskId: _taskId,
@@ -1125,6 +1146,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         // Stigmergy: write task failure signal to global blackboard
         ReportFailureToGlobalBlackboard(error);
+
+        // Persist task.failed lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordTaskFailedAsync(_taskId, _runId, error);
 
         _uiEvents.Publish(
             type: "agui.task.escalated",
@@ -1160,6 +1184,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // Stigmergy: write escalation signal to global blackboard
         ReportFailureToGlobalBlackboard(reason);
 
+        // Persist task.failed lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordTaskFailedAsync(_taskId, _runId, reason);
+
         _uiEvents.Publish(
             type: "agui.task.escalated",
             taskId: _taskId,
@@ -1189,6 +1216,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             _taskId, TaskState.Blocked, reason, DateTimeOffset.UtcNow, Self.Path.Name));
         _supervisorActor.Tell(new EscalationRaised(
             _taskId, reason, 1, DateTimeOffset.UtcNow, Self.Path.Name));
+
+        // Persist task.failed lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordTaskFailedAsync(_taskId, _runId, reason);
 
         _uiEvents.Publish(
             type: "agui.task.failed",
@@ -1358,6 +1388,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // Stigmergy: write sub-task failure signal to global blackboard
         ReportFailureToGlobalBlackboard(error);
 
+        // Persist task.failed lifecycle event (best-effort, fire-and-forget)
+        _ = _eventRecorder?.RecordTaskFailedAsync(_taskId, _runId, error);
+
         _uiEvents.Publish(
             type: "agui.task.failed",
             taskId: _taskId,
@@ -1493,6 +1526,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     message.Role.ToString().ToLowerInvariant(),
                     _taskId,
                     message.ActorName));
+
+            // Persist role.started lifecycle event (best-effort, fire-and-forget)
+            _ = _eventRecorder?.RecordRoleStartedAsync(
+                _taskId, _runId,
+                message.Role.ToString().ToLowerInvariant());
         }
     }
 }
