@@ -145,6 +145,12 @@ public sealed class RuntimeOptions
         init => _defaultMaxSubTaskDepth = Math.Clamp(value, 0, 10);
     }
 
+    /// <summary>
+    /// When true, creates an isolated git branch (swarm/{taskId}) for each builder
+    /// execution. Defaults to false; Task 8 will wire this into builder dispatch.
+    /// </summary>
+    public bool WorkspaceBranchEnabled { get; init; } = false;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
