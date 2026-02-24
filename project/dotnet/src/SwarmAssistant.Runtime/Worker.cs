@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -230,6 +231,8 @@ public sealed class Worker : BackgroundService
             }
         }
 
+        var workspaceBranchManager = new WorkspaceBranchManager(_options.WorkspaceBranchEnabled);
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -247,7 +250,8 @@ public sealed class Worker : BackgroundService
                 strategyAdvisorActor,
                 eventRecorder,
                 codeIndexActor,
-                projectContext)),
+                projectContext,
+                workspaceBranchManager)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

@@ -57,6 +57,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly OutcomeTracker? _outcomeTracker;
     private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly string? _projectContext;
+    private readonly WorkspaceBranchManager? _workspaceBranchManager;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -108,7 +109,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         int maxRetries = 2,
         int subTaskDepth = 0,
         RuntimeEventRecorder? eventRecorder = null,
-        string? projectContext = null)
+        string? projectContext = null,
+        WorkspaceBranchManager? workspaceBranchManager = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -126,6 +128,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _outcomeTracker = outcomeTracker;
         _eventRecorder = eventRecorder;
         _projectContext = projectContext;
+        _workspaceBranchManager = workspaceBranchManager;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -139,19 +142,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             .With(WorldKey.TaskExists, true)
             .With(WorldKey.AdapterAvailable, true);
 
-        Receive<StartCoordination>(_ => OnStart());
-        Receive<StrategyAdvice>(OnStrategyAdviceReceived);
-        Receive<RoleTaskSucceeded>(OnRoleSucceeded);
-        Receive<RoleTaskFailed>(OnRoleFailed);
-        Receive<SubTaskCompleted>(OnSubTaskCompleted);
+        ReceiveAsync<StartCoordination>(async _ => await OnStartAsync());
+        ReceiveAsync<StrategyAdvice>(OnStrategyAdviceReceivedAsync);
+        ReceiveAsync<RoleTaskSucceeded>(OnRoleSucceededAsync);
+        ReceiveAsync<RoleTaskFailed>(OnRoleFailedAsync);
+        ReceiveAsync<SubTaskCompleted>(OnSubTaskCompletedAsync);
         Receive<SubTaskFailed>(OnSubTaskFailed);
-        Receive<RetryRole>(OnRetryRole);
+        ReceiveAsync<RetryRole>(OnRetryRoleAsync);
         Receive<GlobalBlackboardChanged>(OnGlobalBlackboardChanged);
-        Receive<ConsensusResult>(OnConsensusResult);
+        ReceiveAsync<ConsensusResult>(OnConsensusResultAsync);
         Receive<QualityConcern>(OnQualityConcern);
-        Receive<TaskInterventionCommand>(OnTaskInterventionCommand);
+        ReceiveAsync<TaskInterventionCommand>(OnTaskInterventionCommandAsync);
         Receive<RoleLifecycleEvent>(OnRoleLifecycleEvent);
-        Receive<DispatchWithCodeContext>(OnDispatchWithCodeContext);
+        ReceiveAsync<DispatchWithCodeContext>(OnDispatchWithCodeContextAsync);
     }
 
     protected override void PreStart()
@@ -174,7 +177,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         base.PostStop();
     }
 
-    private void OnConsensusResult(ConsensusResult message)
+    private async Task OnConsensusResultAsync(ConsensusResult message)
     {
         _logger.LogInformation("Received consensus result for task {TaskId}: Approved={Approved}", message.TaskId, message.Approved);
 
@@ -232,7 +235,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             DateTimeOffset.UtcNow,
             Self.Path.Name));
 
-        DecideAndExecute();
+        await DecideAndExecuteAsync();
     }
 
     private void OnGlobalBlackboardChanged(GlobalBlackboardChanged message)
@@ -261,7 +264,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             kv.Key.StartsWith(GlobalBlackboardKeys.AdapterCircuitPrefix, StringComparison.Ordinal)
             && kv.Value.StartsWith(GlobalBlackboardKeys.CircuitStateOpen, StringComparison.Ordinal));
 
-    private void OnStart()
+    private async Task OnStartAsync()
     {
         // Reset per-run flags so stale swarm signals don't carry over
         _worldState = (WorldState)_worldState.With(WorldKey.SimilarTaskSucceeded, false);
@@ -297,7 +300,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         }
         else
         {
-            DecideAndExecute();
+            await DecideAndExecuteAsync();
         }
     }
 
@@ -305,7 +308,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     /// Handles strategy advice received from the StrategyAdvisorActor.
     /// Integrates learning insights into the task planning process.
     /// </summary>
-    private void OnStrategyAdviceReceived(StrategyAdvice advice)
+    private async Task OnStrategyAdviceReceivedAsync(StrategyAdvice advice)
     {
         _strategyAdvice = advice;
 
@@ -325,10 +328,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         }
 
         // Proceed with planning, potentially using cost adjustments
-        DecideAndExecute();
+        await DecideAndExecuteAsync();
     }
 
-    private void OnRoleSucceeded(RoleTaskSucceeded message)
+    private async Task OnRoleSucceededAsync(RoleTaskSucceeded message)
     {
         using var activity = _telemetry.StartActivity(
             "task-coordinator.role.succeeded",
@@ -349,7 +352,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         switch (message.Role)
         {
             case SwarmRole.Orchestrator:
-                HandleOrchestratorResponse(message.Output);
+                await HandleOrchestratorResponseAsync(message.Output);
                 return;
 
             case SwarmRole.Planner:
@@ -404,7 +407,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     StoreBlackboard("review_passed", passed.ToString());
                     StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
 
-                    DecideAndExecute();
+                    await DecideAndExecuteAsync();
                 }
                 else
                 {
@@ -472,11 +475,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // For single reviewer, DecideAndExecute is called within the case. For others, call it here.
         if (message.Role != SwarmRole.Reviewer || _options.ReviewConsensusCount == 1)
         {
-            DecideAndExecute();
+            await DecideAndExecuteAsync();
         }
     }
 
-    private void OnRoleFailed(RoleTaskFailed message)
+    private async Task OnRoleFailedAsync(RoleTaskFailed message)
     {
         using var activity = _telemetry.StartActivity(
             "task-coordinator.role.failed",
@@ -496,7 +499,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             _logger.LogWarning(
                 "Orchestrator failed, falling back to GOAP taskId={TaskId}",
                 _taskId);
-            FallbackToGoap();
+            await FallbackToGoapAsync();
             return;
         }
 
@@ -553,7 +556,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             });
     }
 
-    private void OnRetryRole(RetryRole message)
+    private async Task OnRetryRoleAsync(RetryRole message)
     {
         using var activity = _telemetry.StartActivity(
             "task-coordinator.retry",
@@ -598,7 +601,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         // Re-dispatch the failed role
         var actionName = MapRoleToActionName(message.Role);
-        DispatchAction(actionName);
+        await DispatchActionAsync(actionName);
     }
 
     private static string MapRoleToActionName(SwarmRole role) => role switch
@@ -609,7 +612,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _ => "Plan"
     };
 
-    private void OnTaskInterventionCommand(TaskInterventionCommand message)
+    private async Task OnTaskInterventionCommandAsync(TaskInterventionCommand message)
     {
         if (!string.Equals(message.TaskId, _taskId, StringComparison.Ordinal))
         {
@@ -690,7 +693,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.task.intervention",
                     taskId: _taskId,
                     payload: new TaskInterventionPayload(_taskId, "request_rework", "human"));
-                DispatchAction("Rework");
+                await DispatchActionAsync("Rework");
                 return;
 
             case "pause_task":
@@ -751,11 +754,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 {
                     var actionToDispatch = _deferredActionName;
                     _deferredActionName = null;
-                    DispatchAction(actionToDispatch);
+                    await DispatchActionAsync(actionToDispatch);
                 }
                 else
                 {
-                    DecideAndExecute();
+                    await DecideAndExecuteAsync();
                 }
 
                 return;
@@ -792,7 +795,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private TaskState CurrentStatus => _taskRegistry.GetTask(_taskId)?.Status ?? TaskState.Queued;
 
-    private void DecideAndExecute()
+    private async Task DecideAndExecuteAsync()
     {
         if (_isPaused)
         {
@@ -835,7 +838,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             _logger.LogWarning(
                 "GOAP returned no recommended plan despite non-dead-end state taskId={TaskId}, falling back to GOAP",
                 _taskId);
-            FallbackToGoap();
+            await FallbackToGoapAsync();
             return;
         }
 
@@ -866,7 +869,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             RunId: _runId));
     }
 
-    private void DispatchAction(string actionName)
+    private async Task DispatchActionAsync(string actionName)
     {
         if (_isPaused)
         {
@@ -881,11 +884,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // For roles that benefit from code context, query the code index first
         if (_codeIndexActor != null && ShouldQueryCodeIndex(actionName))
         {
-            QueryCodeIndexAndDispatch(actionName);
+            await QueryCodeIndexAndDispatchAsync(actionName);
             return;
         }
 
-        DoDispatchAction(actionName, null);
+        await DoDispatchActionAsync(actionName, null);
     }
 
     /// <summary>
@@ -904,11 +907,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     /// <summary>
     /// Queries the code index and then dispatches the action with the results.
     /// </summary>
-    private void QueryCodeIndexAndDispatch(string actionName)
+    private async Task QueryCodeIndexAndDispatchAsync(string actionName)
     {
         if (_codeIndexActor == null)
         {
-            DoDispatchAction(actionName, null);
+            await DoDispatchActionAsync(actionName, null);
             return;
         }
 
@@ -916,7 +919,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         var query = $"{_title} {_description}".Trim();
         if (string.IsNullOrWhiteSpace(query))
         {
-            DoDispatchAction(actionName, null);
+            await DoDispatchActionAsync(actionName, null);
             return;
         }
 
@@ -949,15 +952,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     /// <summary>
     /// Handles the result of code index query and dispatches the action.
     /// </summary>
-    private void OnDispatchWithCodeContext(DispatchWithCodeContext message)
+    private async Task OnDispatchWithCodeContextAsync(DispatchWithCodeContext message)
     {
-        DoDispatchAction(message.ActionName, message.CodeContext);
+        await DoDispatchActionAsync(message.ActionName, message.CodeContext);
     }
 
     /// <summary>
     /// Performs the actual dispatch with optional code context.
     /// </summary>
-    private void DoDispatchAction(string actionName, CodeIndexResult? codeContext)
+    private async Task DoDispatchActionAsync(string actionName, CodeIndexResult? codeContext)
     {
         switch (actionName)
         {
@@ -978,6 +981,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 break;
 
             case "Build":
+                if (_workspaceBranchManager != null)
+                {
+                    var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
+                    if (branch != null)
+                        _logger.LogInformation("Builder working on branch {Branch} for task {TaskId}", branch, _taskId);
+                }
                 TransitionTo(TaskState.Building);
                 _uiEvents.Publish(
                     type: "agui.role.dispatched",
@@ -1273,7 +1282,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             $"{_title}|{failureReason}"));
     }
 
-    private void HandleOrchestratorResponse(string output)
+    private async Task HandleOrchestratorResponseAsync(string output)
     {
         using var activity = _telemetry.StartActivity(
             "task-coordinator.orchestrator.decision",
@@ -1300,7 +1309,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     decidedBy = "orchestrator",
                 });
 
-            DispatchAction(actionName);
+            await DispatchActionAsync(actionName);
         }
         else
         {
@@ -1309,11 +1318,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId);
 
             activity?.SetTag("orchestrator.fallback", true);
-            FallbackToGoap();
+            await FallbackToGoapAsync();
         }
     }
 
-    private void FallbackToGoap()
+    private async Task FallbackToGoapAsync()
     {
         if (_lastGoapPlan?.RecommendedPlan is { Count: > 0 } plan)
         {
@@ -1332,7 +1341,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     decidedBy = "goap-fallback",
                 });
 
-            DispatchAction(action.Name);
+            await DispatchActionAsync(action.Name);
         }
         else
         {
@@ -1385,7 +1394,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         }
     }
 
-    private void OnSubTaskCompleted(SubTaskCompleted message)
+    private async Task OnSubTaskCompletedAsync(SubTaskCompleted message)
     {
         _pendingChildTaskIds.Remove(message.ChildTaskId);
 
@@ -1396,7 +1405,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         if (_pendingChildTaskIds.Count == 0)
         {
             _worldState = (WorldState)_worldState.With(WorldKey.SubTasksCompleted, true);
-            DecideAndExecute();
+            await DecideAndExecuteAsync();
         }
     }
 

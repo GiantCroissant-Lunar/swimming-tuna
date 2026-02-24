@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace SwarmAssistant.Runtime.Execution;
 
-internal sealed partial class WorkspaceBranchManager
+public sealed partial class WorkspaceBranchManager
 {
     private readonly bool _enabled;
 

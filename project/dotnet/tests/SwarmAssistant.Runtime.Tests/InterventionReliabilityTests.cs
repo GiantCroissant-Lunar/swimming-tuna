@@ -459,7 +459,8 @@ public sealed class InterventionReliabilityTests : TestKit
                 /* maxRetries: */ 2,
                 /* subTaskDepth: */ 0,
                 /* eventRecorder: */ null,
-                /* projectContext: */ null)));
+                /* projectContext: */ null,
+                /* workspaceBranchManager: */ null)));
 
         _registries[suffix] = registry;
         return (taskId, coordinator, registry, uiEvents);
@@ -498,7 +499,8 @@ public sealed class InterventionReliabilityTests : TestKit
                 strategyAdvisorActor: null,
                 eventRecorder: null,
                 codeIndexActor: null,
-                projectContext: null)),
+                projectContext: null,
+                workspaceBranchManager: null)),
             $"disp-{suffix}");
     }
 

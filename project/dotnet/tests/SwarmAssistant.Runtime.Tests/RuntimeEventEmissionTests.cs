@@ -91,7 +91,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 recorder,
                 null,
-                projectContext)),
+                projectContext,
+                null)),
             $"dp{suffix}-{Guid.NewGuid():N}");
 
         return (dispatcher, writer);
@@ -448,6 +449,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 null,
                 null,
+                null,
                 null
             )),
             $"dp-noop-{Guid.NewGuid():N}");
@@ -460,6 +462,27 @@ public sealed class RuntimeEventEmissionTests : TestKit
 
         var snapshot = _taskRegistry.GetTask(taskId);
         Assert.Equal(TaskState.Done, snapshot!.Status);
+    }
+
+    [Fact]
+    public async Task HappyPath_BuilderDispatch_WorkspaceBranchDisabled_StillCompletes()
+    {
+        var (dispatcher, writer) = BuildDispatcher("branch");
+        var taskId = $"emit-branch-{Guid.NewGuid():N}";
+
+        dispatcher.Tell(new TaskAssigned(taskId, "Branch Test", "Verify disabled branch still completes.", DateTimeOffset.UtcNow));
+
+        await WaitForTaskStatus(taskId, TaskState.Done, TimeSpan.FromSeconds(30));
+
+        var snapshot = _taskRegistry.GetTask(taskId);
+        Assert.NotNull(snapshot);
+        Assert.Equal(TaskState.Done, snapshot!.Status);
+
+        // Verify builder was dispatched (role.dispatched event for builder exists)
+        await Task.Delay(200);
+        var taskEvents = writer.Events.Where(e => e.TaskId == taskId).ToList();
+        Assert.Contains(taskEvents, e => e.EventType == RuntimeEventRecorder.RoleCompleted
+            && e.Payload != null && e.Payload.Contains("builder"));
     }
 
     // ── Fake writer ──────────────────────────────────────────────────────────

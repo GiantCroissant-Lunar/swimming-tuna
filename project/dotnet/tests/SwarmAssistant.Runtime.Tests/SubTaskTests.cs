@@ -257,7 +257,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, null, 2, 0, null, null)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, null, 2, 0, null, null, null)));
 
         // Act: start the coordinator
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
@@ -336,7 +336,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Parent Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, null, 2, 0, null, null)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, null, 2, 0, null, null, null)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
 
@@ -403,7 +403,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Pause Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, null, 2, 0, null, null)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, _options, null, null, null, 2, 0, null, null, null)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, ActorResponseTimeout);
@@ -457,7 +457,7 @@ public sealed class SubTaskTests : TestKit
             Props.Create(() => new TaskCoordinatorActor(
                 taskId, "Depth Task", "desc",
                 workerProbe, reviewerProbe, supervisorProbe, blackboardProbe,
-                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, options, null, null, null, 2, 0, null, null)));
+                ActorRefs.Nobody, roleEngine, goapPlanner, _loggerFactory, _telemetry, _uiEvents, registry, options, null, null, null, 2, 0, null, null, null)));
 
         coordinator.Tell(new TaskInterventionCommand(taskId, "set_subtask_depth", MaxSubTaskDepth: 1));
         var depthAck = ExpectMsg<TaskInterventionResult>(ActorResponseTimeout);
@@ -595,6 +595,7 @@ public sealed class SubTaskTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
                 null,
                 null,
                 null,
