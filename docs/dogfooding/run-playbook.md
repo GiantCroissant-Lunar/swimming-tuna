@@ -44,7 +44,7 @@ create run → submit tasks → monitor → replay → retro
    # AG-UI action
    curl -X POST http://127.0.0.1:5080/ag-ui/actions \
      -H 'Content-Type: application/json' \
-     -d '{"actionId":"submit_task","payload":{"title":"<task title>"}}'
+     -d '{"actionId":"submit_task","payload":{"title":"<task title>","description":"<task description>"}}'
    ```
 2. Record each returned `taskId` in the run log.
 3. Wait for the `agui.task.submitted` event on the SSE stream before submitting the
@@ -126,7 +126,7 @@ Create a run log file before starting Phase 1. Use this template:
 - **Adapter order:** copilot | cline | kimi | local-echo (list active order)
 - **ArcadeDB enabled:** yes | no
 - **Langfuse tracing enabled:** yes | no
-- **Fault injection:** SimulateBuilderFailure=<true|false> SimulateReviewerFailure=<true|false>
+- **Fault injection:** SimulateBuilderFailure=<true|false>, SimulateReviewerFailure=<true|false>
 
 ## Tasks Submitted
 
@@ -183,7 +183,7 @@ When a task emits `agui.task.failed`, follow this ladder:
 | Condition | First responder action |
 |---|---|
 | All adapters returning error | Restart runtime; check CLI auth. |
-| Task stuck in `building` > timeout | Kill task; reduce `RoleExecutionTimeoutSeconds`. |
+| Task stuck in `building` > timeout | Cancel task via `cancel_task` AG-UI action; reduce `RoleExecutionTimeoutSeconds`. |
 | ArcadeDB write failure | Check `project/infra/arcadedb/` stack; restart container. |
 | Langfuse OTLP rejected | Verify `LangfusePublicKey` / `LangfuseSecretKey`; disable tracing to unblock. |
 | Repeated reviewer rejection loop | Enable `SimulateReviewerFailure=false`; inspect reviewer prompt. |
