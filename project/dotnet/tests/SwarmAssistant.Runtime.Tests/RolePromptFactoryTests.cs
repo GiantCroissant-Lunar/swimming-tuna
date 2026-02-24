@@ -52,4 +52,41 @@ public sealed class RolePromptFactoryTests
         Assert.Contains("Implement feature X", prompt);
         Assert.DoesNotContain("## Project Context", prompt);
     }
+
+    [Fact]
+    public void Builder_WithPlanningOutput_IncludesImplementationPlanSection()
+    {
+        var task = new ExecuteRoleTask(
+            TaskId: "test-2",
+            Role: SwarmRole.Builder,
+            Title: "Implement feature X",
+            Description: "Build a new feature for the system",
+            PlanningOutput: "1. Create Foo.cs\n2. Update Bar.cs",
+            BuildOutput: null);
+
+        var prompt = RolePromptFactory.BuildPrompt(task);
+
+        Assert.Contains("## Implementation Plan", prompt);
+        Assert.Contains("1. Create Foo.cs", prompt);
+        Assert.Contains("2. Update Bar.cs", prompt);
+        Assert.Contains("## Task", prompt);
+        Assert.Contains("Implement feature X", prompt);
+    }
+
+    [Fact]
+    public void Builder_WithoutPlanningOutput_HasFallbackInstruction()
+    {
+        var task = new ExecuteRoleTask(
+            TaskId: "test-3",
+            Role: SwarmRole.Builder,
+            Title: "Implement feature X",
+            Description: "Build a new feature for the system",
+            PlanningOutput: null,
+            BuildOutput: null);
+
+        var prompt = RolePromptFactory.BuildPrompt(task);
+
+        Assert.Contains("## Implementation Plan", prompt);
+        Assert.Contains("No plan provided", prompt);
+    }
 }
