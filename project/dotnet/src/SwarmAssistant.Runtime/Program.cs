@@ -657,7 +657,7 @@ if (options.A2AEnabled)
             name = "swarm-assistant",
             version = "phase-12",
             protocol = "a2a",
-            capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "ag-ui-actions", "arcadedb-memory" },
+            capabilities = new[] { "task-routing", "status-updates", "ag-ui-events", "ag-ui-actions", "arcadedb-memory", "agent-registry" },
             endpoints = new
             {
                 agUiEvents = "/ag-ui/events",
@@ -673,7 +673,8 @@ if (options.A2AEnabled)
                 listRunTasks = "/runs/{runId}/tasks",
                 listRunEvents = "/runs/{runId}/events",
                 listRunArtifacts = "/runs/{runId}/artifacts",
-                listTaskEvents = "/memory/tasks/{taskId}/events"
+                listTaskEvents = "/memory/tasks/{taskId}/events",
+                queryAgents = "/a2a/registry/agents"
             }
         });
     });
@@ -869,6 +870,77 @@ if (options.A2AEnabled)
             source = "arcadedb",
             items = flattened.Select(TaskSnapshotMapper.ToDto)
         });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/a2a/registry/agents", async (
+        string? capability,
+        string? prefer,
+        RuntimeActorRegistry actorRegistry,
+        CancellationToken cancellationToken) =>
+    {
+        if (!actorRegistry.TryGetAgentRegistry(out var registry))
+        {
+            return Results.Problem(
+                detail: "Agent registry is not available",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        IReadOnlyList<SwarmRole>? capabilities = null;
+        if (!string.IsNullOrWhiteSpace(capability))
+        {
+            if (!Enum.TryParse<SwarmRole>(capability, ignoreCase: true, out var role))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Invalid capability value",
+                    capability,
+                    validValues = Enum.GetNames<SwarmRole>()
+                });
+            }
+            capabilities = new[] { role };
+        }
+
+        var query = new QueryAgents(capabilities, prefer);
+        try
+        {
+            var result = await registry.Ask<QueryAgentsResult>(query, TimeSpan.FromSeconds(5), cancellationToken);
+            var dtos = result.Agents.Select(entry => new AgentRegistryEntryDto(
+                AgentId: entry.AgentId,
+                Capabilities: entry.Capabilities.Select(c => c.ToString()).ToArray(),
+                Status: entry.ConsecutiveFailures > 0 ? "unhealthy" : "active",
+                Provider: entry.Provider is not null
+                    ? new ProviderInfoDto(
+                        Adapter: entry.Provider.Adapter,
+                        Type: entry.Provider.Type,
+                        Plan: entry.Provider.Plan)
+                    : null,
+                SandboxLevel: (int)entry.SandboxLevel,
+                Budget: entry.Budget is not null
+                    ? new BudgetInfoDto(
+                        Type: entry.Budget.Type.ToString(),
+                        TotalTokens: entry.Budget.TotalTokens,
+                        UsedTokens: entry.Budget.UsedTokens,
+                        RemainingFraction: entry.Budget.RemainingFraction)
+                    : null,
+                EndpointUrl: entry.EndpointUrl,
+                RegisteredAt: entry.RegisteredAt,
+                LastHeartbeat: entry.LastHeartbeat,
+                ConsecutiveFailures: entry.ConsecutiveFailures,
+                CircuitBreakerState: entry.CircuitBreakerState.ToString()));
+            return Results.Ok(dtos.ToArray());
+        }
+        catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return Results.Problem(
+                detail: "Request was cancelled",
+                statusCode: StatusCodes.Status499ClientClosedRequest);
+        }
+        catch (TaskCanceledException)
+        {
+            return Results.Problem(
+                detail: "Agent registry query timed out",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        }
     }).AddEndpointFilter(requireApiKey);
 }
 

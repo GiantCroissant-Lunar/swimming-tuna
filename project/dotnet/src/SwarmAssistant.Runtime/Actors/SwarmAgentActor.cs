@@ -26,6 +26,7 @@ public sealed class SwarmAgentActor : ReceiveActor
     private int _currentLoad;
     private readonly TimeSpan _idleTtl;
     private AgentEndpointHost? _endpointHost;
+    private ICancelable? _heartbeatSchedule;
 
     public SwarmAgentActor(
         RuntimeOptions options,
@@ -99,11 +100,23 @@ public sealed class SwarmAgentActor : ReceiveActor
             }
         }
 
+        // Schedule heartbeat (store handle to cancel on stop)
+        var heartbeatInterval = TimeSpan.FromSeconds(_options.AgentHeartbeatIntervalSeconds);
+        _heartbeatSchedule = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
+            heartbeatInterval,
+            heartbeatInterval,
+            _capabilityRegistry,
+            new AgentHeartbeat(_agentId),
+            Self);
+
         base.PreStart();
     }
 
     protected override void PostStop()
     {
+        _heartbeatSchedule?.Cancel();
+        _heartbeatSchedule = null;
+
         if (_endpointHost is not null)
         {
             _endpointHost.StopAsync().GetAwaiter().GetResult();
@@ -327,11 +340,26 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     private void AdvertiseCapability()
     {
+        var provider = new ProviderInfo
+        {
+            Adapter = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
+            Type = _options.AgentFrameworkExecutionMode == "subscription-cli-fallback"
+                ? "subscription"
+                : "api"
+        };
+
+        var budget = new BudgetEnvelope { Type = BudgetType.Unlimited };
+
         _capabilityRegistry.Tell(new AgentCapabilityAdvertisement(
             Self.Path.ToStringWithoutAddress(),
             _capabilities,
             _currentLoad,
             AgentId: _agentId,
-            EndpointUrl: _endpointHost?.BaseUrl), Self);
+            EndpointUrl: _endpointHost?.BaseUrl)
+        {
+            Provider = provider,
+            SandboxLevel = _options.SandboxLevel,
+            Budget = budget
+        }, Self);
     }
 }

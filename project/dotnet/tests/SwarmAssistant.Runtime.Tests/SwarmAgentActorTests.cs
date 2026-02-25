@@ -25,7 +25,7 @@ public sealed class SwarmAgentActorTests : TestKit
     [Fact]
     public void RegistersCapabilitiesOnStart()
     {
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(CreateRuntimeOptions(), _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(CreateRuntimeOptions(), _loggerFactory, telemetry);
 
@@ -53,7 +53,7 @@ public sealed class SwarmAgentActorTests : TestKit
     public void RoutesRolesDynamicallyThroughRegistry()
     {
         var options = CreateRuntimeOptions();
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
 
@@ -86,7 +86,7 @@ public sealed class SwarmAgentActorTests : TestKit
     public void ExistingCoreRolesRemainSupported(SwarmRole role)
     {
         var options = CreateRuntimeOptions();
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
 
@@ -119,7 +119,7 @@ public sealed class SwarmAgentActorTests : TestKit
     public void AcceptsNegotiationOffer_WhenRoleIsSupported()
     {
         var options = CreateRuntimeOptions();
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
 
@@ -144,7 +144,7 @@ public sealed class SwarmAgentActorTests : TestKit
     public void RespondsToHelpRequest()
     {
         var options = CreateRuntimeOptions();
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
 
@@ -170,7 +170,7 @@ public sealed class SwarmAgentActorTests : TestKit
     [Fact]
     public void ContractNet_AwardsBestBidder()
     {
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var fastBidder = CreateTestProbe("fast-bidder");
         var slowBidder = CreateTestProbe("slow-bidder");
 
@@ -214,7 +214,7 @@ public sealed class SwarmAgentActorTests : TestKit
     [Fact]
     public void ContractNet_FinalizesEarlyWhenAllBidsArrive()
     {
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var firstBidder = CreateTestProbe("first-bidder");
         var secondBidder = CreateTestProbe("second-bidder");
 
@@ -259,7 +259,7 @@ public sealed class SwarmAgentActorTests : TestKit
     public void Agent_HasUniqueIdentity()
     {
         var options = CreateRuntimeOptions();
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
 
@@ -287,7 +287,7 @@ public sealed class SwarmAgentActorTests : TestKit
     public void Agent_GeneratesUniqueIdentityWhenNotProvided()
     {
         var options = CreateRuntimeOptions();
-        var registry = Sys.ActorOf(Props.Create(() => new CapabilityRegistryActor(_loggerFactory)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
 
