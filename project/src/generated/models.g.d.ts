@@ -86,6 +86,93 @@ export interface SandboxRequirements {
     [property: string]: any;
 }
 /**
+ * Runtime registry entry describing a discovered or registered agent instance.
+ */
+export interface AgentRegistryEntry {
+    /**
+     * Unique identifier for this agent instance.
+     */
+    agentId: string;
+    /**
+     * Token budget tracking for the agent.
+     */
+    budget?: null | Budget;
+    /**
+     * List of capability tags advertised by this agent.
+     */
+    capabilities: string[];
+    /**
+     * Circuit breaker state (e.g., 'closed', 'open', 'half-open').
+     */
+    circuitBreakerState: string;
+    /**
+     * Number of consecutive health check failures.
+     */
+    consecutiveFailures: number;
+    /**
+     * Base URL for communicating with this agent instance.
+     */
+    endpointUrl?: null | string;
+    /**
+     * ISO 8601 timestamp of the last successful heartbeat.
+     */
+    lastHeartbeat: Date;
+    /**
+     * Provider configuration for the agent runtime.
+     */
+    provider: Provider;
+    /**
+     * ISO 8601 timestamp when the agent was registered.
+     */
+    registeredAt: Date;
+    /**
+     * Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container
+     */
+    sandboxLevel: number;
+    /**
+     * Current operational status of the agent.
+     */
+    status: string;
+    [property: string]: any;
+}
+export interface Budget {
+    /**
+     * Fraction of budget remaining (0.0 to 1.0).
+     */
+    remainingFraction?: number;
+    /**
+     * Total token allocation.
+     */
+    totalTokens?: number;
+    /**
+     * Budget type identifier.
+     */
+    type?: string;
+    /**
+     * Tokens consumed so far.
+     */
+    usedTokens?: number;
+    [property: string]: any;
+}
+/**
+ * Provider configuration for the agent runtime.
+ */
+export interface Provider {
+    /**
+     * Adapter type for agent execution.
+     */
+    adapter?: string;
+    /**
+     * Service plan or tier.
+     */
+    plan?: string;
+    /**
+     * Provider type identifier.
+     */
+    type?: string;
+    [property: string]: any;
+}
+/**
  * Standardised error response body returned on 4xx/5xx responses.
  */
 export interface ErrorEnvelope {

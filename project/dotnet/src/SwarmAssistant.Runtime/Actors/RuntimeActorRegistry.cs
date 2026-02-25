@@ -6,6 +6,7 @@ public sealed class RuntimeActorRegistry
 {
     private readonly object _lock = new();
     private IActorRef? _dispatcher;
+    private IActorRef? _agentRegistry;
 
     [Obsolete("Use SetDispatcher instead. Kept for backward compatibility.")]
     public void SetCoordinator(IActorRef coordinator) => SetDispatcher(coordinator);
@@ -38,6 +39,23 @@ public sealed class RuntimeActorRegistry
         {
             dispatcher = _dispatcher;
             return dispatcher is not null;
+        }
+    }
+
+    public void SetAgentRegistry(IActorRef agentRegistry)
+    {
+        lock (_lock)
+        {
+            _agentRegistry = agentRegistry;
+        }
+    }
+
+    public bool TryGetAgentRegistry(out IActorRef? agentRegistry)
+    {
+        lock (_lock)
+        {
+            agentRegistry = _agentRegistry;
+            return agentRegistry is not null;
         }
     }
 }
