@@ -23,7 +23,7 @@ public sealed class StartupMemoryBootstrapperTests
             stream,
             NullLogger<StartupMemoryBootstrapper>.Instance);
 
-        var imported = await bootstrapper.RestoreAsync(enabled: true, limit: 200, CancellationToken.None);
+        var imported = await bootstrapper.RestoreAsync(enabled: true, limit: 200, surfaceLimit: 50, orderBy: "updated", CancellationToken.None);
 
         Assert.Equal(2, imported);
         Assert.Equal(2, registry.Count);
@@ -46,7 +46,7 @@ public sealed class StartupMemoryBootstrapperTests
             stream,
             NullLogger<StartupMemoryBootstrapper>.Instance);
 
-        var imported = await bootstrapper.RestoreAsync(enabled: true, limit: 200, CancellationToken.None);
+        var imported = await bootstrapper.RestoreAsync(enabled: true, limit: 200, surfaceLimit: 50, orderBy: "updated", CancellationToken.None);
 
         Assert.Equal(0, imported);
         Assert.Equal(0, registry.Count);
@@ -69,7 +69,7 @@ public sealed class StartupMemoryBootstrapperTests
             stream,
             NullLogger<StartupMemoryBootstrapper>.Instance);
 
-        var imported = await bootstrapper.RestoreAsync(enabled: false, limit: 200, CancellationToken.None);
+        var imported = await bootstrapper.RestoreAsync(enabled: false, limit: 200, surfaceLimit: 50, orderBy: "updated", CancellationToken.None);
 
         Assert.Equal(0, imported);
         Assert.Equal(0, registry.Count);
@@ -103,7 +103,7 @@ public sealed class StartupMemoryBootstrapperTests
             _snapshots = snapshots;
         }
 
-        public Task<IReadOnlyList<TaskSnapshot>> ListAsync(int limit = 50, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<TaskSnapshot>> ListAsync(int limit = 50, string orderBy = "updated", CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<TaskSnapshot>>(_snapshots.Take(limit).ToList());
         }
@@ -122,7 +122,7 @@ public sealed class StartupMemoryBootstrapperTests
 
     private sealed class ThrowingReader : ITaskMemoryReader
     {
-        public Task<IReadOnlyList<TaskSnapshot>> ListAsync(int limit = 50, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<TaskSnapshot>> ListAsync(int limit = 50, string orderBy = "updated", CancellationToken cancellationToken = default)
         {
             throw new InvalidOperationException("ArcadeDB unavailable");
         }

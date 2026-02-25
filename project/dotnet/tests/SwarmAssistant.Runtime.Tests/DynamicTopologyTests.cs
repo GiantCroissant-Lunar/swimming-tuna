@@ -96,6 +96,7 @@ public sealed class DynamicTopologyTests : TestKit
                 null,
                 null,
                 null,
+                null,
                 null)),
             "dispatcher-spawn-test");
 
@@ -133,6 +134,7 @@ public sealed class DynamicTopologyTests : TestKit
                 uiEvents,
                 taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(options),
+                null,
                 null,
                 null,
                 null,

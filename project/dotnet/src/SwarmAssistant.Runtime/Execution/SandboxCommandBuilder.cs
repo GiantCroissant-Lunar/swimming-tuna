@@ -1,10 +1,64 @@
 using System.Text;
+using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 
 namespace SwarmAssistant.Runtime.Execution;
 
 internal static class SandboxCommandBuilder
 {
+    public static SandboxLevel ParseLevel(string mode) =>
+        (mode ?? "host").Trim().ToLowerInvariant() switch
+        {
+            "host" => SandboxLevel.BareCli,
+            "docker" => SandboxLevel.Container,
+            "apple-container" => SandboxLevel.Container,
+            "os-sandboxed" => SandboxLevel.OsSandboxed,
+            _ => throw new InvalidOperationException($"Unsupported sandbox mode '{mode}'.")
+        };
+
+    public static SandboxCommand BuildForLevel(
+        SandboxLevel level,
+        string command,
+        IReadOnlyList<string> args,
+        string workspacePath,
+        string[] allowedHosts,
+        string? containerImage = null,
+        double cpuLimit = 1.0,
+        string memoryLimit = "512m",
+        int timeoutSeconds = 30,
+        bool allowA2A = false)
+    {
+        return level switch
+        {
+            SandboxLevel.BareCli => new SandboxCommand(command, args.ToArray()),
+            SandboxLevel.OsSandboxed => BuildOsSandboxed(command, args, workspacePath, allowedHosts),
+            SandboxLevel.Container => containerImage != null
+                ? BuildContainerCommand(command, args, workspacePath, containerImage, cpuLimit, memoryLimit, timeoutSeconds, allowA2A, allowedHosts)
+                : throw new InvalidOperationException("Container lifecycle handles command wrapping separately."),
+            _ => throw new InvalidOperationException($"Unsupported sandbox level '{level}'.")
+        };
+    }
+
+    private static SandboxCommand BuildOsSandboxed(
+        string command,
+        IReadOnlyList<string> args,
+        string workspacePath,
+        string[] allowedHosts)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return SandboxExecWrapper.WrapCommand(command, args, workspacePath, allowedHosts);
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return LinuxSandboxWrapper.WrapCommand(command, args, workspacePath, allowedHosts);
+        }
+
+        throw new PlatformNotSupportedException(
+            $"OS-level sandboxing is not supported on {Environment.OSVersion.Platform}.");
+    }
+
     public static SandboxCommand Build(
         RuntimeOptions options,
         string command,
@@ -75,6 +129,36 @@ internal static class SandboxCommandBuilder
 
         builder.Append('\'');
         return builder.ToString();
+    }
+
+    private static SandboxCommand BuildContainerCommand(
+        string command,
+        IReadOnlyList<string> args,
+        string workspacePath,
+        string containerImage,
+        double cpuLimit,
+        string memoryLimit,
+        int timeoutSeconds,
+        bool allowA2A,
+        string[] allowedHosts)
+    {
+        var runArgs = ContainerLifecycleManager.BuildRunArgs(
+            containerImage,
+            workspacePath,
+            cpuLimit,
+            memoryLimit,
+            timeoutSeconds);
+
+        var allowedHostList = allowedHosts.Length == 0 ? null : allowedHosts.ToList();
+        var networkArgs = ContainerNetworkPolicy.BuildNetworkArgs(allowedHostList, allowA2A);
+
+        var combinedArgs = new List<string>();
+        combinedArgs.AddRange(runArgs);
+        combinedArgs.AddRange(networkArgs);
+        combinedArgs.Add(command);
+        combinedArgs.AddRange(args);
+
+        return new SandboxCommand("docker", combinedArgs.ToArray());
     }
 }
 

@@ -1,11 +1,10 @@
+using System.Diagnostics;
 using SwarmAssistant.Runtime.Ui;
 
 namespace SwarmAssistant.Runtime.Tasks;
 
 public sealed class StartupMemoryBootstrapper
 {
-    private const int MaxBootstrapUiEvents = 3;
-
     private readonly ITaskMemoryReader _taskMemoryReader;
     private readonly TaskRegistry _taskRegistry;
     private readonly UiEventStream _uiEvents;
@@ -23,17 +22,21 @@ public sealed class StartupMemoryBootstrapper
         _logger = logger;
     }
 
-    public async Task<int> RestoreAsync(bool enabled, int limit, CancellationToken cancellationToken)
+    public async Task<int> RestoreAsync(bool enabled, int limit, int surfaceLimit, string orderBy, CancellationToken cancellationToken)
     {
         if (!enabled)
         {
             return 0;
         }
 
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
             var clampedLimit = Math.Clamp(limit, 1, 1000);
-            var memorySnapshots = await _taskMemoryReader.ListAsync(clampedLimit, cancellationToken);
+            var clampedSurfaceLimit = Math.Clamp(surfaceLimit, 1, 200);
+
+            var memorySnapshots = await _taskMemoryReader.ListAsync(clampedLimit, orderBy, cancellationToken);
             if (memorySnapshots.Count == 0)
             {
                 return 0;
@@ -60,22 +63,6 @@ public sealed class StartupMemoryBootstrapper
                 })
                 .ToList();
 
-            _logger.LogInformation(
-                "Restored task snapshots from memory imported={ImportedCount} fetched={FetchedCount}",
-                importedCount,
-                memorySnapshots.Count);
-
-            _uiEvents.Publish(
-                type: "agui.memory.bootstrap",
-                taskId: null,
-                payload: new
-                {
-                    source = "arcadedb",
-                    importedCount,
-                    fetchedCount = memorySnapshots.Count,
-                    statusCounts
-                });
-
             _uiEvents.Publish(
                 type: "agui.memory.tasks",
                 taskId: null,
@@ -86,7 +73,8 @@ public sealed class StartupMemoryBootstrapper
                     items = summaryItems
                 });
 
-            foreach (var snapshot in memorySnapshots.Take(MaxBootstrapUiEvents))
+            var surfacesCreated = 0;
+            foreach (var snapshot in memorySnapshots.Take(clampedSurfaceLimit))
             {
                 _uiEvents.Publish(
                     type: "agui.ui.surface",
@@ -112,7 +100,39 @@ public sealed class StartupMemoryBootstrapper
                             snapshot.Status,
                             snapshot.Error ?? snapshot.Summary)
                     });
+
+                surfacesCreated++;
             }
+
+            stopwatch.Stop();
+
+            _logger.LogInformation(
+                "Restored task snapshots from memory imported={ImportedCount} fetched={FetchedCount} duration={DurationMs}ms orderBy={OrderBy} statusCounts={@StatusCounts}",
+                importedCount,
+                memorySnapshots.Count,
+                stopwatch.ElapsedMilliseconds,
+                orderBy,
+                statusCounts);
+
+            _logger.LogInformation(
+                "Seeded Godot surfaces from memory bootstrap surfacesCreated={SurfacesCreated} limit={SurfaceLimit}",
+                surfacesCreated,
+                clampedSurfaceLimit);
+
+            _uiEvents.Publish(
+                type: "agui.memory.bootstrap",
+                taskId: null,
+                payload: new
+                {
+                    source = "arcadedb",
+                    importedCount,
+                    fetchedCount = memorySnapshots.Count,
+                    surfaceLimit = clampedSurfaceLimit,
+                    surfacesCreated,
+                    orderBy,
+                    durationMs = stopwatch.ElapsedMilliseconds,
+                    statusCounts
+                });
 
             return importedCount;
         }

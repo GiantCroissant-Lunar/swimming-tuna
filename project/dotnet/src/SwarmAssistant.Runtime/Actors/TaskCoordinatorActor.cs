@@ -59,6 +59,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
     private readonly GitArtifactCollector _gitArtifactCollector;
+    private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -112,7 +113,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         int subTaskDepth = 0,
         RuntimeEventRecorder? eventRecorder = null,
         string? projectContext = null,
-        WorkspaceBranchManager? workspaceBranchManager = null)
+        WorkspaceBranchManager? workspaceBranchManager = null,
+        SandboxLevelEnforcer? sandboxEnforcer = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -132,6 +134,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _projectContext = projectContext;
         _workspaceBranchManager = workspaceBranchManager;
         _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
+        _sandboxEnforcer = sandboxEnforcer;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -1026,13 +1029,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 break;
 
             case "Build":
-                if (_workspaceBranchManager != null)
+                if (_workspaceBranchManager is not null)
                 {
                     var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
-                    if (branch != null)
+                    if (branch is not null)
                     {
                         _workspaceBranchName = branch;
-                        _logger.LogInformation("Builder working on branch {Branch} for task {TaskId}", branch, _taskId);
+                        _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
                     }
                 }
                 TransitionTo(TaskState.Building);

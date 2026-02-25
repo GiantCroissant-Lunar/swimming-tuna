@@ -70,7 +70,19 @@ export interface AgentCard {
      * Protocol identifier (e.g. `a2a`).
      */
     protocol: string;
+    /**
+     * Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container
+     */
+    sandboxLevel?: number;
+    sandboxRequirements?: null | SandboxRequirements;
     version: string;
+    [property: string]: any;
+}
+export interface SandboxRequirements {
+    needsGpuAccess?: boolean;
+    needsKeychain?: boolean;
+    needsNetwork?: string[];
+    needsOAuth?: boolean;
     [property: string]: any;
 }
 /**
