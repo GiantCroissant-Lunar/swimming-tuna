@@ -19,7 +19,7 @@ tools:
 safe-outputs:
   create-pull-request:
     max: 1
-    base-branch: "${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}"
+    base-branch: "${{ github.event.pull_request.head.ref || github.event.repository.default_branch }}"
     title-prefix: "fix(review): "
     labels: [review-fix, automated]
     draft: false
@@ -99,7 +99,7 @@ After making all fixes, create exactly **one** pull request with:
 _Automated by gh-aw review-resolve workflow_
 ```
 
-The PR should branch from the pull request's head branch and target the same base branch.
+The PR should branch from the pull request's **head branch** and target the **head branch** (not the base branch). This ensures review fixes land on the feature branch and are included in the original PR, rather than bypassing it by targeting main directly.
 
 ## Output rules
 
