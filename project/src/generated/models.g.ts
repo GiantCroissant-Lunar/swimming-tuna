@@ -121,7 +121,7 @@ export interface AgentRegistryEntry {
     /**
      * Provider configuration for the agent runtime.
      */
-    provider: Provider;
+    provider?: null | Provider;
     /**
      * ISO 8601 timestamp when the agent was registered.
      */
@@ -157,9 +157,6 @@ export interface Budget {
     [property: string]: any;
 }
 
-/**
- * Provider configuration for the agent runtime.
- */
 export interface Provider {
     /**
      * Adapter type for agent execution.

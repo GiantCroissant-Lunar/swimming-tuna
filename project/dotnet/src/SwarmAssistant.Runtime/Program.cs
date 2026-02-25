@@ -935,7 +935,7 @@ if (options.A2AEnabled)
                 detail: "Request was cancelled",
                 statusCode: StatusCodes.Status499ClientClosedRequest);
         }
-        catch (TimeoutException)
+        catch (TaskCanceledException)
         {
             return Results.Problem(
                 detail: "Agent registry query timed out",

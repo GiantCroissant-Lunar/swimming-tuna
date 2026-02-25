@@ -26,6 +26,7 @@ public sealed class SwarmAgentActor : ReceiveActor
     private int _currentLoad;
     private readonly TimeSpan _idleTtl;
     private AgentEndpointHost? _endpointHost;
+    private ICancelable? _heartbeatSchedule;
 
     public SwarmAgentActor(
         RuntimeOptions options,
@@ -99,9 +100,9 @@ public sealed class SwarmAgentActor : ReceiveActor
             }
         }
 
-        // Schedule heartbeat
+        // Schedule heartbeat (store handle to cancel on stop)
         var heartbeatInterval = TimeSpan.FromSeconds(_options.AgentHeartbeatIntervalSeconds);
-        Context.System.Scheduler.ScheduleTellRepeatedly(
+        _heartbeatSchedule = Context.System.Scheduler.ScheduleTellRepeatedlyCancelable(
             heartbeatInterval,
             heartbeatInterval,
             _capabilityRegistry,
@@ -113,6 +114,9 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     protected override void PostStop()
     {
+        _heartbeatSchedule?.Cancel();
+        _heartbeatSchedule = null;
+
         if (_endpointHost is not null)
         {
             _endpointHost.StopAsync().GetAwaiter().GetResult();

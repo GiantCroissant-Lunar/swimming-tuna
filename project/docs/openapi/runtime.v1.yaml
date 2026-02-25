@@ -489,7 +489,6 @@ components:
         - agentId
         - capabilities
         - status
-        - provider
         - sandboxLevel
         - registeredAt
         - lastHeartbeat
@@ -508,7 +507,9 @@ components:
           type: string
           description: Current operational status of the agent.
         provider:
-          type: object
+          type:
+            - object
+            - "null"
           description: Provider configuration for the agent runtime.
           properties:
             adapter:
@@ -586,6 +587,13 @@ components:
 
     ServiceUnavailable:
       description: The actor system is unavailable or not yet initialised.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    GatewayTimeout:
+      description: The upstream actor did not respond within the configured timeout.
       content:
         application/json:
           schema:
@@ -845,8 +853,14 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AgentRegistryEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
 
   /a2a/tasks:
     get:

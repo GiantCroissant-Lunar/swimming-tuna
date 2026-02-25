@@ -7,7 +7,6 @@
     "agentId",
     "capabilities",
     "status",
-    "provider",
     "sandboxLevel",
     "registeredAt",
     "lastHeartbeat",
@@ -31,7 +30,10 @@
       "description": "Current operational status of the agent."
     },
     "provider": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Provider configuration for the agent runtime.",
       "properties": {
         "adapter": {

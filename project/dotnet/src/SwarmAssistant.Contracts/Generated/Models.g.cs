@@ -245,9 +245,6 @@ namespace SwarmAssistant.Contracts.Generated
         public long? UsedTokens { get; set; }
     }
 
-    /// <summary>
-    /// Provider configuration for the agent runtime.
-    /// </summary>
     public partial class Provider
     {
         /// <summary>

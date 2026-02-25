@@ -15,6 +15,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
     private readonly ILogger _logger;
     private readonly IActorRef? _blackboard;
     private readonly UiEventStream? _uiEvents;
+    private readonly int _heartbeatIntervalSeconds;
     private readonly Dictionary<IActorRef, AgentCapabilityAdvertisement> _agents = new();
     private readonly Dictionary<string, AgentHealthState> _health = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IActorRef> _agentIdToRef = new(StringComparer.Ordinal);
@@ -22,11 +23,12 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
     public ITimerScheduler Timers { get; set; } = null!;
 
     // Constructor with all dependencies (new)
-    public AgentRegistryActor(ILoggerFactory loggerFactory, IActorRef? blackboard = null, UiEventStream? uiEvents = null)
+    public AgentRegistryActor(ILoggerFactory loggerFactory, IActorRef? blackboard = null, UiEventStream? uiEvents = null, int heartbeatIntervalSeconds = 30)
     {
         _logger = loggerFactory.CreateLogger<AgentRegistryActor>();
         _blackboard = blackboard;
         _uiEvents = uiEvents;
+        _heartbeatIntervalSeconds = heartbeatIntervalSeconds;
 
         // Existing message handlers (preserved)
         Receive<AgentCapabilityAdvertisement>(HandleCapabilityAdvertisement);
@@ -48,12 +50,12 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
     protected override void PreStart()
     {
         base.PreStart();
-        // Periodic heartbeat check every 30 seconds
+        var checkInterval = TimeSpan.FromSeconds(_heartbeatIntervalSeconds);
         Timers.StartPeriodicTimer(
             HeartbeatCheckTimerKey,
             new HeartbeatCheck(),
-            TimeSpan.FromSeconds(30),
-            TimeSpan.FromSeconds(30));
+            checkInterval,
+            checkInterval);
     }
 
     // ── Existing handlers (preserved exactly) ──
@@ -260,18 +262,22 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
 
     private void HandleDeregister(DeregisterAgent message)
     {
-        if (_agentIdToRef.TryGetValue(message.AgentId, out var actorRef))
+        RemoveAgent(message.AgentId);
+        _logger.LogInformation("Agent {AgentId} deregistered (graceful)", message.AgentId);
+    }
+
+    private void RemoveAgent(string agentId)
+    {
+        if (_agentIdToRef.TryGetValue(agentId, out var actorRef))
         {
             _agents.Remove(actorRef);
             Context.Unwatch(actorRef);
         }
-        _health.Remove(message.AgentId);
-        _agentIdToRef.Remove(message.AgentId);
-
-        _logger.LogInformation("Agent {AgentId} deregistered (graceful)", message.AgentId);
+        _health.Remove(agentId);
+        _agentIdToRef.Remove(agentId);
 
         _blackboard?.Tell(new UpdateGlobalBlackboard(
-            GlobalBlackboardKeys.AgentLeft(message.AgentId),
+            GlobalBlackboardKeys.AgentLeft(agentId),
             DateTimeOffset.UtcNow.ToString("O")));
 
         EmitDashboardEvent();
@@ -309,7 +315,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         var ordered = message.Prefer?.ToLowerInvariant() switch
         {
             "cheapest" => entries
-                .OrderBy(e => e.Provider?.Type == "subscription" ? 0 : e.Provider?.Type == "subscription-api" ? 1 : 2)
+                .OrderBy(e => ProviderCostRank(e.Provider?.Type))
                 .ThenBy(e => e.CurrentLoad),
             "least-loaded" => entries.OrderBy(e => e.CurrentLoad),
             _ => entries.OrderBy(e => e.CurrentLoad)
@@ -323,14 +329,16 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
     {
         var now = DateTimeOffset.UtcNow;
         var toEvict = new List<string>();
+        var toUpdate = new Dictionary<string, AgentHealthState>(StringComparer.Ordinal);
 
         foreach (var (agentId, state) in _health)
         {
             var elapsed = now - state.LastHeartbeat;
-            if (elapsed > TimeSpan.FromSeconds(90)) // 3x the 30s interval
+            var evictionThreshold = TimeSpan.FromSeconds(_heartbeatIntervalSeconds * MaxMissedHeartbeats);
+            if (elapsed > evictionThreshold)
             {
                 var updated = state with { ConsecutiveFailures = state.ConsecutiveFailures + 1 };
-                _health[agentId] = updated;
+                toUpdate[agentId] = updated;
 
                 if (updated.ConsecutiveFailures >= MaxMissedHeartbeats)
                 {
@@ -339,10 +347,15 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
             }
         }
 
+        foreach (var (agentId, updated) in toUpdate)
+        {
+            _health[agentId] = updated;
+        }
+
         foreach (var agentId in toEvict)
         {
-            _logger.LogWarning("Evicting agent {AgentId} after {Max} missed heartbeats", agentId, MaxMissedHeartbeats);
-            HandleDeregister(new DeregisterAgent(agentId));
+            _logger.LogWarning("Agent {AgentId} evicted (missed heartbeats)", agentId);
+            RemoveAgent(agentId);
         }
     }
 
@@ -368,7 +381,9 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
                 return new
                 {
                     agentId,
-                    role = ad.Capabilities.FirstOrDefault().ToString().ToLowerInvariant(),
+                    role = ad.Capabilities.Count > 0
+                        ? ad.Capabilities[0].ToString().ToLowerInvariant()
+                        : "unknown",
                     status,
                     provider = providerDisplay,
                     budgetDisplay,
@@ -392,6 +407,13 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
             }
         });
     }
+
+    private static int ProviderCostRank(string? providerType) => providerType switch
+    {
+        "subscription" => 0,
+        "subscription-api" => 1,
+        _ => 2
+    };
 
     // ── Internal types ──
 
