@@ -21,7 +21,20 @@ public sealed class TaskSnapshotMapperTests
             Error: null,
             ParentTaskId: "parent-1",
             ChildTaskIds: new[] { "child-1", "child-2" },
-            RunId: "run-42"
+            RunId: "run-42",
+            Artifacts:
+            [
+                new TaskArtifact(
+                    ArtifactId: "art-abc123",
+                    RunId: "run-42",
+                    TaskId: taskId,
+                    AgentId: "builder-01",
+                    Type: TaskArtifactTypes.File,
+                    Path: "src/Foo.cs",
+                    ContentHash: "sha256:abc123",
+                    CreatedAt: new DateTimeOffset(2025, 1, 2, 1, 0, 0, TimeSpan.Zero),
+                    Metadata: new Dictionary<string, string> { ["language"] = "csharp" })
+            ]
         );
 
     [Fact]
@@ -44,6 +57,10 @@ public sealed class TaskSnapshotMapperTests
         Assert.Equal("parent-1", dto.ParentTaskId);
         Assert.Equal(new[] { "child-1", "child-2" }, dto.ChildTaskIds);
         Assert.Equal("run-42", dto.RunId);
+        Assert.NotNull(dto.Artifacts);
+        Assert.Single(dto.Artifacts!);
+        Assert.Equal("art-abc123", dto.Artifacts[0].ArtifactId);
+        Assert.Equal("src/Foo.cs", dto.Artifacts[0].Path);
     }
 
     [Theory]
@@ -106,5 +123,6 @@ public sealed class TaskSnapshotMapperTests
         Assert.Null(dto.ParentTaskId);
         Assert.Null(dto.ChildTaskIds);
         Assert.Null(dto.RunId);
+        Assert.Null(dto.Artifacts);
     }
 }

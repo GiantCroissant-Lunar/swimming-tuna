@@ -135,7 +135,8 @@ public sealed class ContractMappingTests
         Assert.True(root.TryGetProperty("parentTaskId", out _), "Missing: parentTaskId");
         Assert.True(root.TryGetProperty("childTaskIds", out _), "Missing: childTaskIds");
         Assert.True(root.TryGetProperty("runId", out _), "Missing: runId");
-        Assert.Equal(14, root.EnumerateObject().Count());
+        Assert.True(root.TryGetProperty("artifacts", out _), "Missing: artifacts");
+        Assert.Equal(15, root.EnumerateObject().Count());
     }
 
     [Fact]

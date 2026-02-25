@@ -224,7 +224,8 @@ public sealed class CoordinatorActor : ReceiveActor
                     message.TaskId,
                     message.Role,
                     $"Unsupported role completion {message.Role}",
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow,
+                    ActorName: Self.Path.Name));
                 break;
         }
     }

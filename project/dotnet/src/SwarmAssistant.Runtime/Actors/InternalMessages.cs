@@ -27,14 +27,19 @@ internal sealed record RoleTaskSucceeded(
     DateTimeOffset CompletedAt,
     double Confidence = 1.0,
     string? AdapterId = null,
-    string ActorName = ""
+    string ActorName = "",
+    string? TraceId = null,
+    string? SpanId = null
 );
 
 internal sealed record RoleTaskFailed(
     string TaskId,
     SwarmRole Role,
     string Error,
-    DateTimeOffset FailedAt
+    DateTimeOffset FailedAt,
+    string ActorName = "",
+    string? TraceId = null,
+    string? SpanId = null
 );
 
 internal sealed record GetSupervisorSnapshot();

@@ -142,6 +142,12 @@ curl -s http://127.0.0.1:5080/a2a/tasks
 curl -s http://127.0.0.1:5080/a2a/tasks/<task-id>
 curl -s 'http://127.0.0.1:5080/memory/tasks?limit=20'
 curl -s http://127.0.0.1:5080/memory/tasks/<task-id>
+curl -s http://127.0.0.1:5080/memory/tasks/<task-id>/artifacts
+curl -s -X POST http://127.0.0.1:5080/runs -H 'content-type: application/json' -d '{"runId":"run-demo","title":"Artifact demo run"}'
+curl -s http://127.0.0.1:5080/runs/run-demo
+curl -s http://127.0.0.1:5080/runs/run-demo/tasks
+curl -s http://127.0.0.1:5080/runs/run-demo/events
+curl -s http://127.0.0.1:5080/runs/run-demo/artifacts
 ```
 
 Enable ArcadeDB persistence:

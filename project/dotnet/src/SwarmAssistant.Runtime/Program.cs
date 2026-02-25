@@ -195,6 +195,15 @@ static object MapEvent(SwarmAssistant.Runtime.Tasks.TaskExecutionEvent evt) => n
     spanId = evt.SpanId
 };
 
+static IReadOnlyList<TaskArtifact> FlattenArtifacts(IEnumerable<TaskSnapshot> snapshots, int limit)
+{
+    return snapshots
+        .SelectMany(snapshot => snapshot.Artifacts ?? [])
+        .OrderByDescending(artifact => artifact.CreatedAt)
+        .Take(Math.Clamp(limit, 1, 5000))
+        .ToList();
+}
+
 if (options.AgUiEnabled)
 {
     app.MapGet("/memory/tasks", async (
@@ -259,6 +268,35 @@ if (options.AgUiEnabled)
             taskId,
             items = events.Select(MapEvent),
             nextCursor
+        });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/memory/tasks/{taskId}/artifacts", async (
+        string taskId,
+        int? limit,
+        ITaskMemoryReader memoryReader,
+        TaskRegistry taskRegistry,
+        CancellationToken cancellationToken) =>
+    {
+        var requestedLimit = Math.Clamp(limit ?? 200, 1, 5000);
+        var snapshot = await memoryReader.GetAsync(taskId, cancellationToken)
+            ?? taskRegistry.GetTask(taskId);
+        if (snapshot is null)
+        {
+            return Results.NotFound(new { error = "task not found", taskId });
+        }
+
+        var items = (snapshot.Artifacts ?? [])
+            .OrderByDescending(artifact => artifact.CreatedAt)
+            .Take(requestedLimit)
+            .Select(TaskSnapshotMapper.ToDto)
+            .ToList();
+
+        return Results.Ok(new
+        {
+            taskId,
+            runId = snapshot.RunId,
+            items
         });
     }).AddEndpointFilter(requireApiKey);
 
@@ -626,6 +664,7 @@ if (options.A2AEnabled)
                 agUiActions = "/ag-ui/actions",
                 memoryTasks = "/memory/tasks",
                 getMemoryTask = "/memory/tasks/{taskId}",
+                listTaskArtifacts = "/memory/tasks/{taskId}/artifacts",
                 submitTask = "/a2a/tasks",
                 getTask = "/a2a/tasks/{taskId}",
                 listTasks = "/a2a/tasks",
@@ -633,6 +672,7 @@ if (options.A2AEnabled)
                 getRun = "/runs/{runId}",
                 listRunTasks = "/runs/{runId}/tasks",
                 listRunEvents = "/runs/{runId}/events",
+                listRunArtifacts = "/runs/{runId}/artifacts",
                 listTaskEvents = "/memory/tasks/{taskId}/events"
             }
         });
@@ -711,7 +751,8 @@ if (options.A2AEnabled)
             title = run?.Title,
             createdAt,
             updatedAt,
-            taskCount = tasks.Count
+            taskCount = tasks.Count,
+            artifactCount = tasks.Sum(task => task.Artifacts?.Count ?? 0)
         });
     }).AddEndpointFilter(requireApiKey);
 
@@ -780,6 +821,53 @@ if (options.A2AEnabled)
             runId,
             items = events.Select(MapEvent),
             nextCursor
+        });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/runs/{runId}/artifacts", async (
+        string runId,
+        int? limit,
+        RunRegistry runRegistry,
+        TaskRegistry taskRegistry,
+        ITaskMemoryReader memoryReader,
+        ISwarmRunReader runReader,
+        CancellationToken cancellationToken) =>
+    {
+        var runExistsInRegistry = runRegistry.GetRun(runId) is not null;
+        var hasRegistryTasks = taskRegistry.GetTasksByRunId(runId, 1).Count > 0;
+        if (!runExistsInRegistry && !hasRegistryTasks)
+        {
+            var memoryProbeTask = memoryReader.ListByRunIdAsync(runId, 1, cancellationToken);
+            var runProbeTask = runReader.GetAsync(runId, cancellationToken);
+            await Task.WhenAll(memoryProbeTask, runProbeTask);
+
+            if (memoryProbeTask.Result.Count == 0 && runProbeTask.Result is null)
+            {
+                return Results.NotFound(new { error = "run not found", runId });
+            }
+        }
+
+        var requestedLimit = Math.Clamp(limit ?? 500, 1, 5000);
+        var fetchLimit = Math.Clamp(requestedLimit, 1, 5000);
+        var registryTasks = taskRegistry.GetTasksByRunId(runId, fetchLimit);
+        if (registryTasks.Count > 0)
+        {
+            var artifacts = FlattenArtifacts(registryTasks, requestedLimit);
+            return Results.Ok(new
+            {
+                runId,
+                source = "registry",
+                items = artifacts.Select(TaskSnapshotMapper.ToDto)
+            });
+        }
+
+        var memoryTasks = await memoryReader.ListByRunIdAsync(runId, fetchLimit, cancellationToken);
+        var flattened = FlattenArtifacts(memoryTasks, requestedLimit);
+        return Results.Ok(new
+        {
+            runId,
+            source = "arcadedb",
+            items = flattened.Select(TaskSnapshotMapper.ToDto)
         });
     }).AddEndpointFilter(requireApiKey);
 }
