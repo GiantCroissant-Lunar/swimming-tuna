@@ -29,7 +29,7 @@ public sealed class AgentEndpointIntegrationTests : TestKit
     {
         var options = CreateOptions(endpointEnabled: true);
         var registry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)),
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)),
             "cap-reg-endpoint");
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
@@ -86,7 +86,7 @@ public sealed class AgentEndpointIntegrationTests : TestKit
     {
         var options = CreateOptions(endpointEnabled: false);
         var registry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)),
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)),
             "cap-reg-no-endpoint");
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
@@ -120,7 +120,7 @@ public sealed class AgentEndpointIntegrationTests : TestKit
     {
         var options = CreateOptions(endpointEnabled: true);
         var registry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)),
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)),
             "cap-reg-no-port");
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);

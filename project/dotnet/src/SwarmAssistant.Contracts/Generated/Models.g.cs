@@ -7,6 +7,7 @@
 //    var a2ATaskSubmitRequest = A2ATaskSubmitRequest.FromJson(jsonString);
 //    var a2ATaskSubmitResponse = A2ATaskSubmitResponse.FromJson(jsonString);
 //    var agentCard = AgentCard.FromJson(jsonString);
+//    var agentRegistryEntry = AgentRegistryEntry.FromJson(jsonString);
 //    var errorEnvelope = ErrorEnvelope.FromJson(jsonString);
 //    var healthResponse = HealthResponse.FromJson(jsonString);
 //    var memoryTaskListResponse = MemoryTaskListResponse.FromJson(jsonString);
@@ -143,6 +144,126 @@ namespace SwarmAssistant.Contracts.Generated
 
         [JsonProperty("needsOAuth", NullValueHandling = NullValueHandling.Ignore)]
         public bool? NeedsOAuth { get; set; }
+    }
+
+    /// <summary>
+    /// Runtime registry entry describing a discovered or registered agent instance.
+    /// </summary>
+    public partial class AgentRegistryEntry
+    {
+        /// <summary>
+        /// Unique identifier for this agent instance.
+        /// </summary>
+        [JsonProperty("agentId")]
+        public string AgentId { get; set; }
+
+        /// <summary>
+        /// Token budget tracking for the agent.
+        /// </summary>
+        [JsonProperty("budget")]
+        public Budget Budget { get; set; }
+
+        /// <summary>
+        /// List of capability tags advertised by this agent.
+        /// </summary>
+        [JsonProperty("capabilities")]
+        public List<string> Capabilities { get; set; }
+
+        /// <summary>
+        /// Circuit breaker state (e.g., 'closed', 'open', 'half-open').
+        /// </summary>
+        [JsonProperty("circuitBreakerState")]
+        public string CircuitBreakerState { get; set; }
+
+        /// <summary>
+        /// Number of consecutive health check failures.
+        /// </summary>
+        [JsonProperty("consecutiveFailures")]
+        public long ConsecutiveFailures { get; set; }
+
+        /// <summary>
+        /// Base URL for communicating with this agent instance.
+        /// </summary>
+        [JsonProperty("endpointUrl")]
+        public string EndpointUrl { get; set; }
+
+        /// <summary>
+        /// ISO 8601 timestamp of the last successful heartbeat.
+        /// </summary>
+        [JsonProperty("lastHeartbeat")]
+        public DateTimeOffset LastHeartbeat { get; set; }
+
+        /// <summary>
+        /// Provider configuration for the agent runtime.
+        /// </summary>
+        [JsonProperty("provider")]
+        public Provider Provider { get; set; }
+
+        /// <summary>
+        /// ISO 8601 timestamp when the agent was registered.
+        /// </summary>
+        [JsonProperty("registeredAt")]
+        public DateTimeOffset RegisteredAt { get; set; }
+
+        /// <summary>
+        /// Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container
+        /// </summary>
+        [JsonProperty("sandboxLevel")]
+        public long SandboxLevel { get; set; }
+
+        /// <summary>
+        /// Current operational status of the agent.
+        /// </summary>
+        [JsonProperty("status")]
+        public string Status { get; set; }
+    }
+
+    public partial class Budget
+    {
+        /// <summary>
+        /// Fraction of budget remaining (0.0 to 1.0).
+        /// </summary>
+        [JsonProperty("remainingFraction", NullValueHandling = NullValueHandling.Ignore)]
+        public double? RemainingFraction { get; set; }
+
+        /// <summary>
+        /// Total token allocation.
+        /// </summary>
+        [JsonProperty("totalTokens", NullValueHandling = NullValueHandling.Ignore)]
+        public long? TotalTokens { get; set; }
+
+        /// <summary>
+        /// Budget type identifier.
+        /// </summary>
+        [JsonProperty("type", NullValueHandling = NullValueHandling.Ignore)]
+        public string Type { get; set; }
+
+        /// <summary>
+        /// Tokens consumed so far.
+        /// </summary>
+        [JsonProperty("usedTokens", NullValueHandling = NullValueHandling.Ignore)]
+        public long? UsedTokens { get; set; }
+    }
+
+    public partial class Provider
+    {
+        /// <summary>
+        /// Adapter type for agent execution.
+        /// </summary>
+        [JsonProperty("adapter", NullValueHandling = NullValueHandling.Ignore)]
+        public string Adapter { get; set; }
+
+        /// <summary>
+        /// Service plan or tier.
+        /// </summary>
+        [JsonProperty("plan", NullValueHandling = NullValueHandling.Ignore)]
+        public string Plan { get; set; }
+
+        /// <summary>
+        /// Provider type identifier.
+        /// </summary>
+        [JsonProperty("type", NullValueHandling = NullValueHandling.Ignore)]
+        public string Type { get; set; }
     }
 
     /// <summary>
@@ -522,6 +643,11 @@ namespace SwarmAssistant.Contracts.Generated
         public static AgentCard FromJson(string json) => JsonConvert.DeserializeObject<AgentCard>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
     }
 
+    public partial class AgentRegistryEntry
+    {
+        public static AgentRegistryEntry FromJson(string json) => JsonConvert.DeserializeObject<AgentRegistryEntry>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
+    }
+
     public partial class ErrorEnvelope
     {
         public static ErrorEnvelope FromJson(string json) => JsonConvert.DeserializeObject<ErrorEnvelope>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
@@ -582,6 +708,7 @@ namespace SwarmAssistant.Contracts.Generated
         public static string ToJson(this A2ATaskSubmitRequest self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this A2ATaskSubmitResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this AgentCard self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
+        public static string ToJson(this AgentRegistryEntry self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this ErrorEnvelope self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this HealthResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this MemoryTaskListResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);

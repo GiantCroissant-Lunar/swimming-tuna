@@ -481,6 +481,88 @@ components:
             needsGpuAccess:
               type: boolean
 
+    # ── A2A agent registry entry ───────────────────────────────────────────
+    AgentRegistryEntry:
+      type: object
+      description: Runtime registry entry describing a discovered or registered agent instance.
+      required:
+        - agentId
+        - capabilities
+        - status
+        - sandboxLevel
+        - registeredAt
+        - lastHeartbeat
+        - consecutiveFailures
+        - circuitBreakerState
+      properties:
+        agentId:
+          type: string
+          description: Unique identifier for this agent instance.
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: List of capability tags advertised by this agent.
+        status:
+          type: string
+          description: Current operational status of the agent.
+        provider:
+          type:
+            - object
+            - "null"
+          description: Provider configuration for the agent runtime.
+          properties:
+            adapter:
+              type: string
+              description: Adapter type for agent execution.
+            type:
+              type: string
+              description: Provider type identifier.
+            plan:
+              type: string
+              description: Service plan or tier.
+        sandboxLevel:
+          type: integer
+          description: "Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container"
+          enum: [0, 1, 2]
+        budget:
+          type:
+            - object
+            - "null"
+          description: Token budget tracking for the agent.
+          properties:
+            type:
+              type: string
+              description: Budget type identifier.
+            totalTokens:
+              type: integer
+              description: Total token allocation.
+            usedTokens:
+              type: integer
+              description: Tokens consumed so far.
+            remainingFraction:
+              type: number
+              description: Fraction of budget remaining (0.0 to 1.0).
+        endpointUrl:
+          type:
+            - string
+            - "null"
+          description: Base URL for communicating with this agent instance.
+        registeredAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the agent was registered.
+        lastHeartbeat:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the last successful heartbeat.
+        consecutiveFailures:
+          type: integer
+          description: Number of consecutive health check failures.
+        circuitBreakerState:
+          type: string
+          description: Circuit breaker state (e.g., 'closed', 'open', 'half-open').
+
   responses:
     Unauthorized:
       description: Missing or invalid `X-API-Key` header.
@@ -505,6 +587,13 @@ components:
 
     ServiceUnavailable:
       description: The actor system is unavailable or not yet initialised.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+    GatewayTimeout:
+      description: The upstream actor did not respond within the configured timeout.
       content:
         application/json:
           schema:
@@ -729,6 +818,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCard"
+
+  /a2a/registry/agents:
+    get:
+      operationId: listRegisteredAgents
+      summary: List registered agents
+      description: >
+        Returns a list of agents currently registered with the runtime,
+        optionally filtered by capability or preference criteria.
+      tags:
+        - A2A
+      security:
+        - ApiKeyAuth: []
+        - {}
+      parameters:
+        - name: capability
+          in: query
+          required: false
+          description: Filter agents by a specific capability tag.
+          schema:
+            type: string
+        - name: prefer
+          in: query
+          required: false
+          description: Preference hint for agent selection (e.g., 'cheapest', 'least-loaded').
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Array of registered agent entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentRegistryEntry"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
 
   /a2a/tasks:
     get:
