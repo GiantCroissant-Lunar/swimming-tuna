@@ -74,7 +74,7 @@ public sealed class DynamicTopologyTests : TestKit
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
         var capabilityRegistry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)), "cap-reg-spawn");
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null)), "cap-reg-spawn");
         var uiEvents = new UiEventStream();
         var taskRegistry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
 
@@ -117,7 +117,7 @@ public sealed class DynamicTopologyTests : TestKit
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
         var capabilityRegistry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)), "cap-reg-register");
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null)), "cap-reg-register");
         var uiEvents = new UiEventStream();
         var taskRegistry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
 
@@ -167,7 +167,7 @@ public sealed class DynamicTopologyTests : TestKit
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
         var registry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)), "cap-reg-ttl");
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null)), "cap-reg-ttl");
 
         var ttl = TimeSpan.FromMilliseconds(300);
         var agent = Sys.ActorOf(
@@ -194,7 +194,7 @@ public sealed class DynamicTopologyTests : TestKit
         var telemetry = new RuntimeTelemetry(options, _loggerFactory);
         var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
         var registry = Sys.ActorOf(
-            Props.Create(() => new CapabilityRegistryActor(_loggerFactory)), "cap-reg-no-ttl");
+            Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null)), "cap-reg-no-ttl");
 
         // No TTL (default = zero)
         var agentActor = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
