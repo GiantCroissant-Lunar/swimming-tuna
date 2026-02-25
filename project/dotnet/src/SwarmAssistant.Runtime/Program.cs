@@ -935,8 +935,9 @@ if (options.A2AEnabled)
                 detail: "Request was cancelled",
                 statusCode: StatusCodes.Status499ClientClosedRequest);
         }
-        catch (TimeoutException)
+        catch (TaskCanceledException)
         {
+            // Akka.NET Ask throws TaskCanceledException (not TimeoutException) on ask timeout
             return Results.Problem(
                 detail: "Agent registry query timed out",
                 statusCode: StatusCodes.Status504GatewayTimeout);

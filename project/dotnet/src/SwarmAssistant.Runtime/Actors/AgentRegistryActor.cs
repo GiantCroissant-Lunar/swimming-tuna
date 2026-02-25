@@ -260,21 +260,8 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
 
     private void HandleDeregister(DeregisterAgent message)
     {
-        if (_agentIdToRef.TryGetValue(message.AgentId, out var actorRef))
-        {
-            _agents.Remove(actorRef);
-            Context.Unwatch(actorRef);
-        }
-        _health.Remove(message.AgentId);
-        _agentIdToRef.Remove(message.AgentId);
-
         _logger.LogInformation("Agent {AgentId} deregistered (graceful)", message.AgentId);
-
-        _blackboard?.Tell(new UpdateGlobalBlackboard(
-            GlobalBlackboardKeys.AgentLeft(message.AgentId),
-            DateTimeOffset.UtcNow.ToString("O")));
-
-        EmitDashboardEvent();
+        RemoveAgent(message.AgentId);
     }
 
     private void HandleQuery(QueryAgents message)
@@ -324,26 +311,38 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         var now = DateTimeOffset.UtcNow;
         var toEvict = new List<string>();
 
+        // Collect agents to evict without mutating the dictionary during enumeration
         foreach (var (agentId, state) in _health)
         {
             var elapsed = now - state.LastHeartbeat;
-            if (elapsed > TimeSpan.FromSeconds(90)) // 3x the 30s interval
+            if (elapsed > TimeSpan.FromSeconds(90)) // 3x the 30s interval = 3 missed heartbeats
             {
-                var updated = state with { ConsecutiveFailures = state.ConsecutiveFailures + 1 };
-                _health[agentId] = updated;
-
-                if (updated.ConsecutiveFailures >= MaxMissedHeartbeats)
-                {
-                    toEvict.Add(agentId);
-                }
+                toEvict.Add(agentId);
             }
         }
 
         foreach (var agentId in toEvict)
         {
             _logger.LogWarning("Evicting agent {AgentId} after {Max} missed heartbeats", agentId, MaxMissedHeartbeats);
-            HandleDeregister(new DeregisterAgent(agentId));
+            RemoveAgent(agentId);
         }
+    }
+
+    private void RemoveAgent(string agentId)
+    {
+        if (_agentIdToRef.TryGetValue(agentId, out var actorRef))
+        {
+            _agents.Remove(actorRef);
+            Context.Unwatch(actorRef);
+        }
+        _health.Remove(agentId);
+        _agentIdToRef.Remove(agentId);
+
+        _blackboard?.Tell(new UpdateGlobalBlackboard(
+            GlobalBlackboardKeys.AgentLeft(agentId),
+            DateTimeOffset.UtcNow.ToString("O")));
+
+        EmitDashboardEvent();
     }
 
     private void EmitDashboardEvent()
@@ -368,7 +367,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
                 return new
                 {
                     agentId,
-                    role = ad.Capabilities.FirstOrDefault().ToString().ToLowerInvariant(),
+                    role = ad.Capabilities.Count > 0 ? ad.Capabilities[0].ToString().ToLowerInvariant() : "unknown",
                     status,
                     provider = providerDisplay,
                     budgetDisplay,

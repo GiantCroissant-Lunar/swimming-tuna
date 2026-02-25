@@ -144,7 +144,7 @@ Proposed:  Agent → [executes] → Langfuse (traces, spans, scores, annotations
 
 When the reviewer accepts or rejects builder output, write a score to Langfuse:
 
-```
+```json
 POST /api/public/scores
 {
   "traceId": "run-001",
@@ -200,11 +200,11 @@ This replaces or augments StrategyAdvisorActor's statistical insights with
 
 Annotations add human or gatekeeper knowledge to traces:
 
-```
+```json
 POST /api/public/comments
 {
-  "traceId": "run-001",
-  "observationId": "builder-01.execute-role",
+  "objectType": "observation",
+  "objectId": "builder-01.execute-role",
   "content": "Schema nullability must match DTO: lastHeartbeat was nullable in spec but non-nullable in code"
 }
 ```

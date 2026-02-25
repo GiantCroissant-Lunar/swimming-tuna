@@ -161,7 +161,7 @@ namespace SwarmAssistant.Contracts.Generated
         /// Token budget tracking for the agent.
         /// </summary>
         [JsonProperty("budget")]
-        public Budget Budget { get; set; }
+        public Budget? Budget { get; set; }
 
         /// <summary>
         /// List of capability tags advertised by this agent.
@@ -185,7 +185,7 @@ namespace SwarmAssistant.Contracts.Generated
         /// Base URL for communicating with this agent instance.
         /// </summary>
         [JsonProperty("endpointUrl")]
-        public string EndpointUrl { get; set; }
+        public string? EndpointUrl { get; set; }
 
         /// <summary>
         /// ISO 8601 timestamp of the last successful heartbeat.
@@ -197,7 +197,7 @@ namespace SwarmAssistant.Contracts.Generated
         /// Provider configuration for the agent runtime.
         /// </summary>
         [JsonProperty("provider")]
-        public Provider Provider { get; set; }
+        public Provider? Provider { get; set; }
 
         /// <summary>
         /// ISO 8601 timestamp when the agent was registered.

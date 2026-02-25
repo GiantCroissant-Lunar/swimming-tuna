@@ -139,7 +139,7 @@ qmd collection add codebase \
 
 Before role execution, query qmd for context:
 
-```
+```shell
 qmd search "agent registry heartbeat eviction" --collection project --limit 5 --format json
 ```
 
@@ -180,7 +180,7 @@ public sealed record KnowledgeEntry
     public required string Scope { get; init; }            // global | task:{taskId}
     public string? TaskRef { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
-    public string ContentHash { get; init; }               // SHA-256 for dedup
+    public required string ContentHash { get; init; }               // SHA-256 for dedup
 }
 ```
 
