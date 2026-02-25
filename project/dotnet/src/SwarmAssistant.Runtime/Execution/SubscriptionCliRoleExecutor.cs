@@ -175,6 +175,10 @@ internal sealed class SubscriptionCliRoleExecutor
             SandboxCommand probeCommand;
             try
             {
+                // TODO: Container level currently falls through to the legacy wrapper-based
+                // execution path (SandboxCommandBuilder.Build). A future iteration will use
+                // ContainerLifecycleManager/ContainerNetworkPolicy for Container-level
+                // sandboxing directly from this executor.
                 if (_options.SandboxLevel == SandboxLevel.OsSandboxed &&
                     _sandboxLevelEnforcer.CanEnforce(SandboxLevel.OsSandboxed))
                 {

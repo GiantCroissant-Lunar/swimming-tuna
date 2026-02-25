@@ -296,7 +296,8 @@ public sealed class Worker : BackgroundService
             _loggerFactory.CreateLogger<WorkspaceBranchManager>());
 
         var sandboxEnforcer = new SandboxLevelEnforcer(
-            containerAvailable: _options.SandboxMode is "docker" or "apple-container");
+            containerAvailable: string.Equals(_options.SandboxMode, "docker", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(_options.SandboxMode, "apple-container", StringComparison.OrdinalIgnoreCase));
 
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(

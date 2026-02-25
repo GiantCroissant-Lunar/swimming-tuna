@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace SwarmAssistant.Runtime.Execution;
 
 public static class ContainerLifecycleManager
@@ -13,7 +15,7 @@ public static class ContainerLifecycleManager
         [
             "run",
             "--rm",
-            $"--cpus={cpuLimit}",
+            $"--cpus={cpuLimit.ToString(CultureInfo.InvariantCulture)}",
             $"--memory={memoryLimit}",
             $"--stop-timeout={timeoutSeconds}",
             "-v",

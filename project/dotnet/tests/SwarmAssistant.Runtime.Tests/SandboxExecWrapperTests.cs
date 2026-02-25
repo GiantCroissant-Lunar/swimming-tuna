@@ -37,6 +37,18 @@ public sealed class SandboxExecWrapperTests
     }
 
     [Fact]
+    public void BuildProfile_EscapesSpecialCharactersInWorkspacePath()
+    {
+        var profile = SandboxExecWrapper.BuildProfile(
+            workspacePath: "/tmp/work\"space\\dir",
+            allowedHosts: []);
+
+        // Backslash and double-quote should be escaped in the SBPL profile
+        Assert.Contains("/tmp/work\\\"space\\\\dir", profile);
+        Assert.DoesNotContain("/tmp/work\"space\\dir\"", profile);
+    }
+
+    [Fact]
     public void WrapCommand_ReturnsSandboxExecCommand()
     {
         var result = SandboxExecWrapper.WrapCommand(

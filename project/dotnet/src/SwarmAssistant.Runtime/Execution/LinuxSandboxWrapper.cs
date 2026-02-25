@@ -35,7 +35,7 @@ internal static class LinuxSandboxWrapper
         var escapedWorkspace = normalizedPath.Replace("'", "'\\''");
         var escapedCommand = command.Replace("'", "'\\''");
         var escapedArgs = string.Join(" ", args.Select(a => $"'{a.Replace("'", "'\\''")}'"));
-        var shellCmd = $"mount --bind -o ro '{escapedWorkspace}' '{escapedWorkspace}' && '{escapedCommand}' {escapedArgs}";
+        var shellCmd = $"mount --bind -o rw '{escapedWorkspace}' '{escapedWorkspace}' && '{escapedCommand}' {escapedArgs}";
 
         unshareArgs.Add(shellCmd);
         return new SandboxCommand("unshare", unshareArgs.ToArray());

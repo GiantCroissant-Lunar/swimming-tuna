@@ -12,6 +12,7 @@ internal static class SandboxCommandBuilder
             "host" => SandboxLevel.BareCli,
             "docker" => SandboxLevel.Container,
             "apple-container" => SandboxLevel.Container,
+            "os-sandboxed" => SandboxLevel.OsSandboxed,
             _ => throw new InvalidOperationException($"Unsupported sandbox mode '{mode}'.")
         };
 
@@ -32,7 +33,7 @@ internal static class SandboxCommandBuilder
             SandboxLevel.BareCli => new SandboxCommand(command, args.ToArray()),
             SandboxLevel.OsSandboxed => BuildOsSandboxed(command, args, workspacePath, allowedHosts),
             SandboxLevel.Container => containerImage != null
-                ? BuildContainerCommand(command, args, workspacePath, containerImage, cpuLimit, memoryLimit, timeoutSeconds, allowA2A)
+                ? BuildContainerCommand(command, args, workspacePath, containerImage, cpuLimit, memoryLimit, timeoutSeconds, allowA2A, allowedHosts)
                 : throw new InvalidOperationException("Container lifecycle handles command wrapping separately."),
             _ => throw new InvalidOperationException($"Unsupported sandbox level '{level}'.")
         };
@@ -138,7 +139,8 @@ internal static class SandboxCommandBuilder
         double cpuLimit,
         string memoryLimit,
         int timeoutSeconds,
-        bool allowA2A)
+        bool allowA2A,
+        string[] allowedHosts)
     {
         var runArgs = ContainerLifecycleManager.BuildRunArgs(
             containerImage,
@@ -147,7 +149,8 @@ internal static class SandboxCommandBuilder
             memoryLimit,
             timeoutSeconds);
 
-        var networkArgs = ContainerNetworkPolicy.BuildNetworkArgs(null, allowA2A);
+        var allowedHostList = allowedHosts.Length == 0 ? null : allowedHosts.ToList();
+        var networkArgs = ContainerNetworkPolicy.BuildNetworkArgs(allowedHostList, allowA2A);
 
         var combinedArgs = new List<string>();
         combinedArgs.AddRange(runArgs);

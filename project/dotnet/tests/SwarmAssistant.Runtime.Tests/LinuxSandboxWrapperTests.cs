@@ -61,6 +61,20 @@ public sealed class LinuxSandboxWrapperTests
     }
 
     [Fact]
+    public void WrapCommand_MountsWorkspaceReadWrite()
+    {
+        var result = LinuxSandboxWrapper.WrapCommand(
+            command: "copilot",
+            args: ["--prompt", "hello"],
+            workspacePath: Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar),
+            allowedHosts: []);
+
+        var shellCmdArg = result.Args.FirstOrDefault(a => a.Contains("mount --bind"));
+        Assert.NotNull(shellCmdArg);
+        Assert.Contains("-o rw", shellCmdArg);
+    }
+
+    [Fact]
     public void WrapCommand_ThrowsOnNullWorkspacePath()
     {
         Assert.Throws<ArgumentException>(() =>

@@ -58,6 +58,8 @@ public sealed class SandboxCommandBuilderTests
     [InlineData("HOST", SandboxLevel.BareCli)]
     [InlineData("docker", SandboxLevel.Container)]
     [InlineData("apple-container", SandboxLevel.Container)]
+    [InlineData("os-sandboxed", SandboxLevel.OsSandboxed)]
+    [InlineData("OS-SANDBOXED", SandboxLevel.OsSandboxed)]
     public void ParseLevel_MapsStringToEnum(string mode, SandboxLevel expected)
     {
         Assert.Equal(expected, SandboxCommandBuilder.ParseLevel(mode));
