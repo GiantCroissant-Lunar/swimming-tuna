@@ -26,4 +26,10 @@ internal static class GlobalBlackboardKeys
 
     internal static string TaskBlocked(string taskId) =>
         $"{TaskBlockedPrefix}{taskId}";
+
+    internal const string AgentJoinedPrefix     = "agent_joined:";
+    internal const string AgentLeftPrefix       = "agent_left:";
+
+    internal static string AgentJoined(string agentId) => $"{AgentJoinedPrefix}{agentId}";
+    internal static string AgentLeft(string agentId)   => $"{AgentLeftPrefix}{agentId}";
 }
