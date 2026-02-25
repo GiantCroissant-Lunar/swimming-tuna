@@ -10,6 +10,10 @@ public sealed record AgentCapabilityAdvertisement(
     string? EndpointUrl = null
 )
 {
+    public ProviderInfo? Provider { get; init; }
+    public SandboxLevel SandboxLevel { get; init; } = SandboxLevel.BareCli;
+    public BudgetEnvelope? Budget { get; init; }
+
     public AgentCapabilityAdvertisement(
         string actorPath,
         SwarmRole[] capabilities,
