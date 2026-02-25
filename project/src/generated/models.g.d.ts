@@ -320,11 +320,12 @@ export interface PeerMessageSubmit {
      */
     messageId?: null | string;
     /**
-     * Message payload content. Maximum 65536 bytes when UTF-8 encoded.
+     * Message payload content. Maximum 65536 bytes when UTF-8 encoded. Note: maxLength is a
+     * character-length cap; true byte-length validation occurs at runtime.
      */
     payload: string;
     /**
-     * Optional message ID this message is replying to.
+     * Optional callback endpoint URL to receive replies.
      */
     replyTo?: null | string;
     /**

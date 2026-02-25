@@ -454,16 +454,18 @@ namespace SwarmAssistant.Contracts.Generated
         public string MessageId { get; set; }
 
         /// <summary>
-        /// Message payload content. Maximum 65536 bytes when UTF-8 encoded.
+        /// Message payload content. Maximum 65536 bytes when UTF-8 encoded. Note: maxLength is a
+        /// character-length cap; true byte-length validation occurs at runtime.
         /// </summary>
         [JsonProperty("payload")]
+        [JsonConverter(typeof(MinMaxLengthCheckConverter))]
         public string Payload { get; set; }
 
         /// <summary>
-        /// Optional message ID this message is replying to.
+        /// Optional callback endpoint URL to receive replies.
         /// </summary>
         [JsonProperty("replyTo")]
-        public string ReplyTo { get; set; }
+        public Uri ReplyTo { get; set; }
 
         /// <summary>
         /// Identifier of the recipient agent.
@@ -959,6 +961,34 @@ namespace SwarmAssistant.Contracts.Generated
         }
 
         public static readonly SourceConverter Singleton = new SourceConverter();
+    }
+
+    internal class MinMaxLengthCheckConverter : JsonConverter
+    {
+        public override bool CanConvert(Type t) => t == typeof(string);
+
+        public override object ReadJson(JsonReader reader, Type t, object existingValue, JsonSerializer serializer)
+        {
+            var value = serializer.Deserialize<string>(reader);
+            if (value.Length <= 65536)
+            {
+                return value;
+            }
+            throw new Exception("Cannot unmarshal type string");
+        }
+
+        public override void WriteJson(JsonWriter writer, object untypedValue, JsonSerializer serializer)
+        {
+            var value = (string)untypedValue;
+            if (value.Length <= 65536)
+            {
+                serializer.Serialize(writer, value);
+                return;
+            }
+            throw new Exception("Cannot marshal type string");
+        }
+
+        public static readonly MinMaxLengthCheckConverter Singleton = new MinMaxLengthCheckConverter();
     }
 
     internal class TypeEnumConverter : JsonConverter
