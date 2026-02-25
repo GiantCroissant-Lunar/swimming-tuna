@@ -900,7 +900,22 @@ if (options.A2AEnabled)
             capabilities = new[] { role };
         }
 
-        var query = new QueryAgents(capabilities, prefer);
+        string? normalizedPrefer = null;
+        if (!string.IsNullOrWhiteSpace(prefer))
+        {
+            normalizedPrefer = prefer.Trim().ToLowerInvariant();
+            if (normalizedPrefer is not ("cheapest" or "least-loaded"))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Invalid prefer value",
+                    prefer,
+                    validValues = new[] { "cheapest", "least-loaded" }
+                });
+            }
+        }
+
+        var query = new QueryAgents(capabilities, normalizedPrefer);
         try
         {
             var result = await registry.Ask<QueryAgentsResult>(query, TimeSpan.FromSeconds(5), cancellationToken);

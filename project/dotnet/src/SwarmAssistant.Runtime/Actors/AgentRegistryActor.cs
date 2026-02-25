@@ -72,6 +72,11 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
 
         // Track agent ID mapping and health
         var agentId = message.AgentId ?? Sender.Path.Name;
+        if (_agentIdToRef.TryGetValue(agentId, out var existingRef) && !Equals(existingRef, Sender))
+        {
+            _agents.Remove(existingRef);
+            Context.Unwatch(existingRef);
+        }
         _agentIdToRef[agentId] = Sender;
 
         if (isNew)
@@ -268,13 +273,15 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
 
     private void RemoveAgent(string agentId)
     {
+        var removed = false;
         if (_agentIdToRef.TryGetValue(agentId, out var actorRef))
         {
-            _agents.Remove(actorRef);
+            removed |= _agents.Remove(actorRef);
             Context.Unwatch(actorRef);
         }
-        _health.Remove(agentId);
-        _agentIdToRef.Remove(agentId);
+        removed |= _health.Remove(agentId);
+        removed |= _agentIdToRef.Remove(agentId);
+        if (!removed) return;
 
         _blackboard?.Tell(new UpdateGlobalBlackboard(
             GlobalBlackboardKeys.AgentLeft(agentId),
