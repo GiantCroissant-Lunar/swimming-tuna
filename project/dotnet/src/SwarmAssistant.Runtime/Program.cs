@@ -942,6 +942,92 @@ if (options.A2AEnabled)
                 statusCode: StatusCodes.Status504GatewayTimeout);
         }
     }).AddEndpointFilter(requireApiKey);
+
+    app.MapPost("/a2a/messages", async (
+        PeerMessageSubmitDto dto,
+        RuntimeActorRegistry actorRegistry,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(dto.FromAgentId) || string.IsNullOrWhiteSpace(dto.ToAgentId) ||
+            string.IsNullOrWhiteSpace(dto.Type) || string.IsNullOrWhiteSpace(dto.Payload))
+        {
+            return Results.BadRequest(new { error = "Missing required fields" });
+        }
+
+        if (System.Text.Encoding.UTF8.GetByteCount(dto.Payload) > 65536)
+        {
+            return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+            {
+                Error = "Payload exceeds maximum size of 64KB",
+                ReasonCode = "payload_too_large"
+            }, statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+
+        var typeString = dto.Type.Replace("-", "");
+        if (!Enum.TryParse<PeerMessageType>(typeString, ignoreCase: true, out var messageType))
+        {
+            return Results.BadRequest(new { error = $"Invalid message type: {dto.Type}" });
+        }
+
+        var messageId = string.IsNullOrWhiteSpace(dto.MessageId)
+            ? $"msg-{Guid.NewGuid():N}"[..20]
+            : dto.MessageId.Trim();
+
+        var message = new PeerMessage(
+            MessageId: messageId,
+            FromAgentId: dto.FromAgentId,
+            ToAgentId: dto.ToAgentId,
+            Type: messageType,
+            Payload: dto.Payload,
+            ReplyTo: dto.ReplyTo,
+            Timestamp: DateTimeOffset.UtcNow);
+
+        if (!actorRegistry.TryGetAgentRegistry(out var registry))
+        {
+            return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+            {
+                Error = "Agent registry is not available",
+                ReasonCode = "registry_unavailable"
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        try
+        {
+            var ack = await registry.Ask<PeerMessageAck>(
+                new ForwardPeerMessage(message),
+                TimeSpan.FromSeconds(5),
+                cancellationToken);
+
+            if (!ack.Accepted && ack.Reason == "agent_not_found")
+            {
+                return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+                {
+                    Error = $"Agent not found: {dto.ToAgentId}",
+                    ReasonCode = "agent_not_found"
+                }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            var ackDto = new PeerMessageAckDto(ack.MessageId, ack.Accepted, ack.Reason);
+            return Results.Accepted(value: ackDto);
+        }
+        catch (TaskCanceledException)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+                {
+                    Error = "Request was cancelled",
+                    ReasonCode = "client_closed_request"
+                }, statusCode: 499);
+            }
+
+            return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+            {
+                Error = "Peer message forwarding timed out",
+                ReasonCode = "gateway_timeout"
+            }, statusCode: StatusCodes.Status504GatewayTimeout);
+        }
+    }).AddEndpointFilter(requireApiKey);
 }
 
 app.Run();

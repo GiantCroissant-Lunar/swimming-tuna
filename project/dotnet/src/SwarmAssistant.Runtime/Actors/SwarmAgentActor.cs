@@ -58,6 +58,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         Receive<HelpResponse>(_ => { });
         Receive<ContractNetBidRequest>(HandleContractNetBidRequest);
         Receive<ContractNetAward>(HandleContractNetAward);
+        Receive<PeerMessage>(HandlePeerMessage);
         if (idleTtl > TimeSpan.Zero)
         {
             Receive<ReceiveTimeout>(_ => OnIdleTimeout());
@@ -309,6 +310,28 @@ public sealed class SwarmAgentActor : ReceiveActor
             "Won contract for task {TaskId} role {Role}; awaiting execution message.",
             award.TaskId,
             award.Role);
+    }
+
+    private void HandlePeerMessage(PeerMessage message)
+    {
+        _logger.LogInformation(
+            "Peer message received messageId={MessageId} from={From} type={Type}",
+            message.MessageId,
+            message.FromAgentId,
+            message.Type);
+
+        using var activity = _telemetry.StartActivity(
+            "swarm-agent.peer.message",
+            tags: new Dictionary<string, object?>
+            {
+                ["peer.messageId"] = message.MessageId,
+                ["peer.fromAgentId"] = message.FromAgentId,
+                ["peer.toAgentId"] = message.ToAgentId,
+                ["peer.type"] = message.Type.ToString(),
+                ["actor.name"] = Self.Path.Name
+            });
+
+        Sender.Tell(new PeerMessageAck(message.MessageId, Accepted: true));
     }
 
     private bool TryConsumeReservedContract(string taskId)

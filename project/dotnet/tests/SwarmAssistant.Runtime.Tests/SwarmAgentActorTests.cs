@@ -313,6 +313,48 @@ public sealed class SwarmAgentActorTests : TestKit
         }, TimeSpan.FromSeconds(3), TimeSpan.FromMilliseconds(100));
     }
 
+    [Theory]
+    [InlineData(PeerMessageType.TaskRequest, "msg-001", "{ \"task\": \"test\" }")]
+    [InlineData(PeerMessageType.HelpRequest, "msg-002", "{ \"help\": \"needed\" }")]
+    [InlineData(PeerMessageType.Broadcast, "msg-003", "{ \"broadcast\": \"message\" }")]
+    public void PeerMessage_RepliesWithAck(PeerMessageType messageType, string messageId, string payload)
+    {
+        var agent = CreateTestAgent();
+
+        var message = new PeerMessage(
+            messageId,
+            "agent-sender",
+            "agent-receiver",
+            messageType,
+            payload);
+
+        agent.Tell(message);
+        var ack = ExpectMsg<PeerMessageAck>();
+        Assert.Equal(messageId, ack.MessageId);
+        Assert.True(ack.Accepted);
+    }
+
+    private IActorRef CreateTestAgent()
+    {
+        var options = CreateRuntimeOptions();
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
+        var telemetry = new RuntimeTelemetry(options, _loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
+
+        var agent = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+            options,
+            _loggerFactory,
+            engine,
+            telemetry,
+            registry,
+            new[] { SwarmRole.Builder },
+            default(TimeSpan),
+            null,
+            (int?)null)));
+        AwaitAgentRegistration(registry);
+        return agent;
+    }
+
     private void AwaitAgentRegistration(IActorRef registry)
     {
         AwaitAssert(() =>

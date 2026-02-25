@@ -26,6 +26,17 @@ export var Source;
     Source["Registry"] = "registry";
 })(Source || (Source = {}));
 /**
+ * Message type discriminator.
+ */
+export var Type;
+(function (Type) {
+    Type["Broadcast"] = "broadcast";
+    Type["HelpRequest"] = "help-request";
+    Type["HelpResponse"] = "help-response";
+    Type["TaskRequest"] = "task-request";
+    Type["TaskResponse"] = "task-response";
+})(Type || (Type = {}));
+/**
  * Action to perform. Supported values: `request_snapshot`, `refresh_surface`,
  * `submit_task`, `load_memory`, `approve_review`, `reject_review`, `request_rework`,
  * `pause_task`, `resume_task`, `approve_task`, `cancel_task`, `set_subtask_depth`.

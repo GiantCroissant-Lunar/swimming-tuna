@@ -11,6 +11,8 @@
 //    var errorEnvelope = ErrorEnvelope.FromJson(jsonString);
 //    var healthResponse = HealthResponse.FromJson(jsonString);
 //    var memoryTaskListResponse = MemoryTaskListResponse.FromJson(jsonString);
+//    var peerMessageAck = PeerMessageAck.FromJson(jsonString);
+//    var peerMessageSubmit = PeerMessageSubmit.FromJson(jsonString);
 //    var taskExecutionEvent = TaskExecutionEvent.FromJson(jsonString);
 //    var taskExecutionEventFeed = TaskExecutionEventFeed.FromJson(jsonString);
 //    var taskSnapshot = TaskSnapshot.FromJson(jsonString);
@@ -411,6 +413,74 @@ namespace SwarmAssistant.Contracts.Generated
     }
 
     /// <summary>
+    /// Acknowledgement response for peer message submission.
+    /// </summary>
+    public partial class PeerMessageAck
+    {
+        /// <summary>
+        /// Whether the message was accepted for delivery.
+        /// </summary>
+        [JsonProperty("accepted")]
+        public bool Accepted { get; set; }
+
+        /// <summary>
+        /// The message identifier (generated or provided).
+        /// </summary>
+        [JsonProperty("messageId")]
+        public string MessageId { get; set; }
+
+        /// <summary>
+        /// Optional reason for rejection or additional context.
+        /// </summary>
+        [JsonProperty("reason")]
+        public string Reason { get; set; }
+    }
+
+    /// <summary>
+    /// Peer-to-peer message submission request for agent communication.
+    /// </summary>
+    public partial class PeerMessageSubmit
+    {
+        /// <summary>
+        /// Identifier of the sending agent.
+        /// </summary>
+        [JsonProperty("fromAgentId")]
+        public string FromAgentId { get; set; }
+
+        /// <summary>
+        /// Optional message identifier. If not provided, will be auto-generated.
+        /// </summary>
+        [JsonProperty("messageId")]
+        public string MessageId { get; set; }
+
+        /// <summary>
+        /// Message payload content. Maximum 65536 bytes when UTF-8 encoded. Note: maxLength is a
+        /// character-length cap; true byte-length validation occurs at runtime.
+        /// </summary>
+        [JsonProperty("payload")]
+        [JsonConverter(typeof(MinMaxLengthCheckConverter))]
+        public string Payload { get; set; }
+
+        /// <summary>
+        /// Optional callback endpoint URL to receive replies.
+        /// </summary>
+        [JsonProperty("replyTo")]
+        public Uri ReplyTo { get; set; }
+
+        /// <summary>
+        /// Identifier of the recipient agent.
+        /// </summary>
+        [JsonProperty("toAgentId")]
+        public string ToAgentId { get; set; }
+
+        /// <summary>
+        /// Message type discriminator.
+        /// </summary>
+        [JsonProperty("type")]
+        public TypeEnum Type { get; set; }
+    }
+
+    /// <summary>
     /// Paginated feed of task execution events returned by replay endpoints.
     /// </summary>
     public partial class TaskExecutionEventFeed
@@ -622,6 +692,11 @@ namespace SwarmAssistant.Contracts.Generated
     public enum Source { Arcadedb, Registry };
 
     /// <summary>
+    /// Message type discriminator.
+    /// </summary>
+    public enum TypeEnum { Broadcast, HelpRequest, HelpResponse, TaskRequest, TaskResponse };
+
+    /// <summary>
     /// Action to perform. Supported values: `request_snapshot`, `refresh_surface`,
     /// `submit_task`, `load_memory`, `approve_review`, `reject_review`, `request_rework`,
     /// `pause_task`, `resume_task`, `approve_task`, `cancel_task`, `set_subtask_depth`.
@@ -661,6 +736,16 @@ namespace SwarmAssistant.Contracts.Generated
     public partial class MemoryTaskListResponse
     {
         public static MemoryTaskListResponse FromJson(string json) => JsonConvert.DeserializeObject<MemoryTaskListResponse>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
+    }
+
+    public partial class PeerMessageAck
+    {
+        public static PeerMessageAck FromJson(string json) => JsonConvert.DeserializeObject<PeerMessageAck>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
+    }
+
+    public partial class PeerMessageSubmit
+    {
+        public static PeerMessageSubmit FromJson(string json) => JsonConvert.DeserializeObject<PeerMessageSubmit>(json, SwarmAssistant.Contracts.Generated.Converter.Settings);
     }
 
     public partial class TaskExecutionEvent
@@ -712,6 +797,8 @@ namespace SwarmAssistant.Contracts.Generated
         public static string ToJson(this ErrorEnvelope self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this HealthResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this MemoryTaskListResponse self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
+        public static string ToJson(this PeerMessageAck self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
+        public static string ToJson(this PeerMessageSubmit self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this TaskExecutionEvent self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this TaskExecutionEventFeed self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
         public static string ToJson(this TaskSnapshot self) => JsonConvert.SerializeObject(self, SwarmAssistant.Contracts.Generated.Converter.Settings);
@@ -733,6 +820,7 @@ namespace SwarmAssistant.Contracts.Generated
                 StatusConverter.Singleton,
                 TaskStateEnumConverter.Singleton,
                 SourceConverter.Singleton,
+                TypeEnumConverter.Singleton,
                 ActionIdConverter.Singleton,
                 new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
             },
@@ -873,6 +961,90 @@ namespace SwarmAssistant.Contracts.Generated
         }
 
         public static readonly SourceConverter Singleton = new SourceConverter();
+    }
+
+    internal class MinMaxLengthCheckConverter : JsonConverter
+    {
+        public override bool CanConvert(Type t) => t == typeof(string);
+
+        public override object ReadJson(JsonReader reader, Type t, object existingValue, JsonSerializer serializer)
+        {
+            var value = serializer.Deserialize<string>(reader);
+            if (value.Length <= 65536)
+            {
+                return value;
+            }
+            throw new Exception("Cannot unmarshal type string");
+        }
+
+        public override void WriteJson(JsonWriter writer, object untypedValue, JsonSerializer serializer)
+        {
+            var value = (string)untypedValue;
+            if (value.Length <= 65536)
+            {
+                serializer.Serialize(writer, value);
+                return;
+            }
+            throw new Exception("Cannot marshal type string");
+        }
+
+        public static readonly MinMaxLengthCheckConverter Singleton = new MinMaxLengthCheckConverter();
+    }
+
+    internal class TypeEnumConverter : JsonConverter
+    {
+        public override bool CanConvert(Type t) => t == typeof(TypeEnum) || t == typeof(TypeEnum?);
+
+        public override object ReadJson(JsonReader reader, Type t, object existingValue, JsonSerializer serializer)
+        {
+            if (reader.TokenType == JsonToken.Null) return null;
+            var value = serializer.Deserialize<string>(reader);
+            switch (value)
+            {
+                case "broadcast":
+                    return TypeEnum.Broadcast;
+                case "help-request":
+                    return TypeEnum.HelpRequest;
+                case "help-response":
+                    return TypeEnum.HelpResponse;
+                case "task-request":
+                    return TypeEnum.TaskRequest;
+                case "task-response":
+                    return TypeEnum.TaskResponse;
+            }
+            throw new Exception("Cannot unmarshal type TypeEnum");
+        }
+
+        public override void WriteJson(JsonWriter writer, object untypedValue, JsonSerializer serializer)
+        {
+            if (untypedValue == null)
+            {
+                serializer.Serialize(writer, null);
+                return;
+            }
+            var value = (TypeEnum)untypedValue;
+            switch (value)
+            {
+                case TypeEnum.Broadcast:
+                    serializer.Serialize(writer, "broadcast");
+                    return;
+                case TypeEnum.HelpRequest:
+                    serializer.Serialize(writer, "help-request");
+                    return;
+                case TypeEnum.HelpResponse:
+                    serializer.Serialize(writer, "help-response");
+                    return;
+                case TypeEnum.TaskRequest:
+                    serializer.Serialize(writer, "task-request");
+                    return;
+                case TypeEnum.TaskResponse:
+                    serializer.Serialize(writer, "task-response");
+                    return;
+            }
+            throw new Exception("Cannot marshal type TypeEnum");
+        }
+
+        public static readonly TypeEnumConverter Singleton = new TypeEnumConverter();
     }
 
     internal class ActionIdConverter : JsonConverter

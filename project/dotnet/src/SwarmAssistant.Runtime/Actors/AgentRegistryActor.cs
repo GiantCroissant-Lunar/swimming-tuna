@@ -45,6 +45,10 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         Receive<DeregisterAgent>(HandleDeregister);
         Receive<QueryAgents>(HandleQuery);
         Receive<HeartbeatCheck>(_ => CheckHeartbeats());
+
+        // RFC-005: Peer-to-peer agent communication
+        Receive<ResolvePeerAgent>(HandleResolvePeerAgent);
+        Receive<ForwardPeerMessage>(HandleForwardPeerMessage);
     }
 
     protected override void PreStart()
@@ -408,6 +412,25 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         });
     }
 
+    private void EmitPeerMessageDashboardEvent(SwarmAssistant.Contracts.Messaging.PeerMessage message)
+    {
+        _uiEvents?.Publish("agui.dashboard.messages", null, new
+        {
+            protocol = "a2ui/v0.8",
+            operation = "updateDataModel",
+            surfaceType = "dashboard",
+            layer = "peer-messages",
+            data = new
+            {
+                messageId = message.MessageId,
+                fromAgentId = message.FromAgentId,
+                toAgentId = message.ToAgentId,
+                type = message.Type.ToString(),
+                timestamp = message.Timestamp ?? DateTimeOffset.UtcNow
+            }
+        });
+    }
+
     private static int ProviderCostRank(string? providerType) => providerType switch
     {
         "subscription" => 0,
@@ -440,5 +463,34 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         public HashSet<IActorRef> Candidates { get; } = candidates;
 
         public Dictionary<IActorRef, ContractNetBid> Bids { get; } = new();
+    }
+
+    private void HandleResolvePeerAgent(ResolvePeerAgent msg)
+    {
+        _logger.LogDebug("Resolving peer agent {AgentId}", msg.AgentId);
+
+        if (_agentIdToRef.TryGetValue(msg.AgentId, out var agentRef) && _agents.TryGetValue(agentRef, out var agentInfo))
+        {
+            Sender.Tell(new PeerAgentResolved(msg.AgentId, true, agentRef, agentInfo.EndpointUrl));
+        }
+        else
+        {
+            Sender.Tell(new PeerAgentResolved(msg.AgentId, false));
+        }
+    }
+
+    private void HandleForwardPeerMessage(ForwardPeerMessage msg)
+    {
+        _logger.LogDebug("Forwarding peer message {MessageId} to {ToAgentId}", msg.Message.MessageId, msg.Message.ToAgentId);
+
+        if (_agentIdToRef.TryGetValue(msg.Message.ToAgentId, out var targetRef))
+        {
+            targetRef.Tell(msg.Message, Sender);
+            EmitPeerMessageDashboardEvent(msg.Message);
+        }
+        else
+        {
+            Sender.Tell(new SwarmAssistant.Contracts.Messaging.PeerMessageAck(msg.Message.MessageId, false, "agent_not_found"));
+        }
     }
 }
