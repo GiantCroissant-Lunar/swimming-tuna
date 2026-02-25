@@ -138,6 +138,7 @@ public sealed class Worker : BackgroundService
         var capabilityRegistry = _actorSystem.ActorOf(
             Props.Create(() => new AgentRegistryActor(_loggerFactory, blackboardActor, _uiEvents)),
             "capability-registry");
+        _actorRegistry.SetAgentRegistry(capabilityRegistry);
 
         var capabilities = new[]
         {

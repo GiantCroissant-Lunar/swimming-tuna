@@ -202,6 +202,33 @@ public sealed class AgentRegistryActorTests : TestKit
         Assert.Equal(2, result.Agents.Count);
     }
 
+    [Fact]
+    public void AgentAdvertisement_IncludesProviderAndSandboxLevel()
+    {
+        var (registry, _, _) = CreateRegistry();
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            "akka://test/user/agent-01",
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "rich-agent-01")
+        {
+            Provider = new ProviderInfo { Adapter = "openai", Type = "api" },
+            SandboxLevel = SandboxLevel.Container,
+            Budget = new BudgetEnvelope { Type = BudgetType.Unlimited }
+        }, TestActor);
+
+        registry.Tell(new QueryAgents(null, null));
+        var result = ExpectMsg<QueryAgentsResult>();
+
+        var agent = result.Agents.FirstOrDefault(a => a.AgentId == "rich-agent-01");
+        Assert.NotNull(agent);
+        Assert.NotNull(agent.Provider);
+        Assert.Equal("openai", agent.Provider.Adapter);
+        Assert.Equal("api", agent.Provider.Type);
+        Assert.Equal(SandboxLevel.Container, agent.SandboxLevel);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
