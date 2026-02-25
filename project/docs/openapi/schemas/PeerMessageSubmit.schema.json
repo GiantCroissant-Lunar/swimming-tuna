@@ -38,14 +38,16 @@
     },
     "payload": {
       "type": "string",
-      "description": "Message payload content. Maximum 65536 bytes when UTF-8 encoded."
+      "description": "Message payload content. Maximum 65536 bytes when UTF-8 encoded. Note: maxLength is a character-length cap; true byte-length validation occurs at runtime.",
+      "maxLength": 65536
     },
     "replyTo": {
       "type": [
         "string",
         "null"
       ],
-      "description": "Optional message ID this message is replying to."
+      "description": "Optional callback endpoint URL to receive replies.",
+      "format": "uri"
     }
   }
 }

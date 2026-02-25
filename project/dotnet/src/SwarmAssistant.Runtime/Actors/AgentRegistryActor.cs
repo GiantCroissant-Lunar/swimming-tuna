@@ -486,7 +486,6 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         if (_agentIdToRef.TryGetValue(msg.Message.ToAgentId, out var targetRef))
         {
             targetRef.Tell(msg.Message, Sender);
-            Sender.Tell(new SwarmAssistant.Contracts.Messaging.PeerMessageAck(msg.Message.MessageId, true, null));
             EmitPeerMessageDashboardEvent(msg.Message);
         }
         else

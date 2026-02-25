@@ -291,11 +291,7 @@ public sealed class AgentRegistryActorTests : TestKit
 
         registry.Tell(new ForwardPeerMessage(peerMessage), TestActor);
 
-        var ack = ExpectMsg<PeerMessageAck>();
-        ack.MessageId.Should().Be("msg-123");
-        ack.Accepted.Should().BeTrue();
-        ack.Reason.Should().BeNull();
-
+        // Registry forwards to target; ack is sent by the target actor, not the registry
         var receivedMessage = targetProbe.ExpectMsg<PeerMessage>();
         receivedMessage.MessageId.Should().Be("msg-123");
         receivedMessage.FromAgentId.Should().Be("source-agent");

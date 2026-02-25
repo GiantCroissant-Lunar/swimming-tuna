@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: PeerMessage Contract Types
+## Task 1: PeerMessage Contract Types
 
 **Files:**
 - Create: `project/dotnet/src/SwarmAssistant.Contracts/Messaging/PeerMessages.cs`
@@ -996,7 +996,7 @@ Expected: "Models are up to date."
 **Step 3: Run full test suite**
 
 Run: `dotnet test project/dotnet/SwarmAssistant.sln --verbosity quiet`
-Expected: All tests PASS (454+ original + ~15 new = 469+ total).
+Expected: All tests PASS (454+ original + ~15 new = 471+ total).
 
 **Step 4: Run linters**
 

@@ -956,9 +956,11 @@ if (options.A2AEnabled)
 
         if (System.Text.Encoding.UTF8.GetByteCount(dto.Payload) > 65536)
         {
-            return Results.Problem(
-                detail: "Payload exceeds maximum size of 64KB",
-                statusCode: StatusCodes.Status413PayloadTooLarge);
+            return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+            {
+                Error = "Payload exceeds maximum size of 64KB",
+                ReasonCode = "payload_too_large"
+            }, statusCode: StatusCodes.Status413PayloadTooLarge);
         }
 
         var typeString = dto.Type.Replace("-", "");
@@ -967,7 +969,9 @@ if (options.A2AEnabled)
             return Results.BadRequest(new { error = $"Invalid message type: {dto.Type}" });
         }
 
-        var messageId = dto.MessageId ?? $"msg-{Guid.NewGuid():N}"[..20];
+        var messageId = string.IsNullOrWhiteSpace(dto.MessageId)
+            ? $"msg-{Guid.NewGuid():N}"[..20]
+            : dto.MessageId.Trim();
 
         var message = new PeerMessage(
             MessageId: messageId,
@@ -980,9 +984,11 @@ if (options.A2AEnabled)
 
         if (!actorRegistry.TryGetAgentRegistry(out var registry))
         {
-            return Results.Problem(
-                detail: "Agent registry is not available",
-                statusCode: StatusCodes.Status503ServiceUnavailable);
+            return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+            {
+                Error = "Agent registry is not available",
+                ReasonCode = "registry_unavailable"
+            }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
         try
@@ -994,7 +1000,11 @@ if (options.A2AEnabled)
 
             if (!ack.Accepted && ack.Reason == "agent_not_found")
             {
-                return Results.NotFound(new { error = $"Agent not found: {dto.ToAgentId}" });
+                return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+                {
+                    Error = $"Agent not found: {dto.ToAgentId}",
+                    ReasonCode = "agent_not_found"
+                }, statusCode: StatusCodes.Status404NotFound);
             }
 
             var ackDto = new PeerMessageAckDto(ack.MessageId, ack.Accepted, ack.Reason);
@@ -1004,14 +1014,18 @@ if (options.A2AEnabled)
         {
             if (cancellationToken.IsCancellationRequested)
             {
-                return Results.Problem(
-                    detail: "Request was cancelled",
-                    statusCode: 499);
+                return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+                {
+                    Error = "Request was cancelled",
+                    ReasonCode = "client_closed_request"
+                }, statusCode: 499);
             }
 
-            return Results.Problem(
-                detail: "Peer message forwarding timed out",
-                statusCode: StatusCodes.Status504GatewayTimeout);
+            return Results.Json(new SwarmAssistant.Contracts.Generated.ErrorEnvelope
+            {
+                Error = "Peer message forwarding timed out",
+                ReasonCode = "gateway_timeout"
+            }, statusCode: StatusCodes.Status504GatewayTimeout);
         }
     }).AddEndpointFilter(requireApiKey);
 }
