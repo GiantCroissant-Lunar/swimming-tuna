@@ -11,6 +11,6 @@ public sealed record BudgetEnvelope
     public double HardLimit { get; init; } = 1.0;
 
     public double RemainingFraction => TotalTokens > 0
-        ? 1.0 - ((double)UsedTokens / TotalTokens)
+        ? Math.Max(0.0, 1.0 - ((double)UsedTokens / TotalTokens))
         : 1.0;
 }

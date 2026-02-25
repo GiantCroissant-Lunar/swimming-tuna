@@ -15,7 +15,7 @@ public sealed class AgentRegistryActorTests : TestKit
     {
         var blackboard = Sys.ActorOf(Props.Create(() => new BlackboardActor(_loggerFactory)));
         var uiEvents = new UiEventStream();
-        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, blackboard, uiEvents)));
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, blackboard, uiEvents, 30)));
         return (registry, blackboard, uiEvents);
     }
 

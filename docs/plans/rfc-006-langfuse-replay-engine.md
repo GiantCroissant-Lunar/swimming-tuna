@@ -144,8 +144,8 @@ Proposed:  Agent → [executes] → Langfuse (traces, spans, scores, annotations
 
 When the reviewer accepts or rejects builder output, write a score to Langfuse:
 
-```
-POST /api/public/scores
+```json
+// POST /api/public/scores
 {
   "traceId": "run-001",
   "name": "reviewer_verdict",

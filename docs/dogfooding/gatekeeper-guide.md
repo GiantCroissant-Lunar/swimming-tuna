@@ -53,7 +53,7 @@ meaningful behavior and not just happy-path serialization.
 
 Use a commit message that credits the swarm and lists gatekeeper fixes:
 
-```
+```text
 feat(<scope>): <what was built>
 
 Swarm-produced (Copilot CLI via planner→builder→reviewer pipeline):
@@ -86,7 +86,7 @@ Tasks submitted to the swarm work best when:
 
 ## Workflow
 
-```
+```text
 1. Submit tasks to swarm via POST /a2a/tasks
 2. Monitor until all tasks reach terminal state
 3. Checkout the swarm/task-* branch
