@@ -8,7 +8,8 @@ public sealed class TaskLifecycleTests
     [Theory]
     [InlineData(TaskState.Queued, TaskState.Planning)]
     [InlineData(TaskState.Planning, TaskState.Building)]
-    [InlineData(TaskState.Building, TaskState.Reviewing)]
+    [InlineData(TaskState.Building, TaskState.Verifying)]
+    [InlineData(TaskState.Verifying, TaskState.Reviewing)]
     [InlineData(TaskState.Reviewing, TaskState.Done)]
     public void Next_SuccessfulProgression_MovesToExpectedStatus(TaskState current, TaskState expected)
     {

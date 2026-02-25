@@ -461,6 +461,7 @@ public sealed class InterventionReliabilityTests : TestKit
                 /* eventRecorder: */ null,
                 /* projectContext: */ null,
                 /* workspaceBranchManager: */ null,
+                /* buildVerifier: */ null,
                 /* sandboxEnforcer: */ null)));
 
         _registries[suffix] = registry;
@@ -496,6 +497,7 @@ public sealed class InterventionReliabilityTests : TestKit
                 uiEvents,
                 registry,
                 Options.Create(_options),
+                null,
                 null,
                 null,
                 null,

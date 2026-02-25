@@ -8,7 +8,7 @@ public sealed class GoapPlannerTests
     private readonly GoapPlanner _planner = new(SwarmActions.All);
 
     [Fact]
-    public void Plan_HappyPath_FindsPlanBuildReviewFinalize()
+    public void Plan_HappyPath_FindsPlanBuildVerifyReviewFinalize()
     {
         var state = (WorldState)new WorldState()
             .With(WorldKey.TaskExists, true);
@@ -17,13 +17,14 @@ public sealed class GoapPlannerTests
 
         Assert.False(result.DeadEnd);
         Assert.NotNull(result.RecommendedPlan);
-        Assert.True(result.RecommendedPlan.Count >= 4);
+        Assert.True(result.RecommendedPlan.Count >= 5);
 
         var names = result.RecommendedPlan.Select(a => a.Name).ToList();
         Assert.Equal("Plan", names[0]);
         Assert.Equal("Build", names[1]);
-        Assert.Equal("Review", names[2]);
-        Assert.Equal("Finalize", names[3]);
+        Assert.Equal("Verify", names[2]);
+        Assert.Equal("Review", names[3]);
+        Assert.Equal("Finalize", names[4]);
     }
 
     [Fact]
@@ -46,6 +47,7 @@ public sealed class GoapPlannerTests
             .With(WorldKey.TaskExists, true)
             .With(WorldKey.PlanExists, true)
             .With(WorldKey.BuildExists, true)
+            .With(WorldKey.BuildCompiles, true)
             .With(WorldKey.ReviewRejected, true);
 
         var result = _planner.Plan(state, SwarmActions.CompleteTask);
@@ -55,6 +57,7 @@ public sealed class GoapPlannerTests
 
         var names = result.RecommendedPlan.Select(a => a.Name).ToList();
         Assert.Contains("Rework", names);
+        Assert.Contains("Verify", names);
         Assert.Contains("Review", names);
         Assert.Contains("Finalize", names);
     }
@@ -116,10 +119,11 @@ public sealed class GoapPlannerTests
         var names = result.RecommendedPlan.Select(a => a.Name).ToList();
         Assert.DoesNotContain("Plan", names);
         Assert.Equal("Build", names[0]);
+        Assert.Equal("Verify", names[1]);
     }
 
     [Fact]
-    public void Plan_BuildAndPlanExist_StartFromReview()
+    public void Plan_BuildAndPlanExist_StartFromVerify()
     {
         var state = (WorldState)new WorldState()
             .With(WorldKey.TaskExists, true)
@@ -132,8 +136,9 @@ public sealed class GoapPlannerTests
         Assert.NotNull(result.RecommendedPlan);
 
         var names = result.RecommendedPlan.Select(a => a.Name).ToList();
-        Assert.Equal("Review", names[0]);
-        Assert.Equal("Finalize", names[1]);
+        Assert.Equal("Verify", names[0]);
+        Assert.Equal("Review", names[1]);
+        Assert.Equal("Finalize", names[2]);
     }
 
     [Fact]
@@ -157,6 +162,7 @@ public sealed class GoapPlannerTests
             .With(WorldKey.TaskExists, true)
             .With(WorldKey.PlanExists, true)
             .With(WorldKey.BuildExists, true)
+            .With(WorldKey.BuildCompiles, true)
             .With(WorldKey.ReviewRejected, true);
 
         var result = _planner.Plan(state, SwarmActions.CompleteTask);
@@ -169,7 +175,7 @@ public sealed class GoapPlannerTests
     [Fact]
     public void Plan_CostOptimization_PrefersCheaperPath()
     {
-        // The happy path (Plan→Build→Review→Finalize = 1+3+2+1=7) should be
+        // The happy path (Plan→Build→Verify→Review→Finalize = 1+3+2+2+1=9) should be
         // preferred over paths involving Rework (cost 4)
         var state = (WorldState)new WorldState()
             .With(WorldKey.TaskExists, true);
@@ -178,6 +184,6 @@ public sealed class GoapPlannerTests
 
         Assert.NotNull(result.RecommendedPlan);
         var totalCost = result.RecommendedPlan.Sum(a => a.Cost);
-        Assert.Equal(7, totalCost);
+        Assert.Equal(9, totalCost);
     }
 }

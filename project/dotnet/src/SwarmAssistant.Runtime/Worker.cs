@@ -300,6 +300,15 @@ public sealed class Worker : BackgroundService
             containerAvailable: string.Equals(_options.SandboxMode, "docker", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(_options.SandboxMode, "apple-container", StringComparison.OrdinalIgnoreCase));
 
+        BuildVerifier? buildVerifier = null;
+        if (!string.IsNullOrWhiteSpace(_options.VerifySolutionPath))
+        {
+            buildVerifier = new BuildVerifier(
+                _options.VerifySolutionPath,
+                _loggerFactory.CreateLogger<BuildVerifier>());
+            _logger.LogInformation("BuildVerifier enabled solutionPath={SolutionPath}", _options.VerifySolutionPath);
+        }
+
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
                 capabilityRegistry,
@@ -319,6 +328,7 @@ public sealed class Worker : BackgroundService
                 codeIndexActor,
                 projectContext,
                 workspaceBranchManager,
+                buildVerifier,
                 sandboxEnforcer)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);

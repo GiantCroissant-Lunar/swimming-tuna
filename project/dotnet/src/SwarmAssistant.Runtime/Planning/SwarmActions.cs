@@ -15,6 +15,7 @@ public static class SwarmActions
     {
         public const int Plan = 1;
         public const int Build = 3;
+        public const int Verify = 2;
         public const int Review = 2;
         public const int Rework = 4;
         public const int Escalate = 10;
@@ -46,11 +47,24 @@ public static class SwarmActions
         },
         cost: BaseCosts.Build);
 
+    public static readonly IGoapAction Verify = new GoapAction(
+        name: "Verify",
+        preconditions: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.BuildExists] = true,
+        },
+        effects: new Dictionary<WorldKey, bool>
+        {
+            [WorldKey.BuildCompiles] = true,
+        },
+        cost: BaseCosts.Verify);
+
     public static readonly IGoapAction Review = new GoapAction(
         name: "Review",
         preconditions: new Dictionary<WorldKey, bool>
         {
             [WorldKey.BuildExists] = true,
+            [WorldKey.BuildCompiles] = true,
             [WorldKey.ReviewRejected] = false,
         },
         effects: new Dictionary<WorldKey, bool>
@@ -84,6 +98,7 @@ public static class SwarmActions
         effects: new Dictionary<WorldKey, bool>
         {
             [WorldKey.BuildExists] = true,
+            [WorldKey.BuildCompiles] = false,
             [WorldKey.ReviewRejected] = false,
             [WorldKey.ReworkAttempted] = true,
         },
@@ -140,7 +155,7 @@ public static class SwarmActions
         },
         cost: 1);
 
-    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Review, SecondOpinion, Rework, Escalate, Finalize, WaitForSubTasks, Negotiate];
+    public static IReadOnlyList<IGoapAction> All { get; } = [Plan, Build, Verify, Review, SecondOpinion, Rework, Escalate, Finalize, WaitForSubTasks, Negotiate];
 
     /// <summary>
     /// Creates a new set of actions with adjusted costs based on learning data.
@@ -162,6 +177,7 @@ public static class SwarmActions
         [
             CreateWithAdjustedCost(Plan, BaseCosts.Plan, costAdjustments),
             CreateWithAdjustedCost(Build, BaseCosts.Build, costAdjustments),
+            CreateWithAdjustedCost(Verify, BaseCosts.Verify, costAdjustments),
             CreateWithAdjustedCost(Review, BaseCosts.Review, costAdjustments),
             CreateWithAdjustedCost(Rework, BaseCosts.Rework, costAdjustments),
             CreateWithAdjustedCost(Escalate, BaseCosts.Escalate, costAdjustments),
