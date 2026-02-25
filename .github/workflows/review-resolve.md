@@ -19,6 +19,7 @@ tools:
 safe-outputs:
   create-pull-request:
     max: 1
+    base-branch: "${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}"
     title-prefix: "fix(review): "
     labels: [review-fix, automated]
     draft: false
