@@ -1,6 +1,8 @@
 name: Emit Bot PR Review (E2E Probe)
 
 on:
+  pull_request:
+    types: [opened, synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -14,6 +16,7 @@ permissions:
 
 jobs:
   emit_review:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 143
     runs-on: ubuntu-latest
     steps:
       - name: Emit inline bot review comment
@@ -22,7 +25,9 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const pull_number = Number(core.getInput('pr_number'));
+            const pull_number = context.eventName === 'workflow_dispatch'
+              ? Number(core.getInput('pr_number'))
+              : context.payload.pull_request.number;
 
             const pr = await github.rest.pulls.get({ owner, repo, pull_number });
 
