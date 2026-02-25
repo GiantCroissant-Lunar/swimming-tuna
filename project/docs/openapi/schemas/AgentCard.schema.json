@@ -44,18 +44,33 @@
     "sandboxLevel": {
       "type": "integer",
       "description": "Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container",
-      "enum": [0, 1, 2]
+      "enum": [
+        0,
+        1,
+        2
+      ]
     },
     "sandboxRequirements": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
-        "needsOAuth": { "type": "boolean" },
-        "needsKeychain": { "type": "boolean" },
+        "needsOAuth": {
+          "type": "boolean"
+        },
+        "needsKeychain": {
+          "type": "boolean"
+        },
         "needsNetwork": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "needsGpuAccess": { "type": "boolean" }
+        "needsGpuAccess": {
+          "type": "boolean"
+        }
       }
     }
   }

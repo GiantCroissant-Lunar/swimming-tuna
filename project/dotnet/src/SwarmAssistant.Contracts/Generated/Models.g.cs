@@ -117,8 +117,32 @@ namespace SwarmAssistant.Contracts.Generated
         [JsonProperty("protocol")]
         public string Protocol { get; set; }
 
+        /// <summary>
+        /// Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container
+        /// </summary>
+        [JsonProperty("sandboxLevel", NullValueHandling = NullValueHandling.Ignore)]
+        public long? SandboxLevel { get; set; }
+
+        [JsonProperty("sandboxRequirements")]
+        public SandboxRequirements SandboxRequirements { get; set; }
+
         [JsonProperty("version")]
         public string Version { get; set; }
+    }
+
+    public partial class SandboxRequirements
+    {
+        [JsonProperty("needsGpuAccess", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? NeedsGpuAccess { get; set; }
+
+        [JsonProperty("needsKeychain", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? NeedsKeychain { get; set; }
+
+        [JsonProperty("needsNetwork", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> NeedsNetwork { get; set; }
+
+        [JsonProperty("needsOAuth", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? NeedsOAuth { get; set; }
     }
 
     /// <summary>

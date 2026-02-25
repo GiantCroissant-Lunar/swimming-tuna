@@ -461,6 +461,25 @@ components:
           additionalProperties:
             type: string
           description: Named endpoint URLs exposed by this agent.
+        sandboxLevel:
+          type: integer
+          description: "Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container"
+          enum: [0, 1, 2]
+        sandboxRequirements:
+          type:
+            - object
+            - "null"
+          properties:
+            needsOAuth:
+              type: boolean
+            needsKeychain:
+              type: boolean
+            needsNetwork:
+              type: array
+              items:
+                type: string
+            needsGpuAccess:
+              type: boolean
 
   responses:
     Unauthorized:
