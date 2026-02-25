@@ -99,6 +99,15 @@ public sealed class SwarmAgentActor : ReceiveActor
             }
         }
 
+        // Schedule heartbeat
+        var heartbeatInterval = TimeSpan.FromSeconds(_options.AgentHeartbeatIntervalSeconds);
+        Context.System.Scheduler.ScheduleTellRepeatedly(
+            heartbeatInterval,
+            heartbeatInterval,
+            _capabilityRegistry,
+            new AgentHeartbeat(_agentId),
+            Self);
+
         base.PreStart();
     }
 
@@ -327,11 +336,26 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     private void AdvertiseCapability()
     {
+        var provider = new ProviderInfo
+        {
+            Adapter = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
+            Type = _options.AgentFrameworkExecutionMode == "subscription-cli-fallback"
+                ? "subscription"
+                : "api"
+        };
+
+        var budget = new BudgetEnvelope { Type = BudgetType.Unlimited };
+
         _capabilityRegistry.Tell(new AgentCapabilityAdvertisement(
             Self.Path.ToStringWithoutAddress(),
             _capabilities,
             _currentLoad,
             AgentId: _agentId,
-            EndpointUrl: _endpointHost?.BaseUrl), Self);
+            EndpointUrl: _endpointHost?.BaseUrl)
+        {
+            Provider = provider,
+            SandboxLevel = _options.SandboxLevel,
+            Budget = budget
+        }, Self);
     }
 }
