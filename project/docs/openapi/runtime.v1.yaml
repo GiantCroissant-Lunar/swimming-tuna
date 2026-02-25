@@ -489,7 +489,6 @@ components:
         - agentId
         - capabilities
         - status
-        - provider
         - sandboxLevel
         - registeredAt
         - lastHeartbeat
@@ -508,7 +507,9 @@ components:
           type: string
           description: Current operational status of the agent.
         provider:
-          type: object
+          type:
+            - object
+            - "null"
           description: Provider configuration for the agent runtime.
           properties:
             adapter:
@@ -845,8 +846,26 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AgentRegistryEntry"
+        "400":
+          description: Invalid capability parameter value.
+          content:
+            application/json:
+              schema:
+                type: object
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Agent registry is unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+        "504":
+          description: Agent registry query timed out.
+          content:
+            application/json:
+              schema:
+                type: object
 
   /a2a/tasks:
     get:

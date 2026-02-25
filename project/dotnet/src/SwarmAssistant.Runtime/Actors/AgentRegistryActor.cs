@@ -258,7 +258,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         }
     }
 
-    private void HandleDeregister(DeregisterAgent message)
+    private void HandleDeregister(DeregisterAgent message, bool isEviction = false)
     {
         if (_agentIdToRef.TryGetValue(message.AgentId, out var actorRef))
         {
@@ -268,7 +268,10 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         _health.Remove(message.AgentId);
         _agentIdToRef.Remove(message.AgentId);
 
-        _logger.LogInformation("Agent {AgentId} deregistered (graceful)", message.AgentId);
+        if (isEviction)
+            _logger.LogInformation("Agent {AgentId} deregistered (evicted)", message.AgentId);
+        else
+            _logger.LogInformation("Agent {AgentId} deregistered (graceful)", message.AgentId);
 
         _blackboard?.Tell(new UpdateGlobalBlackboard(
             GlobalBlackboardKeys.AgentLeft(message.AgentId),
@@ -327,22 +330,16 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         foreach (var (agentId, state) in _health)
         {
             var elapsed = now - state.LastHeartbeat;
-            if (elapsed > TimeSpan.FromSeconds(90)) // 3x the 30s interval
+            if (elapsed > TimeSpan.FromSeconds(90)) // 3x the 30s interval — evict immediately
             {
-                var updated = state with { ConsecutiveFailures = state.ConsecutiveFailures + 1 };
-                _health[agentId] = updated;
-
-                if (updated.ConsecutiveFailures >= MaxMissedHeartbeats)
-                {
-                    toEvict.Add(agentId);
-                }
+                toEvict.Add(agentId);
             }
         }
 
         foreach (var agentId in toEvict)
         {
             _logger.LogWarning("Evicting agent {AgentId} after {Max} missed heartbeats", agentId, MaxMissedHeartbeats);
-            HandleDeregister(new DeregisterAgent(agentId));
+            HandleDeregister(new DeregisterAgent(agentId), isEviction: true);
         }
     }
 
@@ -368,7 +365,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
                 return new
                 {
                     agentId,
-                    role = ad.Capabilities.FirstOrDefault().ToString().ToLowerInvariant(),
+                    role = ad.Capabilities.Count > 0 ? ad.Capabilities[0].ToString().ToLowerInvariant() : "unknown",
                     status,
                     provider = providerDisplay,
                     budgetDisplay,
