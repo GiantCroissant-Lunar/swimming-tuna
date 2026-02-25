@@ -1,5 +1,6 @@
 using Akka.Actor;
 using Akka.TestKit.Xunit2;
+using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
@@ -227,6 +228,132 @@ public sealed class AgentRegistryActorTests : TestKit
         Assert.Equal("openai", agent.Provider.Adapter);
         Assert.Equal("api", agent.Provider.Type);
         Assert.Equal(SandboxLevel.Container, agent.SandboxLevel);
+    }
+
+    [Fact]
+    public void ResolvePeerAgent_ReturnsRefForRegisteredAgent()
+    {
+        var (registry, _, _) = CreateRegistry();
+        var agentProbe = CreateTestProbe();
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            agentProbe.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "agent-1",
+            endpointUrl: "http://localhost:5001"
+        ), agentProbe);
+
+        registry.Tell(new ResolvePeerAgent("agent-1"), TestActor);
+
+        var response = ExpectMsg<PeerAgentResolved>();
+        response.AgentId.Should().Be("agent-1");
+        response.Found.Should().BeTrue();
+        response.AgentRef.Should().Be(agentProbe);
+        response.EndpointUrl.Should().Be("http://localhost:5001");
+    }
+
+    [Fact]
+    public void ResolvePeerAgent_ReturnsNotFoundForUnknownAgent()
+    {
+        var (registry, _, _) = CreateRegistry();
+
+        registry.Tell(new ResolvePeerAgent("unknown-agent"), TestActor);
+
+        var response = ExpectMsg<PeerAgentResolved>();
+        response.AgentId.Should().Be("unknown-agent");
+        response.Found.Should().BeFalse();
+        response.AgentRef.Should().BeNull();
+        response.EndpointUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public void ForwardPeerMessage_DeliversToTargetAgent()
+    {
+        var (registry, _, _) = CreateRegistry();
+        var targetProbe = CreateTestProbe();
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            targetProbe.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "target-agent",
+            endpointUrl: "http://localhost:5001"
+        ), targetProbe);
+
+        var peerMessage = new PeerMessage(
+            "msg-123",
+            "source-agent",
+            "target-agent",
+            PeerMessageType.Broadcast,
+            "test-payload"
+        );
+
+        registry.Tell(new ForwardPeerMessage(peerMessage), TestActor);
+
+        var ack = ExpectMsg<PeerMessageAck>();
+        ack.MessageId.Should().Be("msg-123");
+        ack.Accepted.Should().BeTrue();
+        ack.Reason.Should().BeNull();
+
+        var receivedMessage = targetProbe.ExpectMsg<PeerMessage>();
+        receivedMessage.MessageId.Should().Be("msg-123");
+        receivedMessage.FromAgentId.Should().Be("source-agent");
+        receivedMessage.ToAgentId.Should().Be("target-agent");
+        receivedMessage.Payload.Should().Be("test-payload");
+    }
+
+    [Fact]
+    public void ForwardPeerMessage_ReturnsNotFoundForUnknownAgent()
+    {
+        var (registry, _, _) = CreateRegistry();
+
+        var peerMessage = new PeerMessage(
+            "msg-456",
+            "source-agent",
+            "unknown-agent",
+            PeerMessageType.Broadcast,
+            "test-payload"
+        );
+
+        registry.Tell(new ForwardPeerMessage(peerMessage), TestActor);
+
+        var ack = ExpectMsg<PeerMessageAck>();
+        ack.MessageId.Should().Be("msg-456");
+        ack.Accepted.Should().BeFalse();
+        ack.Reason.Should().Be("agent_not_found");
+    }
+
+    [Fact]
+    public void ForwardPeerMessage_EmitsAgUiDashboardEvent()
+    {
+        var (registry, _, uiEvents) = CreateRegistry();
+
+        var targetProbe = CreateTestProbe();
+        registry.Tell(new AgentCapabilityAdvertisement(
+            targetProbe.Ref.Path.ToStringWithAddress(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "target-agent")
+        );
+
+        var peerMessage = new SwarmAssistant.Contracts.Messaging.PeerMessage(
+            MessageId: "msg-789",
+            FromAgentId: "sender-agent",
+            ToAgentId: "target-agent",
+            Type: PeerMessageType.TaskRequest,
+            Payload: "{\"message\":\"Hello\"}",
+            ReplyTo: null,
+            Timestamp: DateTimeOffset.UtcNow
+        );
+
+        registry.Tell(new ForwardPeerMessage(peerMessage));
+
+        AwaitAssert(() =>
+        {
+            var recent = uiEvents.GetRecent(10);
+            Assert.Contains(recent, e => e.Type == "agui.dashboard.messages");
+        }, TimeSpan.FromSeconds(3), TimeSpan.FromMilliseconds(100));
     }
 
     protected override void Dispose(bool disposing)

@@ -300,6 +300,67 @@ export enum Source {
 }
 
 /**
+ * Acknowledgement response for peer message submission.
+ */
+export interface PeerMessageACK {
+    /**
+     * Whether the message was accepted for delivery.
+     */
+    accepted: boolean;
+    /**
+     * The message identifier (generated or provided).
+     */
+    messageId: string;
+    /**
+     * Optional reason for rejection or additional context.
+     */
+    reason?: null | string;
+    [property: string]: any;
+}
+
+/**
+ * Peer-to-peer message submission request for agent communication.
+ */
+export interface PeerMessageSubmit {
+    /**
+     * Identifier of the sending agent.
+     */
+    fromAgentId: string;
+    /**
+     * Optional message identifier. If not provided, will be auto-generated.
+     */
+    messageId?: null | string;
+    /**
+     * Message payload content. Maximum 65536 bytes when UTF-8 encoded.
+     */
+    payload: string;
+    /**
+     * Optional message ID this message is replying to.
+     */
+    replyTo?: null | string;
+    /**
+     * Identifier of the recipient agent.
+     */
+    toAgentId: string;
+    /**
+     * Message type discriminator.
+     */
+    type: Type;
+    [property: string]: any;
+}
+
+/**
+ * Message type discriminator.
+ */
+export enum Type {
+    Broadcast = "broadcast",
+    HelpRequest = "help-request",
+    HelpResponse = "help-response",
+    TaskRequest = "task-request",
+    TaskResponse = "task-response",
+}
+
+/**
  * Paginated feed of task execution events returned by replay endpoints.
  */
 export interface TaskExecutionEventFeed {

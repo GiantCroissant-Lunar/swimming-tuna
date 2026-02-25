@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PeerMessageSubmit",
+  "type": "object",
+  "description": "Peer-to-peer message submission request for agent communication.",
+  "required": [
+    "fromAgentId",
+    "toAgentId",
+    "type",
+    "payload"
+  ],
+  "properties": {
+    "messageId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional message identifier. If not provided, will be auto-generated."
+    },
+    "fromAgentId": {
+      "type": "string",
+      "description": "Identifier of the sending agent."
+    },
+    "toAgentId": {
+      "type": "string",
+      "description": "Identifier of the recipient agent."
+    },
+    "type": {
+      "type": "string",
+      "description": "Message type discriminator.",
+      "enum": [
+        "task-request",
+        "task-response",
+        "help-request",
+        "help-response",
+        "broadcast"
+      ]
+    },
+    "payload": {
+      "type": "string",
+      "description": "Message payload content. Maximum 65536 bytes when UTF-8 encoded."
+    },
+    "replyTo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional message ID this message is replying to."
+    }
+  }
+}

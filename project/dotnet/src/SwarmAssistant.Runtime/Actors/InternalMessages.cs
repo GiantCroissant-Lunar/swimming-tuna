@@ -263,3 +263,10 @@ internal sealed record DispatchWithCodeContext(
     string ActionName,
     CodeIndexResult? CodeContext = null
 );
+
+// RFC-005: Peer-to-peer agent communication
+internal sealed record ResolvePeerAgent(string AgentId);
+
+internal sealed record PeerAgentResolved(string AgentId, bool Found, IActorRef? AgentRef = null, string? EndpointUrl = null);
+
+internal sealed record ForwardPeerMessage(SwarmAssistant.Contracts.Messaging.PeerMessage Message);

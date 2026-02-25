@@ -482,6 +482,63 @@ components:
               type: boolean
 
     # ── A2A agent registry entry ───────────────────────────────────────────
+    PeerMessageSubmit:
+      type: object
+      description: Peer-to-peer message submission request for agent communication.
+      required:
+        - fromAgentId
+        - toAgentId
+        - type
+        - payload
+      properties:
+        messageId:
+          type:
+            - string
+            - "null"
+          description: Optional message identifier. If not provided, will be auto-generated.
+        fromAgentId:
+          type: string
+          description: Identifier of the sending agent.
+        toAgentId:
+          type: string
+          description: Identifier of the recipient agent.
+        type:
+          type: string
+          description: Message type discriminator.
+          enum:
+            - task-request
+            - task-response
+            - help-request
+            - help-response
+            - broadcast
+        payload:
+          type: string
+          description: Message payload content. Maximum 65536 bytes when UTF-8 encoded.
+        replyTo:
+          type:
+            - string
+            - "null"
+          description: Optional message ID this message is replying to.
+
+    PeerMessageAck:
+      type: object
+      description: Acknowledgement response for peer message submission.
+      required:
+        - messageId
+        - accepted
+      properties:
+        messageId:
+          type: string
+          description: The message identifier (generated or provided).
+        accepted:
+          type: boolean
+          description: Whether the message was accepted for delivery.
+        reason:
+          type:
+            - string
+            - "null"
+          description: Optional reason for rejection or additional context.
+
     AgentRegistryEntry:
       type: object
       description: Runtime registry entry describing a discovered or registered agent instance.
@@ -857,6 +914,59 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
+
+  /a2a/messages:
+    post:
+      operationId: submitPeerMessage
+      summary: Submit a peer-to-peer message
+      description: >
+        Forwards a message from one agent to another via the agent registry.
+        The message will be queued for delivery to the target agent.
+      tags:
+        - A2A
+      security:
+        - ApiKeyAuth: []
+        - {}
+      requestBody:
+        description: Peer message submission payload.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeerMessageSubmit"
+      responses:
+        "202":
+          description: Message accepted for delivery.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerMessageAck"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Target agent not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Payload too large (exceeds 64KB limit).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "499":
+          description: Client closed request (cancellation).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "504":

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PeerMessageAck",
+  "type": "object",
+  "description": "Acknowledgement response for peer message submission.",
+  "required": [
+    "messageId",
+    "accepted"
+  ],
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "description": "The message identifier (generated or provided)."
+    },
+    "accepted": {
+      "type": "boolean",
+      "description": "Whether the message was accepted for delivery."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional reason for rejection or additional context."
+    }
+  }
+}
