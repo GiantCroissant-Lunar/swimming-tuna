@@ -433,13 +433,46 @@ public sealed class Worker : BackgroundService
             var totalAgents = _fixedPoolSize + _dynamicAgentCount;
             if (activeTasks > _options.ScaleUpThreshold && totalAgents < _options.MaxPoolSize)
             {
-                _dynamicAgentCount++;
-                _dispatcher.Tell(new SpawnAgent(AllRoles, TimeSpan.FromMinutes(5)));
-                _logger.LogInformation(
-                    "Auto-scale up: spawning dynamic agent activeTasks={ActiveTasks} threshold={Threshold} totalAgents={TotalAgents}",
-                    activeTasks,
-                    _options.ScaleUpThreshold,
-                    totalAgents + 1);
+                var shouldSpawn = true;
+                if (_options.BudgetEnabled &&
+                    _actorRegistry.TryGetAgentRegistry(out var registry) &&
+                    registry is not null)
+                {
+                    try
+                    {
+                        var agents = await registry.Ask<QueryAgentsResult>(
+                            new QueryAgents(AllRoles, null),
+                            TimeSpan.FromSeconds(2),
+                            cancellationToken);
+                        var nonExhausted = agents.Agents
+                            .Where(a => a.Budget?.IsExhausted != true)
+                            .ToArray();
+                        var allLowBudget = nonExhausted.Length > 0 &&
+                                           nonExhausted.All(a => a.Budget?.IsLowBudget == true);
+                        shouldSpawn = nonExhausted.Length == 0 || allLowBudget;
+                        _logger.LogDebug(
+                            "Auto-scale budget gate activeTasks={ActiveTasks} nonExhausted={NonExhausted} allLowBudget={AllLowBudget} shouldSpawn={ShouldSpawn}",
+                            activeTasks,
+                            nonExhausted.Length,
+                            allLowBudget,
+                            shouldSpawn);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Auto-scale budget gate failed; falling back to default scale-up behavior.");
+                    }
+                }
+
+                if (shouldSpawn)
+                {
+                    _dynamicAgentCount++;
+                    _dispatcher.Tell(new SpawnAgent(AllRoles, TimeSpan.FromMinutes(5)));
+                    _logger.LogInformation(
+                        "Auto-scale up: spawning dynamic agent activeTasks={ActiveTasks} threshold={Threshold} totalAgents={TotalAgents}",
+                        activeTasks,
+                        _options.ScaleUpThreshold,
+                        totalAgents + 1);
+                }
             }
         }
     }

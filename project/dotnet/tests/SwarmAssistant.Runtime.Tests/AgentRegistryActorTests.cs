@@ -135,6 +135,127 @@ public sealed class AgentRegistryActorTests : TestKit
     }
 
     [Fact]
+    public void ExecuteRoleTask_SkipsExhaustedBudgetAgents()
+    {
+        var (registry, _, _) = CreateRegistry();
+
+        var exhausted = CreateTestProbe();
+        var active = CreateTestProbe();
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            exhausted.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "builder-exhausted")
+        {
+            Budget = new BudgetEnvelope
+            {
+                Type = BudgetType.TokenLimited,
+                TotalTokens = 100,
+                UsedTokens = 100,
+                WarningThreshold = 0.8,
+                HardLimit = 1.0
+            }
+        }, exhausted);
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            active.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "builder-active")
+        {
+            Budget = new BudgetEnvelope
+            {
+                Type = BudgetType.TokenLimited,
+                TotalTokens = 100,
+                UsedTokens = 20,
+                WarningThreshold = 0.8,
+                HardLimit = 1.0
+            }
+        }, active);
+
+        registry.Tell(new ExecuteRoleTask("task-budget-1", SwarmRole.Builder, "t", "d", null, null), TestActor);
+
+        active.ExpectMsg<ExecuteRoleTask>(TimeSpan.FromSeconds(2));
+        exhausted.ExpectNoMsg(TimeSpan.FromMilliseconds(200));
+    }
+
+    [Fact]
+    public void ExecuteRoleTask_PrefersHealthyBudgetOverLowBudget()
+    {
+        var (registry, _, _) = CreateRegistry();
+
+        var lowBudget = CreateTestProbe();
+        var healthyBudget = CreateTestProbe();
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            lowBudget.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "builder-low")
+        {
+            Budget = new BudgetEnvelope
+            {
+                Type = BudgetType.TokenLimited,
+                TotalTokens = 100,
+                UsedTokens = 90,
+                WarningThreshold = 0.8,
+                HardLimit = 1.0
+            }
+        }, lowBudget);
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            healthyBudget.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "builder-healthy")
+        {
+            Budget = new BudgetEnvelope
+            {
+                Type = BudgetType.TokenLimited,
+                TotalTokens = 100,
+                UsedTokens = 10,
+                WarningThreshold = 0.8,
+                HardLimit = 1.0
+            }
+        }, healthyBudget);
+
+        registry.Tell(new ExecuteRoleTask("task-budget-2", SwarmRole.Builder, "t", "d", null, null), TestActor);
+
+        healthyBudget.ExpectMsg<ExecuteRoleTask>(TimeSpan.FromSeconds(2));
+        lowBudget.ExpectNoMsg(TimeSpan.FromMilliseconds(200));
+        Assert.True(new BudgetEnvelope { Type = BudgetType.TokenLimited, TotalTokens = 100, UsedTokens = 90, WarningThreshold = 0.8, HardLimit = 1.0 }.IsLowBudget);
+    }
+
+    [Fact]
+    public void ExecuteRoleTask_WhenAllCandidatesExhausted_ReturnsBudgetFailure()
+    {
+        var (registry, _, _) = CreateRegistry();
+        var exhausted = CreateTestProbe();
+
+        registry.Tell(new AgentCapabilityAdvertisement(
+            exhausted.Ref.Path.ToString(),
+            new[] { SwarmRole.Builder },
+            0,
+            agentId: "builder-exhausted")
+        {
+            Budget = new BudgetEnvelope
+            {
+                Type = BudgetType.TokenLimited,
+                TotalTokens = 100,
+                UsedTokens = 100,
+                WarningThreshold = 0.8,
+                HardLimit = 1.0
+            }
+        }, exhausted);
+
+        registry.Tell(new ExecuteRoleTask("task-budget-3", SwarmRole.Builder, "t", "d", null, null), TestActor);
+
+        var failed = ExpectMsg<RoleTaskFailed>(TimeSpan.FromSeconds(2));
+        Assert.Contains("budget exhausted", failed.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Register_EmitsAgUiDashboardEvent()
     {
         var (registry, _, uiEvents) = CreateRegistry();

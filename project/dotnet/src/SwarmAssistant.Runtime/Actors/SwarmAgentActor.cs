@@ -3,6 +3,7 @@ using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
+using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Telemetry;
 
 using System.Diagnostics.CodeAnalysis;
@@ -25,9 +26,11 @@ public sealed class SwarmAgentActor : ReceiveActor
     private readonly string _agentId;
     private readonly int? _httpPort;
     private readonly Dictionary<string, int> _reservedContractCounts = new(StringComparer.Ordinal);
+    private BudgetEnvelope _budget;
     private string _currentProviderAdapter;
     private string? _currentModelId;
     private string? _currentReasoning;
+    private bool _budgetExhaustedAnnounced;
 
     private int _currentLoad;
     private readonly TimeSpan _idleTtl;
@@ -55,6 +58,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         _idleTtl = idleTtl;
         _httpPort = httpPort;
         _currentProviderAdapter = ResolveConfiguredProviderAdapter();
+        _budget = CreateInitialBudget();
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
         Receive<HealthCheckRequest>(HandleHealthCheck);
@@ -168,6 +172,22 @@ public sealed class SwarmAgentActor : ReceiveActor
         }
         try
         {
+            if (_budget.IsExhausted)
+            {
+                TransitionToExhausted();
+                var error = $"Agent budget exhausted for {_agentId}";
+                activity?.SetStatus(ActivityStatusCode.Error, error);
+                replyTo.Tell(new RoleTaskFailed(
+                    command.TaskId,
+                    command.Role,
+                    error,
+                    DateTimeOffset.UtcNow,
+                    ActorName: Self.Path.Name,
+                    TraceId: traceId,
+                    SpanId: spanId));
+                return;
+            }
+
             if (!_capabilities.Contains(command.Role))
             {
                 var error = $"SwarmAgentActor does not support role {command.Role}";
@@ -220,6 +240,7 @@ public sealed class SwarmAgentActor : ReceiveActor
             }
             _currentModelId = result.Model?.Id;
             _currentReasoning = result.Reasoning;
+            ConsumeBudgetForExecution(command, result.Output);
             activity?.SetTag("output.length", result.Output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
@@ -228,6 +249,11 @@ public sealed class SwarmAgentActor : ReceiveActor
                 command.Role,
                 command.TaskId,
                 _options.AgentFrameworkExecutionMode);
+
+            if (_budget.IsExhausted)
+            {
+                TransitionToExhausted();
+            }
 
             replyTo.Tell(new RoleTaskSucceeded(
                 command.TaskId,
@@ -261,12 +287,24 @@ public sealed class SwarmAgentActor : ReceiveActor
         finally
         {
             _currentLoad = Math.Max(0, _currentLoad - 1);
-            AdvertiseCapability();
+            if (!_budgetExhaustedAnnounced)
+            {
+                AdvertiseCapability();
+            }
         }
     }
 
     private void HandleNegotiationOffer(NegotiationOffer offer)
     {
+        if (_budget.IsExhausted)
+        {
+            Sender.Tell(new NegotiationReject(
+                offer.TaskId,
+                "Agent budget exhausted",
+                Self.Path.ToStringWithoutAddress()));
+            return;
+        }
+
         if (_currentLoad >= MaxConcurrentAgentTasks)
         {
             Sender.Tell(new NegotiationReject(
@@ -296,7 +334,9 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     private void HandleContractNetBidRequest(ContractNetBidRequest request)
     {
-        if (!_capabilities.Contains(request.Role) || DateTimeOffset.UtcNow > request.DeadlineUtc)
+        if (_budget.IsExhausted ||
+            !_capabilities.Contains(request.Role) ||
+            DateTimeOffset.UtcNow > request.DeadlineUtc)
         {
             return;
         }
@@ -384,8 +424,6 @@ public sealed class SwarmAgentActor : ReceiveActor
             Reasoning = _currentReasoning
         };
 
-        var budget = new BudgetEnvelope { Type = BudgetType.Unlimited };
-
         _capabilityRegistry.Tell(new AgentCapabilityAdvertisement(
             Self.Path.ToStringWithoutAddress(),
             _capabilities,
@@ -395,8 +433,77 @@ public sealed class SwarmAgentActor : ReceiveActor
         {
             Provider = provider,
             SandboxLevel = _options.SandboxLevel,
-            Budget = budget
+            Budget = _budget
         }, Self);
+    }
+
+    private BudgetEnvelope CreateInitialBudget()
+    {
+        if (!_options.BudgetEnabled || _options.BudgetType == BudgetType.Unlimited)
+        {
+            return new BudgetEnvelope { Type = BudgetType.Unlimited };
+        }
+
+        var warningThreshold = _options.BudgetWarningThreshold;
+        var hardLimit = Math.Max(warningThreshold, _options.BudgetHardLimit);
+
+        return new BudgetEnvelope
+        {
+            Type = _options.BudgetType,
+            TotalTokens = _options.BudgetTotalTokens,
+            UsedTokens = 0,
+            WarningThreshold = warningThreshold,
+            HardLimit = hardLimit
+        };
+    }
+
+    private void ConsumeBudgetForExecution(ExecuteRoleTask command, string output)
+    {
+        if (_budget.Type == BudgetType.Unlimited || _budget.TotalTokens <= 0)
+        {
+            return;
+        }
+
+        var prompt = command.Prompt ?? RolePromptFactory.BuildPrompt(command);
+        var chars = prompt.Length + output.Length;
+        var estimatedTokens = (long)Math.Ceiling(chars / (double)Math.Max(1, _options.BudgetCharsPerToken));
+        if (estimatedTokens <= 0)
+        {
+            return;
+        }
+
+        var newUsed = _budget.UsedTokens >= long.MaxValue - estimatedTokens
+            ? long.MaxValue
+            : _budget.UsedTokens + estimatedTokens;
+
+        _budget = _budget with { UsedTokens = newUsed };
+        _logger.LogInformation(
+            "Budget usage updated agentId={AgentId} estimatedTokens={EstimatedTokens} used={Used}/{Total} remaining={Remaining:P1}",
+            _agentId,
+            estimatedTokens,
+            _budget.UsedTokens,
+            _budget.TotalTokens,
+            _budget.RemainingFraction);
+    }
+
+    private void TransitionToExhausted()
+    {
+        if (_budgetExhaustedAnnounced)
+        {
+            return;
+        }
+
+        _budgetExhaustedAnnounced = true;
+        _logger.LogWarning(
+            "Agent budget exhausted; deregistering agentId={AgentId} provider={Provider} used={Used}/{Total}",
+            _agentId,
+            _currentProviderAdapter,
+            _budget.UsedTokens,
+            _budget.TotalTokens);
+
+        _heartbeatSchedule?.Cancel();
+        _heartbeatSchedule = null;
+        _capabilityRegistry.Tell(new DeregisterAgent(_agentId), Self);
     }
 
     private string ResolveConfiguredProviderAdapter()

@@ -68,6 +68,53 @@ public sealed class WorkerPoolTests
     }
 
     [Fact]
+    public void RuntimeOptions_BudgetDefaults_AreBackwardCompatible()
+    {
+        var options = new RuntimeOptions();
+        Assert.False(options.BudgetEnabled);
+        Assert.Equal(BudgetType.TokenLimited, options.BudgetType);
+        Assert.Equal(500_000, options.BudgetTotalTokens);
+        Assert.Equal(0.8, options.BudgetWarningThreshold, precision: 3);
+        Assert.Equal(1.0, options.BudgetHardLimit, precision: 3);
+        Assert.Equal(4, options.BudgetCharsPerToken);
+    }
+
+    [Theory]
+    [InlineData(-1_000, 0)]
+    [InlineData(0, 0)]
+    [InlineData(123_456, 123_456)]
+    public void RuntimeOptions_BudgetTotalTokens_ClampsToNonNegative(long input, long expected)
+    {
+        var options = new RuntimeOptions { BudgetTotalTokens = input };
+        Assert.Equal(expected, options.BudgetTotalTokens);
+    }
+
+    [Theory]
+    [InlineData(-0.5, 0.0)]
+    [InlineData(0.8, 0.8)]
+    [InlineData(3.0, 1.0)]
+    public void RuntimeOptions_BudgetThresholds_AreClamped(double input, double expected)
+    {
+        var options = new RuntimeOptions
+        {
+            BudgetWarningThreshold = input,
+            BudgetHardLimit = input
+        };
+        Assert.Equal(expected, options.BudgetWarningThreshold, precision: 3);
+        Assert.Equal(expected, options.BudgetHardLimit, precision: 3);
+    }
+
+    [Theory]
+    [InlineData(-10, 1)]
+    [InlineData(4, 4)]
+    [InlineData(200, 32)]
+    public void RuntimeOptions_BudgetCharsPerToken_IsClamped(int input, int expected)
+    {
+        var options = new RuntimeOptions { BudgetCharsPerToken = input };
+        Assert.Equal(expected, options.BudgetCharsPerToken);
+    }
+
+    [Fact]
     public async Task ConcurrencySemaphore_LimitsParallelExecution()
     {
         // Use MaxCliConcurrency=2 to test the semaphore limits parallel calls.

@@ -144,6 +144,61 @@ public sealed class RuntimeOptions
     public int ScaleDownThreshold { get; init; } = 1;
 
     /// <summary>
+    /// Enables RFC-007 budget-aware lifecycle behavior for swarm agents.
+    /// When disabled, agents advertise an unlimited budget envelope.
+    /// </summary>
+    public bool BudgetEnabled { get; init; } = false;
+
+    /// <summary>
+    /// Default budget type used by agents when budget lifecycle is enabled.
+    /// </summary>
+    public BudgetType BudgetType { get; init; } = BudgetType.TokenLimited;
+
+    /// <summary>
+    /// Total token budget advertised per agent when <see cref="BudgetEnabled"/> is true.
+    /// Values are clamped to be non-negative.
+    /// </summary>
+    private long _budgetTotalTokens = 500_000;
+    public long BudgetTotalTokens
+    {
+        get => _budgetTotalTokens;
+        init => _budgetTotalTokens = Math.Max(0, value);
+    }
+
+    /// <summary>
+    /// Budget warning threshold in [0.0, 1.0].
+    /// Agents at or above this used fraction are treated as low-budget.
+    /// </summary>
+    private double _budgetWarningThreshold = 0.8;
+    public double BudgetWarningThreshold
+    {
+        get => _budgetWarningThreshold;
+        init => _budgetWarningThreshold = Math.Clamp(value, 0.0, 1.0);
+    }
+
+    /// <summary>
+    /// Budget hard limit in [0.0, 1.0].
+    /// Agents at or above this used fraction are treated as exhausted.
+    /// </summary>
+    private double _budgetHardLimit = 1.0;
+    public double BudgetHardLimit
+    {
+        get => _budgetHardLimit;
+        init => _budgetHardLimit = Math.Clamp(value, 0.0, 1.0);
+    }
+
+    /// <summary>
+    /// Approximation ratio used to estimate token usage from text length
+    /// for subscription CLI execution modes that do not expose token counts.
+    /// </summary>
+    private int _budgetCharsPerToken = 4;
+    public int BudgetCharsPerToken
+    {
+        get => _budgetCharsPerToken;
+        init => _budgetCharsPerToken = Math.Clamp(value, 1, 32);
+    }
+
+    /// <summary>
     /// TTL in minutes for the <see cref="StrategyAdvisorActor"/> advice cache.
     /// Values are clamped to [1, 1440].
     /// </summary>
