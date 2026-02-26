@@ -26,8 +26,9 @@ public sealed record SkillDefinition
             throw new ArgumentException("At least one role is required.", nameof(roles));
 
         if (!scope.Equals("global", StringComparison.OrdinalIgnoreCase) &&
+            !scope.Equals("project", StringComparison.OrdinalIgnoreCase) &&
             !scope.StartsWith("task:", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Scope must be 'global' or start with 'task:'.", nameof(scope));
+            throw new ArgumentException("Scope must be 'global', 'project', or start with 'task:'.", nameof(scope));
 
         Name = name;
         Description = description;

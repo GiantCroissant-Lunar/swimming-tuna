@@ -9,6 +9,7 @@ using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Memvid;
+using SwarmAssistant.Runtime.Skills;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -40,6 +41,7 @@ public sealed class Worker : BackgroundService
     private readonly IOutcomeReader _outcomeReader;
     private readonly ITaskExecutionEventWriter? _eventWriter;
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
+    private readonly ILangfuseSimilarityQuery? _langfuseSimilarityQuery;
     private readonly MemvidClient? _memvidClient;
 
     private ActorSystem? _actorSystem;
@@ -61,6 +63,7 @@ public sealed class Worker : BackgroundService
         IOutcomeReader outcomeReader,
         ITaskExecutionEventWriter? eventWriter = null,
         ILangfuseScoreWriter? langfuseScoreWriter = null,
+        ILangfuseSimilarityQuery? langfuseSimilarityQuery = null,
         MemvidClient? memvidClient = null)
     {
         _logger = logger;
@@ -75,6 +78,7 @@ public sealed class Worker : BackgroundService
         _outcomeReader = outcomeReader;
         _eventWriter = eventWriter;
         _langfuseScoreWriter = langfuseScoreWriter;
+        _langfuseSimilarityQuery = langfuseSimilarityQuery;
         _memvidClient = memvidClient;
     }
 
@@ -304,6 +308,40 @@ public sealed class Worker : BackgroundService
             _loggerFactory.CreateLogger<WorkspaceBranchManager>(),
             _options.WorktreeIsolationEnabled);
 
+        SkillMatcher? skillMatcher = null;
+        var skillBasePath = Path.Combine(_options.RepoRootPath ?? Directory.GetCurrentDirectory(), ".agent", "skills");
+        if (Directory.Exists(skillBasePath))
+        {
+            try
+            {
+                var skillIndexBuilder = new SkillIndexBuilder(
+                    _loggerFactory.CreateLogger<SkillIndexBuilder>(),
+                    _loggerFactory);
+                skillIndexBuilder.BuildIndex(skillBasePath);
+                var indexedSkills = skillIndexBuilder.GetAllSkills().Values.ToArray();
+                if (indexedSkills.Length > 0)
+                {
+                    skillMatcher = new SkillMatcher(indexedSkills);
+                    _logger.LogInformation(
+                        "Skill matcher initialized basePath={SkillBasePath} skillCount={SkillCount}",
+                        skillBasePath,
+                        indexedSkills.Length);
+                }
+                else
+                {
+                    _logger.LogInformation("Skill matcher not initialized: no skill definitions found at {SkillBasePath}", skillBasePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to initialize skill matcher from {SkillBasePath}; continuing without skill matching.", skillBasePath);
+            }
+        }
+        else
+        {
+            _logger.LogDebug("Skill base path not found {SkillBasePath}; continuing without skill matching.", skillBasePath);
+        }
+
         var sandboxEnforcer = new SandboxLevelEnforcer(
             containerAvailable: string.Equals(_options.SandboxMode, "docker", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(_options.SandboxMode, "apple-container", StringComparison.OrdinalIgnoreCase));
@@ -339,7 +377,9 @@ public sealed class Worker : BackgroundService
                 buildVerifier,
                 sandboxEnforcer,
                 _langfuseScoreWriter,
-                _memvidClient)),
+                _memvidClient,
+                _langfuseSimilarityQuery,
+                skillMatcher)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;
@@ -433,13 +473,47 @@ public sealed class Worker : BackgroundService
             var totalAgents = _fixedPoolSize + _dynamicAgentCount;
             if (activeTasks > _options.ScaleUpThreshold && totalAgents < _options.MaxPoolSize)
             {
-                _dynamicAgentCount++;
-                _dispatcher.Tell(new SpawnAgent(AllRoles, TimeSpan.FromMinutes(5)));
-                _logger.LogInformation(
-                    "Auto-scale up: spawning dynamic agent activeTasks={ActiveTasks} threshold={Threshold} totalAgents={TotalAgents}",
-                    activeTasks,
-                    _options.ScaleUpThreshold,
-                    totalAgents + 1);
+                var shouldSpawn = true;
+                if (_options.BudgetEnabled &&
+                    _actorRegistry.TryGetAgentRegistry(out var registry) &&
+                    registry is not null)
+                {
+                    try
+                    {
+                        var agents = await registry.Ask<QueryAgentsResult>(
+                            new QueryAgents(AllRoles, null),
+                            TimeSpan.FromSeconds(2),
+                            cancellationToken);
+                        var nonExhausted = agents.Agents
+                            .Where(a => a.Budget?.IsExhausted != true)
+                            .ToArray();
+                        var allLowBudget = nonExhausted.Length > 0 &&
+                                           nonExhausted.All(a => a.Budget?.IsLowBudget == true);
+                        shouldSpawn = nonExhausted.Length == 0 || allLowBudget;
+                        _logger.LogDebug(
+                            "Auto-scale budget gate activeTasks={ActiveTasks} nonExhausted={NonExhausted} allLowBudget={AllLowBudget} shouldSpawn={ShouldSpawn}",
+                            activeTasks,
+                            nonExhausted.Length,
+                            allLowBudget,
+                            shouldSpawn);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Auto-scale budget gate failed; falling back to default scale-up behavior.");
+                    }
+                }
+
+                if (shouldSpawn)
+                {
+                    var newDynamic = Interlocked.Increment(ref _dynamicAgentCount);
+                    var newTotalAgents = _fixedPoolSize + newDynamic;
+                    _dispatcher.Tell(new SpawnAgent(AllRoles, TimeSpan.FromMinutes(5)));
+                    _logger.LogInformation(
+                        "Auto-scale up: spawning dynamic agent activeTasks={ActiveTasks} threshold={Threshold} totalAgents={TotalAgents}",
+                        activeTasks,
+                        _options.ScaleUpThreshold,
+                        newTotalAgents);
+                }
             }
         }
     }

@@ -109,7 +109,16 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         var candidate = SelectAgent(message.Role);
         if (candidate is null)
         {
-            var error = $"No capable swarm agent available for role {message.Role}";
+            var capableCount = _agents
+                .Where(static pair => pair.Key != ActorRefs.Nobody)
+                .Count(pair => pair.Value.Capabilities.Contains(message.Role));
+            var exhaustedCount = _agents
+                .Where(static pair => pair.Key != ActorRefs.Nobody)
+                .Count(pair => pair.Value.Capabilities.Contains(message.Role) &&
+                               IsBudgetExhausted(pair.Value.Budget));
+            var error = capableCount > 0 && exhaustedCount == capableCount
+                ? $"No capable swarm agent available for role {message.Role}; all capable agents are budget exhausted."
+                : $"No capable swarm agent available for role {message.Role}";
             _logger.LogWarning(error);
             Sender.Tell(new RoleTaskFailed(
                 message.TaskId,
@@ -133,6 +142,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         var candidates = _agents
             .Where(static pair => pair.Key != ActorRefs.Nobody)
             .Where(pair => pair.Value.Capabilities.Contains(message.Role))
+            .Where(pair => !IsBudgetExhausted(pair.Value.Budget))
             .Select(pair => pair.Key)
             .ToArray();
 
@@ -221,10 +231,27 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
 
     private IActorRef? SelectAgent(SwarmRole role)
     {
-        return _agents
+        var candidates = _agents
             .Where(static pair => pair.Key != ActorRefs.Nobody)
             .Where(pair => pair.Value.Capabilities.Contains(role))
-            .OrderBy(pair => pair.Value.CurrentLoad)
+            .Where(pair => !IsBudgetExhausted(pair.Value.Budget))
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            return null;
+        }
+
+        var healthyBudgetCandidates = candidates
+            .Where(pair => !IsLowBudget(pair.Value.Budget))
+            .ToArray();
+        var selectionPool = healthyBudgetCandidates.Length > 0
+            ? healthyBudgetCandidates
+            : candidates;
+
+        return selectionPool
+            .OrderBy(pair => ProviderCostRank(pair.Value.Provider?.Type))
+            .ThenBy(pair => pair.Value.CurrentLoad)
             .ThenBy(pair => pair.Value.ActorPath, StringComparer.Ordinal)
             .Select(pair => pair.Key)
             .FirstOrDefault();
@@ -318,10 +345,15 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         var ordered = message.Prefer?.ToLowerInvariant() switch
         {
             "cheapest" => entries
-                .OrderBy(e => ProviderCostRank(e.Provider?.Type))
+                .OrderBy(AgentStatusRank)
+                .ThenBy(e => ProviderCostRank(e.Provider?.Type))
                 .ThenBy(e => e.CurrentLoad),
-            "least-loaded" => entries.OrderBy(e => e.CurrentLoad),
-            _ => entries.OrderBy(e => e.CurrentLoad)
+            "least-loaded" => entries
+                .OrderBy(AgentStatusRank)
+                .ThenBy(e => e.CurrentLoad),
+            _ => entries
+                .OrderBy(AgentStatusRank)
+                .ThenBy(e => e.CurrentLoad)
                 .ThenBy(e => e.ActorPath, StringComparer.Ordinal)
         };
 
@@ -374,7 +406,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
                 var ad = pair.Value;
                 var agentId = ad.AgentId ?? pair.Key.Path.Name;
                 var health = _health.GetValueOrDefault(agentId);
-                var status = health?.ConsecutiveFailures > 0 ? "unhealthy" : "active";
+                var status = AgentStatusResolver.ResolveAgentStatus(ad.Budget, health?.ConsecutiveFailures ?? 0);
                 var providerDisplay = ad.Provider?.Adapter;
                 var budgetDisplay = ad.Budget?.Type == BudgetType.Unlimited
                     ? "unlimited"
@@ -436,6 +468,21 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
         "subscription" => 0,
         "subscription-api" => 1,
         _ => 2
+    };
+
+    private static bool IsBudgetExhausted(BudgetEnvelope? budget) =>
+        budget is not null && budget.IsExhausted;
+
+    private static bool IsLowBudget(BudgetEnvelope? budget) =>
+        budget is not null && budget.IsLowBudget;
+
+    private static int AgentStatusRank(AgentRegistryEntry entry) => AgentStatusResolver.ResolveAgentStatus(entry.Budget, entry.ConsecutiveFailures) switch
+    {
+        "active" => 0,
+        "low-budget" => 1,
+        "unhealthy" => 2,
+        "exhausted" => 3,
+        _ => 4
     };
 
     // ── Internal types ──
