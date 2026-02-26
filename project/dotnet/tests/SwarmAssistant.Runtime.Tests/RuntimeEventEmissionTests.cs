@@ -93,6 +93,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 projectContext,
                 null,
+                null,
                 null)),
             $"dp{suffix}-{Guid.NewGuid():N}");
 
@@ -446,6 +447,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
+                null,
                 null,
                 null,
                 null,

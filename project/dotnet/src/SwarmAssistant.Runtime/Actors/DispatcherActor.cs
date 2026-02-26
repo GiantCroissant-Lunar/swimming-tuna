@@ -37,6 +37,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly IActorRef? _codeIndexActor;
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
+    private readonly BuildVerifier? _buildVerifier;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILogger _logger;
 
@@ -66,6 +67,7 @@ public sealed class DispatcherActor : ReceiveActor
         IActorRef? codeIndexActor = null,
         string? projectContext = null,
         WorkspaceBranchManager? workspaceBranchManager = null,
+        BuildVerifier? buildVerifier = null,
         SandboxLevelEnforcer? sandboxEnforcer = null)
     {
         _workerActor = workerActor;
@@ -85,6 +87,7 @@ public sealed class DispatcherActor : ReceiveActor
         _codeIndexActor = codeIndexActor;
         _projectContext = projectContext;
         _workspaceBranchManager = workspaceBranchManager;
+        _buildVerifier = buildVerifier;
         _sandboxEnforcer = sandboxEnforcer;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
@@ -152,6 +155,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _eventRecorder,
                 _projectContext,
                 _workspaceBranchManager,
+                _buildVerifier,
                 _sandboxEnforcer)),
             $"task-{message.TaskId}");
 
@@ -212,6 +216,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _eventRecorder,
                 _projectContext,
                 _workspaceBranchManager,
+                _buildVerifier,
                 _sandboxEnforcer)),
             $"task-{message.ChildTaskId}");
 

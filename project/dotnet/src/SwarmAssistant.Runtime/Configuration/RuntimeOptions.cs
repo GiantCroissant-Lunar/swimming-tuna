@@ -252,6 +252,12 @@ public sealed class RuntimeOptions
     public string[] CodeIndexLanguages { get; init; } = [];
 
     /// <summary>
+    /// Path to the solution file used by BuildVerifier for build+test verification.
+    /// When empty, build verification is skipped.
+    /// </summary>
+    public string? VerifySolutionPath { get; init; }
+
+    /// <summary>
     /// Workspace root path for Level 1 (OsSandboxed) sandbox execution.
     /// When empty or null, uses the git repository root.
     /// </summary>

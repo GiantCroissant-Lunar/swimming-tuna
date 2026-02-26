@@ -1,6 +1,7 @@
 using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Execution;
 
 namespace SwarmAssistant.Runtime.Actors;
 
@@ -263,6 +264,11 @@ internal sealed record DispatchWithCodeContext(
     string ActionName,
     CodeIndexResult? CodeContext = null
 );
+
+/// <summary>
+/// Sent by the Verify step back to the TaskCoordinatorActor when build+test verification completes.
+/// </summary>
+internal sealed record VerifyCompleted(string TaskId, BuildVerifyResult Result);
 
 // RFC-005: Peer-to-peer agent communication
 internal sealed record ResolvePeerAgent(string AgentId);

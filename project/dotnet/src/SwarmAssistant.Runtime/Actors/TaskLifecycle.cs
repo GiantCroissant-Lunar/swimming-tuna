@@ -15,7 +15,8 @@ public static class TaskLifecycle
         {
             TaskState.Queued => TaskState.Planning,
             TaskState.Planning => TaskState.Building,
-            TaskState.Building => TaskState.Reviewing,
+            TaskState.Building => TaskState.Verifying,
+            TaskState.Verifying => TaskState.Reviewing,
             TaskState.Reviewing => TaskState.Done,
             TaskState.Done => TaskState.Done,
             TaskState.Blocked => TaskState.Blocked,

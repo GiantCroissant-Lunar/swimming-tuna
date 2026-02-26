@@ -6,14 +6,15 @@ namespace SwarmAssistant.Runtime.Tests.Planning;
 public sealed class SwarmActionsTests
 {
     [Fact]
-    public void All_ContainsEightActions()
+    public void All_ContainsTenActions()
     {
-        Assert.Equal(9, SwarmActions.All.Count);
+        Assert.Equal(10, SwarmActions.All.Count);
     }
 
     [Theory]
     [InlineData("Plan")]
     [InlineData("Build")]
+    [InlineData("Verify")]
     [InlineData("Review")]
     [InlineData("SecondOpinion")]
     [InlineData("Rework")]

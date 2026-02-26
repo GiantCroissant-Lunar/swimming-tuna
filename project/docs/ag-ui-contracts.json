@@ -98,7 +98,7 @@
       "required": ["source"],
       "properties": {
         "source":    { "type": "string", "description": "Actor path name of the emitter." },
-        "previous":  { "type": "string", "description": "Previous TaskStatus name (Queued, Planning, Building, Reviewing, Done, Blocked). Present on state changes." },
+        "previous":  { "type": "string", "description": "Previous TaskStatus name (Queued, Planning, Building, Verifying, Reviewing, Done, Blocked). Present on state changes." },
         "current":   { "type": "string", "description": "New TaskStatus name. Present on state changes." },
         "phase":     { "type": "string", "description": "'orchestrating' — emitted when GOAP sends a task to the orchestrator worker." },
         "goapPlan":  {
@@ -252,7 +252,7 @@
         "taskId":       { "type": "string" },
         "title":        { "type": "string" },
         "description":  { "type": "string" },
-        "status":       { "type": "string", "enum": ["queued", "planning", "building", "reviewing", "done", "blocked"] },
+        "status":       { "type": "string", "enum": ["queued", "planning", "building", "verifying", "reviewing", "done", "blocked"] },
         "createdAt":    { "type": "string", "format": "date-time" },
         "updatedAt":    { "type": "string", "format": "date-time" },
         "planningOutput": { "type": ["string", "null"] },
@@ -272,7 +272,7 @@
       "properties": {
         "taskId":    { "type": "string" },
         "title":     { "type": "string" },
-        "status":    { "type": "string", "enum": ["queued", "planning", "building", "reviewing", "done", "blocked"] },
+        "status":    { "type": "string", "enum": ["queued", "planning", "building", "verifying", "reviewing", "done", "blocked"] },
         "updatedAt": { "type": "string", "format": "date-time" },
         "error":     { "type": ["string", "null"] }
       }
@@ -324,7 +324,7 @@
                     "taskId":      { "type": "string" },
                     "title":       { "type": "string" },
                     "description": { "type": "string" },
-                    "status":      { "type": "string", "enum": ["queued", "planning", "building", "reviewing", "done", "blocked"] }
+                    "status":      { "type": "string", "enum": ["queued", "planning", "building", "verifying", "reviewing", "done", "blocked"] }
                   }
                 },
                 "components": { "type": "array", "items": { "$ref": "#/$defs/genUiComponent" } }
