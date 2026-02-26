@@ -22,6 +22,6 @@ public sealed record BudgetEnvelope
         UsedFraction >= WarningThreshold &&
         UsedFraction < HardLimit;
 
-    public bool IsExhausted => TotalTokens > 0 &&
-        UsedFraction >= HardLimit;
+    public bool IsExhausted => Type != BudgetType.Unlimited &&
+        (TotalTokens <= 0 || UsedFraction >= HardLimit);
 }

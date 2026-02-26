@@ -406,7 +406,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
                 var ad = pair.Value;
                 var agentId = ad.AgentId ?? pair.Key.Path.Name;
                 var health = _health.GetValueOrDefault(agentId);
-                var status = ResolveAgentStatus(ad.Budget, health?.ConsecutiveFailures ?? 0);
+                var status = AgentStatusResolver.ResolveAgentStatus(ad.Budget, health?.ConsecutiveFailures ?? 0);
                 var providerDisplay = ad.Provider?.Adapter;
                 var budgetDisplay = ad.Budget?.Type == BudgetType.Unlimited
                     ? "unlimited"
@@ -476,27 +476,7 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
     private static bool IsLowBudget(BudgetEnvelope? budget) =>
         budget is not null && budget.IsLowBudget;
 
-    private static string ResolveAgentStatus(BudgetEnvelope? budget, int consecutiveFailures)
-    {
-        if (IsBudgetExhausted(budget))
-        {
-            return "exhausted";
-        }
-
-        if (IsLowBudget(budget))
-        {
-            return "low-budget";
-        }
-
-        if (consecutiveFailures > 0)
-        {
-            return "unhealthy";
-        }
-
-        return "active";
-    }
-
-    private static int AgentStatusRank(AgentRegistryEntry entry) => ResolveAgentStatus(entry.Budget, entry.ConsecutiveFailures) switch
+    private static int AgentStatusRank(AgentRegistryEntry entry) => AgentStatusResolver.ResolveAgentStatus(entry.Budget, entry.ConsecutiveFailures) switch
     {
         "active" => 0,
         "low-budget" => 1,

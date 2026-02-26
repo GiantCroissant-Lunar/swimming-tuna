@@ -211,7 +211,7 @@ Run only memvid integration tests:
 ```bash
 MEMVID_INTEGRATION_TESTS=1 \
 dotnet test project/dotnet/tests/SwarmAssistant.Runtime.Tests/SwarmAssistant.Runtime.Tests.csproj \
-  --filter "MemvidIntegrationTests|MemvidClientFindModeTests"
+  --filter "MemvidIntegrationTests|MemvidClientFindModeTests|MemvidClientTests"
 ```
 
 Optional overrides:
