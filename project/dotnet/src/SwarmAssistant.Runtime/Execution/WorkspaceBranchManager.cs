@@ -71,7 +71,9 @@ public sealed partial class WorkspaceBranchManager
     }
 
     /// <summary>
-    /// Removes the worktree for the given task. Best-effort; never throws.
+    /// Commits any uncommitted changes in the worktree, then removes the worktree directory.
+    /// The branch is preserved so the gatekeeper can review and create a PR.
+    /// Best-effort; never throws.
     /// </summary>
     public async Task RemoveWorktreeAsync(string taskId)
     {
@@ -91,10 +93,15 @@ public sealed partial class WorkspaceBranchManager
 
         try
         {
+            // Commit any uncommitted changes before removing the worktree
+            await CommitWorktreeChangesAsync(worktreePath, taskId);
+
             var removeResult = await RunGitAsync(["worktree", "remove", worktreePath, "--force"]);
             if (removeResult.ExitCode == 0)
             {
-                _logger?.LogInformation("Worktree removed path={WorktreePath} taskId={TaskId}", worktreePath, taskId);
+                _logger?.LogInformation(
+                    "Worktree removed path={WorktreePath} taskId={TaskId} (branch {Branch} preserved for review)",
+                    worktreePath, taskId, branchName);
             }
             else
             {
@@ -103,11 +110,85 @@ public sealed partial class WorkspaceBranchManager
                     removeResult.ExitCode, removeResult.StdErr, taskId);
             }
 
-            // Clean up the branch too
+            // Branch is intentionally preserved for gatekeeper review.
+            // Use CleanupBranchAsync to delete it after review/merge.
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Worktree cleanup failed for task {TaskId}", taskId);
+        }
+    }
+
+    /// <summary>
+    /// Commits any uncommitted changes in the worktree so they survive worktree removal.
+    /// Best-effort; never throws. Skips if the worktree has no changes.
+    /// </summary>
+    private async Task CommitWorktreeChangesAsync(string worktreePath, string taskId)
+    {
+        if (!Directory.Exists(worktreePath))
+        {
+            return;
+        }
+
+        try
+        {
+            // Check for changes (staged + unstaged + untracked)
+            var statusResult = await RunGitInDirAsync(worktreePath, ["status", "--porcelain"]);
+            if (statusResult.ExitCode != 0 || string.IsNullOrWhiteSpace(statusResult.StdOut))
+            {
+                _logger?.LogDebug("No uncommitted changes in worktree for task {TaskId}", taskId);
+                return;
+            }
+
+            // Stage all changes
+            var addResult = await RunGitInDirAsync(worktreePath, ["add", "-A"]);
+            if (addResult.ExitCode != 0)
+            {
+                _logger?.LogWarning(
+                    "git add -A failed in worktree exitCode={ExitCode} stderr={Stderr} taskId={TaskId}",
+                    addResult.ExitCode, addResult.StdErr, taskId);
+                return;
+            }
+
+            // Commit with swarm attribution
+            var commitResult = await RunGitInDirAsync(worktreePath,
+                ["commit", "-m", $"feat(swarm): builder output for {taskId}", "--no-verify"]);
+            if (commitResult.ExitCode == 0)
+            {
+                _logger?.LogInformation("Committed worktree changes for task {TaskId}", taskId);
+            }
+            else
+            {
+                _logger?.LogDebug(
+                    "git commit failed in worktree exitCode={ExitCode} stderr={Stderr} taskId={TaskId}",
+                    commitResult.ExitCode, commitResult.StdErr, taskId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Failed to commit worktree changes for task {TaskId}", taskId);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the branch for a task after the gatekeeper has reviewed and merged it.
+    /// Call this explicitly after PR merge or manual review.
+    /// Best-effort; never throws.
+    /// </summary>
+    public async Task CleanupBranchAsync(string taskId)
+    {
+        if (!_enabled)
+        {
+            return;
+        }
+
+        var branchName = BranchNameForTask(taskId);
+        try
+        {
             var branchResult = await RunGitAsync(["branch", "-D", branchName]);
             if (branchResult.ExitCode == 0)
             {
-                _logger?.LogDebug("Branch deleted branch={Branch} taskId={TaskId}", branchName, taskId);
+                _logger?.LogInformation("Branch deleted branch={Branch} taskId={TaskId}", branchName, taskId);
             }
             else
             {
@@ -118,7 +199,7 @@ public sealed partial class WorkspaceBranchManager
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug(ex, "Worktree cleanup failed for task {TaskId}", taskId);
+            _logger?.LogDebug(ex, "Branch cleanup failed for task {TaskId}", taskId);
         }
     }
 
@@ -183,7 +264,11 @@ public sealed partial class WorkspaceBranchManager
         return result.ExitCode == 0 ? result.StdOut.Trim() : null;
     }
 
-    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunGitAsync(string[] args)
+    private static Task<(int ExitCode, string StdOut, string StdErr)> RunGitAsync(string[] args)
+        => RunGitInDirAsync(null, args);
+
+    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunGitInDirAsync(
+        string? workingDirectory, string[] args)
     {
         using var process = new Process
         {
@@ -196,6 +281,11 @@ public sealed partial class WorkspaceBranchManager
                 CreateNoWindow = true
             }
         };
+
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            process.StartInfo.WorkingDirectory = workingDirectory;
+        }
 
         foreach (var arg in args)
         {

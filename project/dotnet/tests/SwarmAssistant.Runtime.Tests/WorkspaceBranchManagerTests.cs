@@ -67,4 +67,21 @@ public sealed class WorkspaceBranchManagerTests
 
         await manager.RemoveWorktreeAsync("task-abc-123");
     }
+
+    [Fact]
+    public async Task CleanupBranch_WhenDisabled_DoesNotThrow()
+    {
+        var manager = new WorkspaceBranchManager(enabled: false);
+
+        await manager.CleanupBranchAsync("task-abc-123");
+    }
+
+    [Fact]
+    public async Task CleanupBranch_WhenEnabled_DoesNotThrow()
+    {
+        // Branch doesn't exist but method should handle gracefully
+        var manager = new WorkspaceBranchManager(enabled: true);
+
+        await manager.CleanupBranchAsync("task-nonexistent-xyz");
+    }
 }
