@@ -385,15 +385,16 @@ public sealed class SkillFileParserTests
     }
 
     [Fact]
-    public void Parse_WithBOM_ReturnsNull()
+    public void Parse_WithBOM_ParsesCorrectly()
     {
-        // BOM immediately before '---' prevents the frontmatter regex from matching
-        // because the '^' assertion fails after consuming the BOM character.
         var content = "\uFEFF---\nname: test-skill\ndescription: A test skill\ntags:\n  - tag1\nroles:\n  - Builder\n---\nBody content";
 
         var result = _parser.Parse(content, "test.md");
 
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.Equal("test-skill", result!.Name);
+        Assert.Equal("A test skill", result.Description);
+        Assert.Equal("Body content", result.Body);
     }
 
     [Fact]

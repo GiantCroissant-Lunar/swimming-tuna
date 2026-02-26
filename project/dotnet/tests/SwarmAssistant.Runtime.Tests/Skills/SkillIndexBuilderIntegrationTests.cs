@@ -58,7 +58,8 @@ public sealed class SkillIndexBuilderIntegrationTests
         var current = Directory.GetCurrentDirectory();
         while (!string.IsNullOrEmpty(current))
         {
-            if (Directory.Exists(Path.Combine(current, ".git")))
+            var gitMarker = Path.Combine(current, ".git");
+            if (Directory.Exists(gitMarker) || File.Exists(gitMarker))
             {
                 return current;
             }

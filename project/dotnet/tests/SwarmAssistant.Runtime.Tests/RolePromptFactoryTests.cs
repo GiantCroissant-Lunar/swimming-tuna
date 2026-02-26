@@ -185,8 +185,8 @@ public sealed class RolePromptFactoryTests
         var endIdx = prompt.IndexOf("--- End Agent Skills ---");
         var skillSection = prompt.Substring(startIdx, endIdx - startIdx + "--- End Agent Skills ---".Length);
 
-        // Verify total is under budget (4000 + some overhead for headers)
-        Assert.True(skillSection.Length < 4500, $"Skill section should be under budget, but was {skillSection.Length} chars");
+        // Verify total is under budget (4000 body budget + ~200 for headers/markers)
+        Assert.True(skillSection.Length <= 4200, $"Skill section should be <= 4200 chars (4000 budget + overhead), but was {skillSection.Length} chars");
     }
 
     [Fact]

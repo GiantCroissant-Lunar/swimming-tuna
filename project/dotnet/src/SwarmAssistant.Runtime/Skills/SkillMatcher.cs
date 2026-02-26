@@ -101,7 +101,7 @@ public sealed partial class SkillMatcher
             }
             else
             {
-                break;
+                continue;
             }
         }
 

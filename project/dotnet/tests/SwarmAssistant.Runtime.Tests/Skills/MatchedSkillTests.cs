@@ -165,6 +165,33 @@ public sealed class MatchedSkillTests
     }
 
     [Fact]
+    public void With_InvalidRelevanceScore_ThrowsArgumentOutOfRangeException()
+    {
+        var definition = CreateTestDefinition();
+        var original = new MatchedSkill(
+            Definition: definition,
+            RelevanceScore: 0.5,
+            MatchedTags: new[] { "test" }
+        );
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => original with { RelevanceScore = 2.0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => original with { RelevanceScore = -0.1 });
+    }
+
+    [Fact]
+    public void With_NullDefinition_ThrowsArgumentNullException()
+    {
+        var definition = CreateTestDefinition();
+        var original = new MatchedSkill(
+            Definition: definition,
+            RelevanceScore: 0.5,
+            MatchedTags: new[] { "test" }
+        );
+
+        Assert.Throws<ArgumentNullException>(() => original with { Definition = null! });
+    }
+
+    [Fact]
     public void Constructor_WithEmptyMatchedTags_CreatesInstance()
     {
         var definition = CreateTestDefinition();

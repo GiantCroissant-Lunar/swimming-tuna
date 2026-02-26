@@ -10,6 +10,8 @@ public sealed class BuildVerifierTests
     [InlineData("Passed:  100 , Failed:  5", 100, 5)]
     [InlineData("Test Run Successful.\nPassed: 471", 471, 0)]
     [InlineData("Failed! - Failed: 2, Passed: 100, Skipped: 0", 100, 2)]
+    [InlineData("Passed: 50\nSome output\nPassed: 200, Failed: 1", 200, 1)]
+    [InlineData("Failed: 2, Passed: 30\nFailed: 5, Passed: 100", 100, 5)]
     [InlineData("no test results here", 0, 0)]
     [InlineData("", 0, 0)]
     public void ParseTestResults_ExtractsCorrectCounts(string output, int expectedPassed, int expectedFailed)

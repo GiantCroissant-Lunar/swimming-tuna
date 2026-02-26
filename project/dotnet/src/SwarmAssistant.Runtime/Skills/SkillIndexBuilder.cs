@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 
@@ -31,7 +32,7 @@ public sealed class SkillIndexBuilder
             basePath,
             "SKILL.md",
             SearchOption.AllDirectories
-        );
+        ).OrderBy(path => path, StringComparer.Ordinal);
 
         foreach (var filePath in skillFiles)
         {
@@ -85,7 +86,7 @@ public sealed class SkillIndexBuilder
 
     public IReadOnlyDictionary<string, SkillDefinition> GetAllSkills()
     {
-        return _skillsByName;
+        return new ReadOnlyDictionary<string, SkillDefinition>(_skillsByName);
     }
 
     public IReadOnlyList<SkillDefinition> GetSkillsByTag(string tag)

@@ -19,7 +19,7 @@ public sealed class SkillFileParser
     }
 
     private static readonly Regex FrontmatterRegex = new(
-        @"\A\uFEFF?^---\s*$(.+?)^---\s*$",
+        @"\A\uFEFF?---\s*$(.+?)^---\s*$",
         RegexOptions.Multiline | RegexOptions.Singleline,
         TimeSpan.FromSeconds(5)
     );
@@ -57,6 +57,12 @@ public sealed class SkillFileParser
             var body = content.Substring(match.Index + match.Length).TrimStart();
 
             var frontmatter = YamlDeserializer.Deserialize<SkillFrontmatter>(frontmatterText);
+
+            if (frontmatter is null)
+            {
+                _logger.LogWarning("Empty or invalid frontmatter in skill file: {SourcePath}", sourcePath);
+                return null;
+            }
 
             if (string.IsNullOrWhiteSpace(frontmatter.Name))
             {

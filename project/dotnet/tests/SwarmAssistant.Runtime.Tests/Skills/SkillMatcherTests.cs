@@ -149,6 +149,55 @@ public sealed class SkillMatcherTests
     }
 
     [Fact]
+    public void BudgetConstraint_SkipsOversizedAndPacksSmallerSkills()
+    {
+        var skills = new List<SkillDefinition>
+        {
+            new(
+                name: "large-skill",
+                description: "Large skill",
+                tags: new[] { "test" },
+                roles: new[] { SwarmRole.Builder },
+                scope: "global",
+                body: new string('x', 3000),
+                sourcePath: "/skills/large.md"
+            ),
+            new(
+                name: "medium-skill",
+                description: "Medium skill",
+                tags: new[] { "test" },
+                roles: new[] { SwarmRole.Builder },
+                scope: "global",
+                body: new string('y', 2000),
+                sourcePath: "/skills/medium.md"
+            ),
+            new(
+                name: "small-skill",
+                description: "Small skill",
+                tags: new[] { "test" },
+                roles: new[] { SwarmRole.Builder },
+                scope: "global",
+                body: new string('z', 500),
+                sourcePath: "/skills/small.md"
+            )
+        };
+
+        var matcher = new SkillMatcher(skills);
+        var results = matcher.Match(
+            "Test",
+            "",
+            SwarmRole.Builder,
+            maxResults: 5,
+            budgetChars: 4000
+        );
+
+        // large-skill (3000) fits, medium-skill (2000) doesn't, small-skill (500) does
+        Assert.Equal(2, results.Count);
+        Assert.Equal("large-skill", results[0].Definition.Name);
+        Assert.Equal("small-skill", results[1].Definition.Name);
+    }
+
+    [Fact]
     public void EmptyDescription_UsesOnlyTitle()
     {
         var skills = new List<SkillDefinition>

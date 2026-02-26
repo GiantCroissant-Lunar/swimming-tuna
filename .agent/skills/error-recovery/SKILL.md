@@ -17,9 +17,10 @@ Use `ErrorEnvelope` not `ProblemDetails` for HTTP error responses.
 ```csharp
 public sealed record ErrorEnvelope
 {
-    public required string Message { get; init; }
-    public required string Code { get; init; }
-    public Dictionary<string, object>? Details { get; init; }
+    public required string Error { get; init; }
+    public string? ReasonCode { get; init; }
+    public string? TaskId { get; init; }
+    public string? ActionId { get; init; }
 }
 ```
 

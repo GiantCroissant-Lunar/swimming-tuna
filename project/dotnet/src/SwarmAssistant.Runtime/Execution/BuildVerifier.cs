@@ -92,7 +92,7 @@ public sealed class BuildVerifier
         {
             _logger.LogWarning("Command timed out after {Timeout}", _timeout);
             try { process.Kill(entireProcessTree: true); }
-            catch { /* best effort */ }
+            catch (Exception ex) { _logger.LogDebug(ex, "Failed to kill process, it may have already exited"); }
             return (-1, $"Command timed out after {_timeout}");
         }
 
@@ -110,16 +110,20 @@ public sealed class BuildVerifier
         int passed = 0;
         int failed = 0;
 
-        var passedMatch = PassedRegex.Match(output);
-        if (passedMatch.Success && int.TryParse(passedMatch.Groups[1].Value, out var p))
+        foreach (Match passedMatch in PassedRegex.Matches(output))
         {
-            passed = p;
+            if (int.TryParse(passedMatch.Groups[1].Value, out var p))
+            {
+                passed = p; // keep last match (final summary for multi-project)
+            }
         }
 
-        var failedMatch = FailedRegex.Match(output);
-        if (failedMatch.Success && int.TryParse(failedMatch.Groups[1].Value, out var f))
+        foreach (Match failedMatch in FailedRegex.Matches(output))
         {
-            failed = f;
+            if (int.TryParse(failedMatch.Groups[1].Value, out var f))
+            {
+                failed = f; // keep last match (final summary for multi-project)
+            }
         }
 
         return (passed, failed);

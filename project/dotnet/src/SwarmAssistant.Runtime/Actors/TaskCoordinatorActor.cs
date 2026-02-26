@@ -59,6 +59,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
     private readonly BuildVerifier? _buildVerifier;
+    private CancellationTokenSource? _verifyCts;
     private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILogger _logger;
@@ -180,6 +181,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     protected override void PostStop()
     {
+        _verifyCts?.Cancel();
+        _verifyCts?.Dispose();
+        _verifyCts = null;
         Context.System.EventStream.Unsubscribe(Self, typeof(GlobalBlackboardChanged));
         Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
         Context.System.EventStream.Unsubscribe(Self, typeof(RoleLifecycleEvent));
@@ -1116,13 +1120,17 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
                 if (_buildVerifier is not null)
                 {
+                    _verifyCts?.Cancel();
+                    _verifyCts?.Dispose();
+                    _verifyCts = new CancellationTokenSource();
+                    var ct = _verifyCts.Token;
                     var self = Self;
                     var taskId = _taskId;
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            var result = await _buildVerifier.VerifyAsync();
+                            var result = await _buildVerifier.VerifyAsync(ct);
                             self.Tell(new VerifyCompleted(taskId, result));
                         }
                         catch (Exception ex)
