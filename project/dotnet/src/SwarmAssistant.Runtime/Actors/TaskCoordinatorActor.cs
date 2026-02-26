@@ -1915,6 +1915,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor, IDisposable
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _verifyCts?.Cancel();
+        _verifyCts?.Dispose();
+        _verifyCts = null;
     }
 }

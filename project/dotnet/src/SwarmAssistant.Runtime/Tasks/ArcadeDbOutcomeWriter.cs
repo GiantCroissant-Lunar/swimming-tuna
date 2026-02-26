@@ -266,7 +266,7 @@ public sealed class ArcadeDbOutcomeWriter : IOutcomeWriter, IDisposable
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _schemaLock.Dispose();
     }
 }
 

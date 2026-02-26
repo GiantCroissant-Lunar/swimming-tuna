@@ -387,6 +387,13 @@ public sealed class SwarmAgentActor : ReceiveActor, IDisposable
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _heartbeatSchedule?.Cancel();
+        _heartbeatSchedule = null;
+
+        if (_endpointHost is not null)
+        {
+            _endpointHost.StopAsync().GetAwaiter().GetResult();
+            _endpointHost = null;
+        }
     }
 }

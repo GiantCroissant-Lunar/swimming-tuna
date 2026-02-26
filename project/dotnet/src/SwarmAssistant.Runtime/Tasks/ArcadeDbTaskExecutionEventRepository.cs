@@ -513,6 +513,7 @@ public sealed class ArcadeDbTaskExecutionEventRepository
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _schemaLock.Dispose();
+        _sequenceLock.Dispose();
     }
 }
