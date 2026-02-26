@@ -224,7 +224,12 @@ public sealed class AgentRegistryActorTests : TestKit
 
         healthyBudget.ExpectMsg<ExecuteRoleTask>(TimeSpan.FromSeconds(2));
         lowBudget.ExpectNoMsg(TimeSpan.FromMilliseconds(200));
-        Assert.True(new BudgetEnvelope { Type = BudgetType.TokenLimited, TotalTokens = 100, UsedTokens = 90, WarningThreshold = 0.8, HardLimit = 1.0 }.IsLowBudget);
+
+        registry.Tell(new QueryAgents(null, null));
+        var allAgents = ExpectMsg<QueryAgentsResult>();
+        var lowBudgetAgent = allAgents.Agents.FirstOrDefault(a => a.AgentId == "builder-low");
+        Assert.NotNull(lowBudgetAgent);
+        Assert.True(lowBudgetAgent.Budget?.IsLowBudget ?? false);
     }
 
     [Fact]

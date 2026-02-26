@@ -6,6 +6,7 @@ using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Planning;
+using SwarmAssistant.Runtime.Skills;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -39,6 +40,8 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly BuildVerifier? _buildVerifier;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
+    private readonly ILangfuseSimilarityQuery? _langfuseSimilarityQuery;
+    private readonly SkillMatcher? _skillMatcher;
     private readonly MemvidClient? _memvidClient;
     private readonly ILogger _logger;
 
@@ -72,6 +75,57 @@ public sealed class DispatcherActor : ReceiveActor
         SandboxLevelEnforcer? sandboxEnforcer = null,
         ILangfuseScoreWriter? langfuseScoreWriter = null,
         MemvidClient? memvidClient = null)
+        : this(
+            workerActor,
+            reviewerActor,
+            supervisorActor,
+            blackboardActor,
+            consensusActor,
+            roleEngine,
+            loggerFactory,
+            telemetry,
+            uiEvents,
+            taskRegistry,
+            options,
+            outcomeTracker,
+            strategyAdvisorActor,
+            eventRecorder,
+            codeIndexActor,
+            projectContext,
+            workspaceBranchManager,
+            buildVerifier,
+            sandboxEnforcer,
+            langfuseScoreWriter,
+            memvidClient,
+            langfuseSimilarityQuery: null,
+            skillMatcher: null)
+    {
+    }
+
+    public DispatcherActor(
+        IActorRef workerActor,
+        IActorRef reviewerActor,
+        IActorRef supervisorActor,
+        IActorRef blackboardActor,
+        IActorRef consensusActor,
+        AgentFrameworkRoleEngine roleEngine,
+        ILoggerFactory loggerFactory,
+        RuntimeTelemetry telemetry,
+        UiEventStream uiEvents,
+        TaskRegistry taskRegistry,
+        IOptions<RuntimeOptions> options,
+        OutcomeTracker? outcomeTracker = null,
+        IActorRef? strategyAdvisorActor = null,
+        RuntimeEventRecorder? eventRecorder = null,
+        IActorRef? codeIndexActor = null,
+        string? projectContext = null,
+        WorkspaceBranchManager? workspaceBranchManager = null,
+        BuildVerifier? buildVerifier = null,
+        SandboxLevelEnforcer? sandboxEnforcer = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null,
+        MemvidClient? memvidClient = null,
+        ILangfuseSimilarityQuery? langfuseSimilarityQuery = null,
+        SkillMatcher? skillMatcher = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -93,6 +147,8 @@ public sealed class DispatcherActor : ReceiveActor
         _buildVerifier = buildVerifier;
         _sandboxEnforcer = sandboxEnforcer;
         _langfuseScoreWriter = langfuseScoreWriter;
+        _langfuseSimilarityQuery = langfuseSimilarityQuery;
+        _skillMatcher = skillMatcher;
         _memvidClient = memvidClient;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
@@ -163,7 +219,9 @@ public sealed class DispatcherActor : ReceiveActor
                 _buildVerifier,
                 _sandboxEnforcer,
                 _langfuseScoreWriter,
-                _memvidClient)),
+                _memvidClient,
+                _langfuseSimilarityQuery,
+                _skillMatcher)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -226,7 +284,9 @@ public sealed class DispatcherActor : ReceiveActor
                 _buildVerifier,
                 _sandboxEnforcer,
                 _langfuseScoreWriter,
-                _memvidClient)),
+                _memvidClient,
+                _langfuseSimilarityQuery,
+                _skillMatcher)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;

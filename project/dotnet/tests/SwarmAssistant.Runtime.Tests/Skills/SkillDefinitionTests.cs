@@ -48,6 +48,22 @@ public sealed class SkillDefinitionTests
     }
 
     [Fact]
+    public void Constructor_WithProjectScope_CreatesInstance()
+    {
+        var definition = new SkillDefinition(
+            name: "ProjectSkill",
+            description: "A project-scoped skill",
+            tags: new[] { "project" },
+            roles: new[] { SwarmRole.Builder },
+            scope: "project",
+            body: "Project-scoped content",
+            sourcePath: "/path/to/project-skill.md"
+        );
+
+        Assert.Equal("project", definition.Scope);
+    }
+
+    [Fact]
     public void SameReference_ReturnsEqual()
     {
         var definition = new SkillDefinition(
