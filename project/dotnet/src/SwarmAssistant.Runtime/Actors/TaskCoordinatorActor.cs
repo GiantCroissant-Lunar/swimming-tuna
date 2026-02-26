@@ -9,6 +9,7 @@ using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Planning;
+using SwarmAssistant.Runtime.Skills;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -66,6 +67,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
+    private readonly ILangfuseSimilarityQuery? _langfuseSimilarityQuery;
+    private readonly SkillMatcher? _skillMatcher;
     private readonly MemvidClient? _memvidClient;
     private readonly ILogger _logger;
 
@@ -82,6 +85,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _workspaceBranchName;
     private string? _worktreePath;
     private string? _siblingContext;
+    private string? _langfuseContext;
+    private bool _langfuseContextLoaded;
 
     private int _retryCount;
     private readonly int _maxRetries;
@@ -127,6 +132,69 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         SandboxLevelEnforcer? sandboxEnforcer = null,
         ILangfuseScoreWriter? langfuseScoreWriter = null,
         MemvidClient? memvidClient = null)
+        : this(
+            taskId,
+            title,
+            description,
+            workerActor,
+            reviewerActor,
+            supervisorActor,
+            blackboardActor,
+            consensusActor,
+            roleEngine,
+            goapPlanner,
+            loggerFactory,
+            telemetry,
+            uiEvents,
+            taskRegistry,
+            options,
+            outcomeTracker,
+            strategyAdvisorActor,
+            codeIndexActor,
+            maxRetries,
+            subTaskDepth,
+            eventRecorder,
+            projectContext,
+            workspaceBranchManager,
+            buildVerifier,
+            sandboxEnforcer,
+            langfuseScoreWriter,
+            memvidClient,
+            langfuseSimilarityQuery: null,
+            skillMatcher: null)
+    {
+    }
+
+    public TaskCoordinatorActor(
+        string taskId,
+        string title,
+        string description,
+        IActorRef workerActor,
+        IActorRef reviewerActor,
+        IActorRef supervisorActor,
+        IActorRef blackboardActor,
+        IActorRef consensusActor,
+        AgentFrameworkRoleEngine roleEngine,
+        IGoapPlanner goapPlanner,
+        ILoggerFactory loggerFactory,
+        RuntimeTelemetry telemetry,
+        UiEventStream uiEvents,
+        TaskRegistry taskRegistry,
+        RuntimeOptions options,
+        OutcomeTracker? outcomeTracker = null,
+        IActorRef? strategyAdvisorActor = null,
+        IActorRef? codeIndexActor = null,
+        int maxRetries = 2,
+        int subTaskDepth = 0,
+        RuntimeEventRecorder? eventRecorder = null,
+        string? projectContext = null,
+        WorkspaceBranchManager? workspaceBranchManager = null,
+        BuildVerifier? buildVerifier = null,
+        SandboxLevelEnforcer? sandboxEnforcer = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null,
+        MemvidClient? memvidClient = null,
+        ILangfuseSimilarityQuery? langfuseSimilarityQuery = null,
+        SkillMatcher? skillMatcher = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -149,6 +217,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
         _sandboxEnforcer = sandboxEnforcer;
         _langfuseScoreWriter = langfuseScoreWriter;
+        _langfuseSimilarityQuery = langfuseSimilarityQuery;
+        _skillMatcher = skillMatcher;
         _memvidClient = memvidClient;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
@@ -1100,11 +1170,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.role.dispatched",
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("planner", _taskId));
+                var (planSkills, planLangfuseContext) = await BuildLearningContextAsync(SwarmRole.Planner);
                 var planPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Planner, _title, _description, null, null, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    planSkills,
+                    planLangfuseContext,
+                    siblingContext: null);
                 EmitDiagnosticContext("Plan", SwarmRole.Planner, planPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Planner, _title, _description, null, null, Prompt: planPrompt, RunId: _runId));
@@ -1144,13 +1218,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.role.dispatched",
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("builder", _taskId));
+                var (buildSkills, buildLangfuseContext) = await BuildLearningContextAsync(SwarmRole.Builder);
                 var buildPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
                     _projectContext,
-                    matchedSkills: null,
-                    langfuseContext: null,
+                    buildSkills,
+                    buildLangfuseContext,
                     siblingContext: _siblingContext);
                 EmitDiagnosticContext("Build", SwarmRole.Builder, buildPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
@@ -1203,11 +1278,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("reviewer", _taskId));
                 var reviewCount = _options.ReviewConsensusCount;
+                var (reviewSkills, reviewLangfuseContext) = await BuildLearningContextAsync(SwarmRole.Reviewer);
                 var reviewPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    reviewSkills,
+                    reviewLangfuseContext,
+                    siblingContext: null);
                 EmitDiagnosticContext("Review", SwarmRole.Reviewer, reviewPrompt, codeContext);
                 var reviewTask = new ExecuteRoleTask(
                     _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId, WorkspacePath: _worktreePath);
@@ -1239,11 +1318,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 var currentRequiredVotes = _options.ReviewConsensusCount;
                 _consensusActor.Tell(new ConsensusRequest(_taskId, _buildOutput ?? string.Empty, currentRequiredVotes + additionalReviewCount));
 
+                var (secondOpinionSkills, secondOpinionLangfuseContext) = await BuildLearningContextAsync(SwarmRole.Reviewer);
                 var secondOpinionPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    secondOpinionSkills,
+                    secondOpinionLangfuseContext,
+                    siblingContext: null);
                 EmitDiagnosticContext("SecondOpinion", SwarmRole.Reviewer, secondOpinionPrompt, codeContext);
                 var secondOpinionTask = new ExecuteRoleTask(
                     _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId, WorkspacePath: _worktreePath);
@@ -1261,13 +1344,14 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     type: "agui.role.dispatched",
                     taskId: _taskId,
                     payload: new RoleDispatchedPayload("builder", _taskId));
+                var (reworkSkills, reworkLangfuseContext) = await BuildLearningContextAsync(SwarmRole.Builder);
                 var reworkPrompt = RolePromptFactory.BuildPrompt(
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
                     _projectContext,
-                    matchedSkills: null,
-                    langfuseContext: null,
+                    reworkSkills,
+                    reworkLangfuseContext,
                     siblingContext: _siblingContext);
                 EmitDiagnosticContext("Rework", SwarmRole.Builder, reworkPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
@@ -1291,6 +1375,55 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 HandleDeadEnd();
                 break;
         }
+    }
+
+    private async Task<(IReadOnlyList<MatchedSkill>? MatchedSkills, string? LangfuseContext)> BuildLearningContextAsync(SwarmRole role)
+    {
+        IReadOnlyList<MatchedSkill>? matchedSkills = null;
+        if (_skillMatcher is not null)
+        {
+            try
+            {
+                matchedSkills = _skillMatcher.Match(_title, _description, role);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Skill matching failed taskId={TaskId} role={Role}; continuing without matched skills",
+                    _taskId,
+                    role);
+            }
+        }
+
+        if (_langfuseSimilarityQuery is null || _langfuseContextLoaded)
+        {
+            return (matchedSkills, _langfuseContext);
+        }
+
+        _langfuseContextLoaded = true;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            _langfuseContext = await _langfuseSimilarityQuery.GetSimilarTaskContextAsync(
+                $"{_title} {_description}".Trim(),
+                cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "Timed out loading Langfuse similarity context taskId={TaskId}; continuing without Langfuse context",
+                _taskId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed loading Langfuse similarity context taskId={TaskId}; continuing without Langfuse context",
+                _taskId);
+        }
+
+        return (matchedSkills, _langfuseContext);
     }
 
     private void EmitDiagnosticContext(string action, SwarmRole role, string prompt, CodeIndexResult? codeContext)

@@ -104,6 +104,7 @@ if (bootstrapOptions.LangfuseTracingEnabled)
         }
     });
     builder.Services.AddSingleton<ILangfuseApiClient, HttpLangfuseApiClient>();
+    builder.Services.AddSingleton<ILangfuseSimilarityQuery, LangfuseSimilarityQuery>();
     builder.Services.AddSingleton<ILangfuseScoreWriter, LangfuseScoreWriter>();
 }
 if (bootstrapOptions.MemvidEnabled)

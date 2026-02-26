@@ -60,6 +60,11 @@ public sealed class LangfuseSimilarityQuery : ILangfuseSimilarityQuery
 
             return contextBuilder.ToString();
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Langfuse similarity query timed out or was canceled");
+            return null;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to query Langfuse for similar tasks");
