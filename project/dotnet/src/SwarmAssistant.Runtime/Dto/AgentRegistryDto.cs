@@ -16,7 +16,9 @@ public sealed record AgentRegistryEntryDto(
 public sealed record ProviderInfoDto(
     string Adapter,
     string Type,
-    string? Plan);
+    string? Plan,
+    string? Model,
+    string? Reasoning);
 
 public sealed record BudgetInfoDto(
     string Type,
