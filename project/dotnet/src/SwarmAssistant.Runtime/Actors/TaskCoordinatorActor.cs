@@ -1493,6 +1493,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         // Learning: record successful outcome
         RecordOutcome(TaskState.Done, summary: summary);
 
+        // Ensure task memvid exists even when build/review were skipped.
+        // TryEncodeTaskMemoryAsync is normally called on Builder/Reviewer success,
+        // but if the orchestrator finishes early (e.g. "goal already satisfied"),
+        // encode whatever output we have so sibling context can find it.
+        _ = TryEnsureTaskMemoryOnFinishAsync();
+
         // Persist task.done lifecycle event (best-effort, fire-and-forget)
         _ = _eventRecorder?.RecordTaskDoneAsync(_taskId, _runId);
 
@@ -1748,6 +1754,34 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         {
             _logger.LogWarning(ex, "Failed to create run memory; continuing without memvid");
         }
+    }
+
+    /// <summary>
+    /// Ensures a task .mv2 file exists at finish time. If the builder or reviewer already
+    /// encoded output, the file exists and this is a no-op. If the task finished without
+    /// building (e.g. orchestrator decided "goal already satisfied"), encode the planning
+    /// output so sibling context queries can find it.
+    /// </summary>
+    private async Task TryEnsureTaskMemoryOnFinishAsync()
+    {
+        if (_memvidClient is null) return;
+
+        var taskPath = GetTaskMemoryPath(_taskId);
+        if (File.Exists(taskPath))
+        {
+            return; // Already encoded by builder or reviewer
+        }
+
+        // Pick the best available output: build > plan > summary
+        var (role, output) = _buildOutput is not null
+            ? (SwarmRole.Builder, _buildOutput)
+            : _planningOutput is not null
+                ? (SwarmRole.Planner, _planningOutput)
+                : (SwarmRole.Orchestrator, BuildSummary());
+
+        if (string.IsNullOrWhiteSpace(output)) return;
+
+        await TryEncodeTaskMemoryAsync(role, output, confidence: 1.0);
     }
 
     private async Task TryEncodeTaskMemoryAsync(SwarmRole role, string output, double confidence)
