@@ -10,13 +10,25 @@ public sealed class AgentFrameworkRoleEngine
 {
     private readonly RuntimeOptions _options;
     private readonly SubscriptionCliRoleExecutor _subscriptionCliRoleExecutor;
+    private readonly RoleModelMapping _roleModelMapping;
+    private readonly IReadOnlyDictionary<string, IModelProvider> _modelProviders;
     private readonly RuntimeTelemetry _telemetry;
     private readonly ILogger _logger;
 
-    public AgentFrameworkRoleEngine(RuntimeOptions options, ILoggerFactory loggerFactory, RuntimeTelemetry telemetry)
+    public AgentFrameworkRoleEngine(
+        RuntimeOptions options,
+        ILoggerFactory loggerFactory,
+        RuntimeTelemetry telemetry,
+        IReadOnlyList<IModelProvider>? modelProviders = null)
     {
         _options = options;
         _subscriptionCliRoleExecutor = new SubscriptionCliRoleExecutor(options, loggerFactory);
+        _roleModelMapping = RoleModelMapping.FromOptions(options);
+        _modelProviders = (modelProviders ?? BuildDefaultModelProviders(options, loggerFactory))
+            .ToDictionary(
+                provider => provider.ProviderId,
+                provider => provider,
+                StringComparer.OrdinalIgnoreCase);
         _telemetry = telemetry;
         _logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
     }
@@ -40,6 +52,8 @@ public sealed class AgentFrameworkRoleEngine
             {
                 "in-process-workflow" => await ExecuteInProcessWorkflowAsync(command, activity, cancellationToken),
                 "subscription-cli-fallback" => await ExecuteSubscriptionCliAsync(command, activity, cancellationToken),
+                "api-direct" => await ExecuteApiDirectAsync(command, activity, cancellationToken),
+                "hybrid" => await ExecuteHybridAsync(command, activity, cancellationToken),
                 _ => throw new InvalidOperationException(
                     $"Unsupported AgentFrameworkExecutionMode '{_options.AgentFrameworkExecutionMode}'.")
             };
@@ -133,6 +147,102 @@ public sealed class AgentFrameworkRoleEngine
             result.Model?.Id ?? "(default)");
 
         return result;
+    }
+
+    private async Task<CliRoleExecutionResult> ExecuteApiDirectAsync(
+        ExecuteRoleTask command,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var resolvedRoleModel = _roleModelMapping.Resolve(command.Role);
+        if (resolvedRoleModel is null)
+        {
+            throw new InvalidOperationException(
+                $"api-direct mode requires Runtime__RoleModelMapping for role {command.Role}.");
+        }
+
+        if (!_modelProviders.TryGetValue(resolvedRoleModel.Model.Provider, out var provider))
+        {
+            throw new InvalidOperationException(
+                $"No model provider registered for '{resolvedRoleModel.Model.Provider}'.");
+        }
+
+        var prompt = command.Prompt ?? RolePromptFactory.BuildPrompt(command);
+        var modelOptions = new ModelExecutionOptions
+        {
+            Reasoning = resolvedRoleModel.Reasoning
+        };
+        var response = await provider.ExecuteAsync(resolvedRoleModel.Model, prompt, modelOptions, cancellationToken);
+
+        activity?.SetTag("gen_ai.request.provider", provider.ProviderId);
+        activity?.SetTag("gen_ai.request.model", resolvedRoleModel.Model.Id);
+        if (!string.IsNullOrWhiteSpace(resolvedRoleModel.Reasoning))
+        {
+            activity?.SetTag("gen_ai.request.reasoning", resolvedRoleModel.Reasoning);
+        }
+        activity?.SetTag("gen_ai.usage.input_tokens", response.Usage.InputTokens);
+        activity?.SetTag("gen_ai.usage.output_tokens", response.Usage.OutputTokens);
+        activity?.SetTag("gen_ai.usage.cache_read_tokens", response.Usage.CacheReadTokens);
+        activity?.SetTag("gen_ai.usage.cache_write_tokens", response.Usage.CacheWriteTokens);
+        activity?.SetTag("gen_ai.usage.cost_usd", CalculateCostUsd(resolvedRoleModel.Model, response.Usage));
+        activity?.SetTag("output.length", response.Output.Length);
+        activity?.SetStatus(ActivityStatusCode.Ok);
+
+        _logger.LogInformation(
+            "Role completed through api-direct provider={Provider} role={Role} taskId={TaskId} model={Model}",
+            provider.ProviderId,
+            command.Role,
+            command.TaskId,
+            resolvedRoleModel.Model.Id);
+
+        return new CliRoleExecutionResult(
+            response.Output,
+            AdapterId: $"api-{provider.ProviderId}",
+            Model: resolvedRoleModel.Model,
+            Reasoning: resolvedRoleModel.Reasoning);
+    }
+
+    private async Task<CliRoleExecutionResult> ExecuteHybridAsync(
+        ExecuteRoleTask command,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var resolvedRoleModel = _roleModelMapping.Resolve(command.Role);
+        if (resolvedRoleModel is not null &&
+            _modelProviders.ContainsKey(resolvedRoleModel.Model.Provider))
+        {
+            return await ExecuteApiDirectAsync(command, activity, cancellationToken);
+        }
+
+        return await ExecuteSubscriptionCliAsync(command, activity, cancellationToken);
+    }
+
+    private static IReadOnlyList<IModelProvider> BuildDefaultModelProviders(RuntimeOptions options, ILoggerFactory loggerFactory)
+    {
+        var providers = new List<IModelProvider>();
+        foreach (var providerId in options.ApiProviderOrder.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (providerId.Equals("openai", StringComparison.OrdinalIgnoreCase))
+            {
+                var apiKey = Environment.GetEnvironmentVariable(options.OpenAiApiKeyEnvVar);
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    providers.Add(new OpenAiModelProvider(apiKey, options.OpenAiBaseUrl));
+                }
+            }
+        }
+
+        var logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
+        logger.LogInformation("Model providers registered: {Providers}", string.Join(",", providers.Select(p => p.ProviderId)));
+        return providers;
+    }
+
+    private static decimal CalculateCostUsd(ModelSpec model, TokenUsage usage)
+    {
+        var inputCost = (usage.InputTokens / 1_000_000m) * model.Cost.InputPerMillionTokens;
+        var outputCost = (usage.OutputTokens / 1_000_000m) * model.Cost.OutputPerMillionTokens;
+        var cacheReadCost = (usage.CacheReadTokens / 1_000_000m) * model.Cost.CacheReadPerMillionTokens;
+        return inputCost + outputCost + cacheReadCost;
     }
 
     /// <summary>

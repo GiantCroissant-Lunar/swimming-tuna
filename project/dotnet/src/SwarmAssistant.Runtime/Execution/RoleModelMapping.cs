@@ -16,14 +16,21 @@ internal sealed class RoleModelMapping
         };
 
     private readonly IReadOnlyDictionary<SwarmRole, RoleModelPreference> _preferences;
+    private readonly string _defaultProvider;
 
-    private RoleModelMapping(IReadOnlyDictionary<SwarmRole, RoleModelPreference> preferences)
+    private RoleModelMapping(
+        IReadOnlyDictionary<SwarmRole, RoleModelPreference> preferences,
+        string defaultProvider)
     {
         _preferences = preferences;
+        _defaultProvider = defaultProvider;
     }
 
     public static RoleModelMapping FromOptions(RuntimeOptions options)
     {
+        var defaultProvider = options.ApiProviderOrder
+            .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p))
+            ?? "openai";
         var preferences = new Dictionary<SwarmRole, RoleModelPreference>();
         foreach (var (key, value) in options.RoleModelMapping)
         {
@@ -40,10 +47,10 @@ internal sealed class RoleModelMapping
             preferences[role] = value;
         }
 
-        return new RoleModelMapping(preferences);
+        return new RoleModelMapping(preferences, defaultProvider);
     }
 
-    public ResolvedRoleModel? Resolve(SwarmRole role, string adapterId)
+    public ResolvedRoleModel? Resolve(SwarmRole role, string? adapterId = null)
     {
         if (!_preferences.TryGetValue(role, out var preference) ||
             string.IsNullOrWhiteSpace(preference.Model))
@@ -51,11 +58,11 @@ internal sealed class RoleModelMapping
             return null;
         }
 
-        var model = ParseModelSpec(preference.Model, adapterId);
+        var model = ParseModelSpec(preference.Model, adapterId, _defaultProvider);
         return new ResolvedRoleModel(model, preference.Reasoning);
     }
 
-    internal static ModelSpec ParseModelSpec(string modelValue, string adapterId)
+    internal static ModelSpec ParseModelSpec(string modelValue, string? adapterId, string defaultProvider = "openai")
     {
         var trimmed = modelValue.Trim();
         var slash = trimmed.IndexOf('/');
@@ -74,13 +81,18 @@ internal sealed class RoleModelMapping
         return new ModelSpec
         {
             Id = trimmed,
-            Provider = ResolveProviderFallback(adapterId),
+            Provider = ResolveProviderFallback(adapterId, defaultProvider),
             DisplayName = trimmed
         };
     }
 
-    private static string ResolveProviderFallback(string adapterId)
+    private static string ResolveProviderFallback(string? adapterId, string defaultProvider)
     {
+        if (string.IsNullOrWhiteSpace(adapterId))
+        {
+            return defaultProvider;
+        }
+
         if (AdapterProviderFallbacks.TryGetValue(adapterId, out var provider))
         {
             return provider;

@@ -13,6 +13,9 @@ public sealed class RuntimeOptions
     public string AgentFrameworkExecutionMode { get; init; } = "in-process-workflow";
     public int RoleExecutionTimeoutSeconds { get; init; } = 120;
     public string[] CliAdapterOrder { get; init; } = [];
+    public string[] ApiProviderOrder { get; init; } = ["openai"];
+    public string OpenAiApiKeyEnvVar { get; init; } = "OPENAI_API_KEY";
+    public string OpenAiBaseUrl { get; init; } = "https://api.openai.com/v1";
     public Dictionary<string, RoleModelPreference> RoleModelMapping { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
     public string SandboxMode { get; init; } = "docker";

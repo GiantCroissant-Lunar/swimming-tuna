@@ -39,6 +39,9 @@ export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/tr
 ## CLI-First Role Routing (Phase 5)
 
 - `AgentFrameworkRoleEngine` now supports `subscription-cli-fallback` mode in addition to `in-process-workflow`.
+- RFC-010 adds initial `api-direct` and `hybrid` execution modes:
+  - `api-direct`: execute via registered `IModelProvider` implementations
+  - `hybrid`: prefer `api-direct` when role model mapping has a registered provider, otherwise fallback to CLI adapters
 - `SubscriptionCliRoleExecutor` executes roles with ordered adapters:
 - `copilot`
 - `cline`
