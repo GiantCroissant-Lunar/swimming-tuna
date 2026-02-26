@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 
 namespace SwarmAssistant.Runtime.Execution;
 

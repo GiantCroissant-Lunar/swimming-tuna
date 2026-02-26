@@ -1,7 +1,7 @@
-namespace SwarmAssistant.Contracts.Messaging;
 
 using System.Text.Json.Serialization;
 
+namespace SwarmAssistant.Contracts.Messaging;
 public sealed record SandboxRequirements
 {
     [JsonPropertyName("needsOAuth")]

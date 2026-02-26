@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Telemetry;
 
@@ -15,10 +14,6 @@ public sealed class SupervisorActor : ReceiveActor
 {
     private const int MaxRetriesPerTask = 3;
     private const int AdapterCircuitThreshold = 3;
-
-    /// <summary>Number of quality concerns for the same task that triggers a supervisor-level retry.</summary>
-    private const int QualityConcernRetryThreshold = 2;
-
     private static readonly TimeSpan AdapterCircuitDuration = TimeSpan.FromMinutes(5);
 
     private readonly RuntimeTelemetry _telemetry;

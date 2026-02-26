@@ -1,15 +1,13 @@
 using System.Globalization;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
 
 namespace SwarmAssistant.Runtime.Tasks;
 
-public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReader
+public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReader, IDisposable
 {
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
     private static readonly string[] SchemaCommands =
@@ -344,5 +342,10 @@ public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReade
             _options.ArcadeDbHttpUrl,
             _options.ArcadeDbDatabase,
             _consecutiveFailures);
+    }
+
+    public void Dispose()
+    {
+        _schemaLock.Dispose();
     }
 }

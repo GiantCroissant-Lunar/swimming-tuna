@@ -1,6 +1,5 @@
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Pattern;
 using Akka.Routing;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;

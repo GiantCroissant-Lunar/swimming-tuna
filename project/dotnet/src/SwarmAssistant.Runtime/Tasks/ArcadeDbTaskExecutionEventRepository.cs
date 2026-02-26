@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
 
@@ -16,7 +14,7 @@ namespace SwarmAssistant.Runtime.Tasks;
 /// atomic increments, which guarantees no collisions within a single runtime node.
 /// </summary>
 public sealed class ArcadeDbTaskExecutionEventRepository
-    : ITaskExecutionEventWriter, ITaskExecutionEventReader
+    : ITaskExecutionEventWriter, ITaskExecutionEventReader, IDisposable
 {
     private const int MaxInMemorySequenceEntries = 10_000;
     private const int SequenceTrimBatchSize = 1_000;
@@ -511,5 +509,11 @@ public sealed class ArcadeDbTaskExecutionEventRepository
             _options.ArcadeDbHttpUrl,
             _options.ArcadeDbDatabase,
             _consecutiveFailures);
+    }
+
+    public void Dispose()
+    {
+        _schemaLock.Dispose();
+        _sequenceLock.Dispose();
     }
 }

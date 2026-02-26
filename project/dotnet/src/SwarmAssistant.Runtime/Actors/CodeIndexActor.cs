@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
 

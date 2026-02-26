@@ -199,7 +199,7 @@ public sealed class TaskRegistry : IAsyncDisposable
                 {
                     var newParent = parent with
                     {
-                        ChildTaskIds = [..(parent.ChildTaskIds ?? []), taskId],
+                        ChildTaskIds = [.. (parent.ChildTaskIds ?? []), taskId],
                         UpdatedAt = DateTimeOffset.UtcNow
                     };
 

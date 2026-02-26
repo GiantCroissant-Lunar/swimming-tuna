@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using SwarmAssistant.Runtime.Skills;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace SwarmAssistant.Runtime.Tests.Skills;

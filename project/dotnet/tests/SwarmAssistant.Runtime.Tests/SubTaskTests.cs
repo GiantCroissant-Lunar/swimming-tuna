@@ -3,7 +3,6 @@ using Akka.Routing;
 using Akka.TestKit.Xunit2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
@@ -613,7 +612,8 @@ public sealed class SubTaskTests : TestKit
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            if (condition()) return;
+            if (condition())
+                return;
             await Task.Delay(50);
         }
 

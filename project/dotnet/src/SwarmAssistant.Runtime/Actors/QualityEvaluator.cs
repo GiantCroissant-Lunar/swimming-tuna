@@ -25,7 +25,8 @@ internal static class QualityEvaluator
     // ── Adapter reliability scores ──────────────────────────────────────
     public static double GetAdapterReliabilityScore(string? adapterId)
     {
-        if (string.IsNullOrWhiteSpace(adapterId)) return 0.5;
+        if (string.IsNullOrWhiteSpace(adapterId))
+            return 0.5;
 
         return adapterId.ToLowerInvariant() switch
         {

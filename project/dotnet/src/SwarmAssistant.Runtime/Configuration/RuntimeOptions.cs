@@ -1,8 +1,8 @@
-namespace SwarmAssistant.Runtime.Configuration;
 
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Execution;
 
+namespace SwarmAssistant.Runtime.Configuration;
 public sealed class RuntimeOptions
 {
     public const string SectionName = "Runtime";

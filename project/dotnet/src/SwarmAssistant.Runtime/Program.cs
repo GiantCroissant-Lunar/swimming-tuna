@@ -1,11 +1,10 @@
 using System.Text.Json;
 using Akka.Actor;
-using Akka.Pattern;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime;
 using SwarmAssistant.Runtime.A2A;
 using SwarmAssistant.Runtime.Actors;
-using SwarmAssistant.Runtime;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Dto;
 using SwarmAssistant.Runtime.Tasks;
@@ -365,7 +364,20 @@ if (options.AgUiEnabled)
             TaskInterventionResult result;
             try
             {
-                result = await dispatcher.Ask<TaskInterventionResult>(command, TimeSpan.FromSeconds(5));
+                result = await dispatcher.Ask<TaskInterventionResult>(command, TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+            }
+            catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return Results.Problem(
+                    detail: "Request was cancelled",
+                    statusCode: StatusCodes.Status499ClientClosedRequest);
+            }
+            catch (TaskCanceledException)
+            {
+                return RejectAction(
+                    reasonCode: "dispatch_timeout",
+                    error: "Task intervention dispatch timed out.",
+                    statusCode: StatusCodes.Status504GatewayTimeout);
             }
             catch (Exception ex)
             {

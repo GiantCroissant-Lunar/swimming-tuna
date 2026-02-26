@@ -1,16 +1,14 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Akka.Actor;
-using Akka.Pattern;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
-using SwarmAssistant.Runtime.Configuration;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -21,7 +19,7 @@ namespace SwarmAssistant.Runtime.Actors;
 /// Falls back to GOAP recommendation directly if CLI orchestrator fails.
 /// Integrates learning and adaptation via StrategyAdvisorActor and OutcomeTracker.
 /// </summary>
-public sealed class TaskCoordinatorActor : ReceiveActor
+public sealed class TaskCoordinatorActor : ReceiveActor, IDisposable
 {
     private static readonly Regex ActionRegex = new(
         @"ACTION:\s*(\w+)",
@@ -1913,5 +1911,12 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId, _runId,
                 message.Role.ToString().ToLowerInvariant());
         }
+    }
+
+    public void Dispose()
+    {
+        _verifyCts?.Cancel();
+        _verifyCts?.Dispose();
+        _verifyCts = null;
     }
 }
