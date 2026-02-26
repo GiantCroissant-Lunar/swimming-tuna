@@ -959,7 +959,9 @@ if (options.A2AEnabled)
                     ? new ProviderInfoDto(
                         Adapter: entry.Provider.Adapter,
                         Type: entry.Provider.Type,
-                        Plan: entry.Provider.Plan)
+                        Plan: entry.Provider.Plan,
+                        Model: entry.Provider.Model,
+                        Reasoning: entry.Provider.Reasoning)
                     : null,
                 SandboxLevel: (int)entry.SandboxLevel,
                 Budget: entry.Budget is not null

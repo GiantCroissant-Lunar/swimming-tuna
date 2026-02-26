@@ -580,6 +580,12 @@ components:
             plan:
               type: string
               description: Service plan or tier.
+            model:
+              type: string
+              description: Effective model id currently associated with this agent.
+            reasoning:
+              type: string
+              description: Effective reasoning level currently associated with this agent.
         sandboxLevel:
           type: integer
           description: "Isolation level: 0=BareCli, 1=OsSandboxed, 2=Container"

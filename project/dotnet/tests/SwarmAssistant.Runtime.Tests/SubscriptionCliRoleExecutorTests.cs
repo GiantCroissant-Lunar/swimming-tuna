@@ -88,6 +88,42 @@ public sealed class SubscriptionCliRoleExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithRoleModelMapping_ResolvesModelForRole()
+    {
+        var options = new RuntimeOptions
+        {
+            CliAdapterOrder = ["local-echo"],
+            SandboxMode = "host",
+            RoleModelMapping = new Dictionary<string, RoleModelPreference>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Planner"] = new()
+                {
+                    Model = "anthropic/claude-sonnet-4-6",
+                    Reasoning = "high"
+                }
+            }
+        };
+
+        using var loggerFactory = LoggerFactory.Create(builder => { });
+        var executor = new SubscriptionCliRoleExecutor(options, loggerFactory);
+
+        var result = await executor.ExecuteAsync(
+            new ExecuteRoleTask(
+                "task-model-1",
+                SwarmRole.Planner,
+                "Plan task",
+                "Use role model mapping",
+                null,
+                null),
+            CancellationToken.None);
+
+        Assert.NotNull(result.Model);
+        Assert.Equal("claude-sonnet-4-6", result.Model!.Id);
+        Assert.Equal("anthropic", result.Model.Provider);
+        Assert.Equal("high", result.Reasoning);
+    }
+
+    [Fact]
     public void NormalizeOutput_StripsAnsiAndTrims()
     {
         var normalized = SubscriptionCliRoleExecutor.NormalizeOutput("\u001b[0mhi\u001b[0m\r\n");

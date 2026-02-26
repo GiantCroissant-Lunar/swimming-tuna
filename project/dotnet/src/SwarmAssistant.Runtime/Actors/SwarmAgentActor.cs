@@ -26,6 +26,8 @@ public sealed class SwarmAgentActor : ReceiveActor
     private readonly int? _httpPort;
     private readonly Dictionary<string, int> _reservedContractCounts = new(StringComparer.Ordinal);
     private string _currentProviderAdapter;
+    private string? _currentModelId;
+    private string? _currentReasoning;
 
     private int _currentLoad;
     private readonly TimeSpan _idleTtl;
@@ -216,6 +218,8 @@ public sealed class SwarmAgentActor : ReceiveActor
             {
                 _currentProviderAdapter = result.AdapterId;
             }
+            _currentModelId = result.Model?.Id;
+            _currentReasoning = result.Reasoning;
             activity?.SetTag("output.length", result.Output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
@@ -375,9 +379,9 @@ public sealed class SwarmAgentActor : ReceiveActor
         var provider = new ProviderInfo
         {
             Adapter = _currentProviderAdapter,
-            Type = _options.AgentFrameworkExecutionMode == "subscription-cli-fallback"
-                ? "subscription"
-                : "api"
+            Type = ResolveProviderType(_currentProviderAdapter),
+            Model = _currentModelId,
+            Reasoning = _currentReasoning
         };
 
         var budget = new BudgetEnvelope { Type = BudgetType.Unlimited };
@@ -397,6 +401,30 @@ public sealed class SwarmAgentActor : ReceiveActor
 
     private string ResolveConfiguredProviderAdapter()
     {
+        if (_options.AgentFrameworkExecutionMode.Equals("api-direct", StringComparison.OrdinalIgnoreCase))
+        {
+            var configuredApiProvider = _options.ApiProviderOrder?.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
+            if (string.IsNullOrWhiteSpace(configuredApiProvider))
+            {
+                return "api-openai";
+            }
+
+            var normalizedProvider = configuredApiProvider.Trim();
+            if (normalizedProvider.StartsWith("api-", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedProvider = normalizedProvider["api-".Length..];
+            }
+
+            return $"api-{normalizedProvider}";
+        }
+
         return _options.CliAdapterOrder?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a)) ?? "local-echo";
+    }
+
+    private static string ResolveProviderType(string adapterId)
+    {
+        return adapterId.StartsWith("api-", StringComparison.OrdinalIgnoreCase)
+            ? "api"
+            : "subscription";
     }
 }

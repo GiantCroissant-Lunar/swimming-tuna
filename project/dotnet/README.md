@@ -39,6 +39,9 @@ export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/tr
 ## CLI-First Role Routing (Phase 5)
 
 - `AgentFrameworkRoleEngine` now supports `subscription-cli-fallback` mode in addition to `in-process-workflow`.
+- RFC-010 adds initial `api-direct` and `hybrid` execution modes:
+  - `api-direct`: execute via registered `IModelProvider` implementations
+  - `hybrid`: prefer `api-direct` when role model mapping has a registered provider, otherwise fallback to CLI adapters
 - `SubscriptionCliRoleExecutor` executes roles with ordered adapters:
 - `copilot`
 - `cline`
@@ -79,6 +82,31 @@ Prerequisites:
 
 - `kimi` and `kilo` CLIs installed and on `PATH`
 - both CLIs authenticated (`kimi --prompt "ping"` and `kilo run "ping" --auto`)
+
+### RFC-010 Model Mapping (Initial)
+
+`RuntimeOptions` now supports role-level model hints via `RoleModelMapping`.
+When a role is executed, supported adapters receive model/reasoning hints via
+their CLI flags or env vars.
+
+```json
+{
+  "Runtime": {
+    "ApiProviderOrder": ["openai"],
+    "OpenAiBaseUrl": "https://api.openai.com/v1",
+    "RoleModelMapping": {
+      "Planner": { "Model": "anthropic/claude-sonnet-4-6", "Reasoning": "high" },
+      "Builder": { "Model": "kilo/giga-potato" }
+    }
+  }
+}
+```
+
+`ApiProviderOrder` controls provider precedence.
+`OpenAiApiKeyEnvVar` defines the environment-variable name used to fetch OpenAI
+credentials.
+`OpenAiBaseUrl` defines the OpenAI endpoint used when role model hints (for
+example `Planner`/`Builder`) resolve to API-backed providers.
 
 ## AG-UI + A2UI Gateway (Phase 6)
 
