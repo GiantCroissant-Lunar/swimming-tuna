@@ -7,6 +7,7 @@ using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Langfuse;
+using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -65,6 +66,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
+    private readonly MemvidClient? _memvidClient;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -122,7 +124,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         WorkspaceBranchManager? workspaceBranchManager = null,
         BuildVerifier? buildVerifier = null,
         SandboxLevelEnforcer? sandboxEnforcer = null,
-        ILangfuseScoreWriter? langfuseScoreWriter = null)
+        ILangfuseScoreWriter? langfuseScoreWriter = null,
+        MemvidClient? memvidClient = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -145,6 +148,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
         _sandboxEnforcer = sandboxEnforcer;
         _langfuseScoreWriter = langfuseScoreWriter;
+        _memvidClient = memvidClient;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;

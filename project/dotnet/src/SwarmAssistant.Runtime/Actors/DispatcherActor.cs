@@ -4,6 +4,7 @@ using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Langfuse;
+using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -38,6 +39,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly BuildVerifier? _buildVerifier;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
+    private readonly MemvidClient? _memvidClient;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -68,7 +70,8 @@ public sealed class DispatcherActor : ReceiveActor
         WorkspaceBranchManager? workspaceBranchManager = null,
         BuildVerifier? buildVerifier = null,
         SandboxLevelEnforcer? sandboxEnforcer = null,
-        ILangfuseScoreWriter? langfuseScoreWriter = null)
+        ILangfuseScoreWriter? langfuseScoreWriter = null,
+        MemvidClient? memvidClient = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -90,6 +93,7 @@ public sealed class DispatcherActor : ReceiveActor
         _buildVerifier = buildVerifier;
         _sandboxEnforcer = sandboxEnforcer;
         _langfuseScoreWriter = langfuseScoreWriter;
+        _memvidClient = memvidClient;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -158,7 +162,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _workspaceBranchManager,
                 _buildVerifier,
                 _sandboxEnforcer,
-                _langfuseScoreWriter)),
+                _langfuseScoreWriter,
+                _memvidClient)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -220,7 +225,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _workspaceBranchManager,
                 _buildVerifier,
                 _sandboxEnforcer,
-                _langfuseScoreWriter)),
+                _langfuseScoreWriter,
+                _memvidClient)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;
