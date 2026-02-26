@@ -239,15 +239,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         StoreBlackboard("reviewer_output", combinedFeedback);
         StoreBlackboard("review_passed", message.Approved.ToString());
 
-        if (_langfuseScoreWriter is not null && _runId is not null)
-        {
-            await _langfuseScoreWriter.WriteReviewerVerdictAsync(
-                traceId: _runId,
-                observationId: _taskId,
-                approved: message.Approved,
-                comment: combinedFeedback,
-                ct: CancellationToken.None);
-        }
+        await TryWriteReviewerVerdictAsync(message.Approved, combinedFeedback);
 
         _uiEvents.Publish(
             type: "agui.task.transition",
@@ -473,15 +465,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     StoreBlackboard("review_passed", passed.ToString());
                     StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
 
-                    if (_langfuseScoreWriter is not null && _runId is not null)
-                    {
-                        await _langfuseScoreWriter.WriteReviewerVerdictAsync(
-                            traceId: _runId,
-                            observationId: _taskId,
-                            approved: passed,
-                            comment: message.Output,
-                            ct: CancellationToken.None);
-                    }
+                    await TryWriteReviewerVerdictAsync(passed, message.Output);
 
                     await DecideAndExecuteAsync();
                 }
@@ -1544,6 +1528,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         else
         {
             HandleDeadEnd();
+        }
+    }
+
+    private async Task TryWriteReviewerVerdictAsync(bool approved, string comment)
+    {
+        if (_langfuseScoreWriter is not null && _runId is not null)
+        {
+            await _langfuseScoreWriter.WriteReviewerVerdictAsync(
+                traceId: _runId,
+                observationId: _taskId,
+                approved: approved,
+                comment: comment,
+                ct: CancellationToken.None);
         }
     }
 

@@ -10,14 +10,11 @@ public sealed class HttpLangfuseApiClient : ILangfuseApiClient
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private readonly ILogger<HttpLangfuseApiClient> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
 
     public HttpLangfuseApiClient(
-        ILogger<HttpLangfuseApiClient> logger,
         IHttpClientFactory httpClientFactory)
     {
-        _logger = logger;
         _httpClientFactory = httpClientFactory;
     }
 
@@ -33,23 +30,15 @@ public sealed class HttpLangfuseApiClient : ILangfuseApiClient
 
     public async Task<LangfuseTraceList> GetTracesAsync(LangfuseTraceQuery query, CancellationToken ct)
     {
-        try
-        {
-            var queryString = BuildTracesQueryString(query);
-            var client = _httpClientFactory.CreateClient("langfuse");
-            var response = await client.GetAsync($"/api/public/traces{queryString}", ct);
-            response.EnsureSuccessStatusCode();
+        var queryString = BuildTracesQueryString(query);
+        var client = _httpClientFactory.CreateClient("langfuse");
+        var response = await client.GetAsync($"/api/public/traces{queryString}", ct);
+        response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync(ct);
-            var result = JsonSerializer.Deserialize<LangfuseTraceList>(json, JsonOptions);
+        var json = await response.Content.ReadAsStringAsync(ct);
+        var result = JsonSerializer.Deserialize<LangfuseTraceList>(json, JsonOptions);
 
-            return result ?? new LangfuseTraceList(Array.Empty<LangfuseTrace>());
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get traces");
-            return new LangfuseTraceList(Array.Empty<LangfuseTrace>());
-        }
+        return result ?? new LangfuseTraceList(Array.Empty<LangfuseTrace>());
     }
 
     public async Task PostCommentAsync(LangfuseComment comment, CancellationToken ct)

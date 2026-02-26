@@ -49,10 +49,11 @@ public sealed class LangfuseSimilarityQuery : ILangfuseSimilarityQuery
             contextBuilder.AppendLine("--- Langfuse Learning Context ---");
             contextBuilder.AppendLine($"Based on {similarTraces.Count} similar past tasks:");
 
-            foreach (var item in similarTraces)
+            foreach (var item in similarTraces.Take(5))
             {
-                var outcome = ExtractOutcome(item.Trace);
-                contextBuilder.AppendLine($"  - \"{item.Trace.Name}\" -> {outcome}");
+                var safeName = Truncate(item.Trace.Name, 160);
+                var safeOutcome = Truncate(ExtractOutcome(item.Trace), 80);
+                contextBuilder.AppendLine($"  - \"{safeName}\" -> {safeOutcome}");
             }
 
             contextBuilder.AppendLine("--- End Langfuse Learning Context ---");
@@ -77,13 +78,18 @@ public sealed class LangfuseSimilarityQuery : ILangfuseSimilarityQuery
 
     private static double CalculateJaccardSimilarity(HashSet<string> set1, HashSet<string> set2)
     {
-        if (set1.Count == 0 && set2.Count == 0)
-            return 0.0;
-
         var intersection = set1.Intersect(set2).Count();
         var union = set1.Union(set2).Count();
 
         return union == 0 ? 0.0 : (double)intersection / union;
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        return value.Length <= maxLength ? value : value[..maxLength];
     }
 
     private static string ExtractOutcome(LangfuseTrace trace)
