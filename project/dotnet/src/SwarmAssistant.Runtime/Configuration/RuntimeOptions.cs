@@ -173,7 +173,7 @@ public sealed class RuntimeOptions
     public double BudgetWarningThreshold
     {
         get => _budgetWarningThreshold;
-        init => _budgetWarningThreshold = Math.Clamp(value, 0.0, 1.0);
+        init => _budgetWarningThreshold = Math.Clamp(value, 0.0, _budgetHardLimit);
     }
 
     /// <summary>
@@ -184,7 +184,7 @@ public sealed class RuntimeOptions
     public double BudgetHardLimit
     {
         get => _budgetHardLimit;
-        init => _budgetHardLimit = Math.Clamp(value, 0.0, 1.0);
+        init => _budgetHardLimit = Math.Clamp(value, _budgetWarningThreshold, 1.0);
     }
 
     /// <summary>

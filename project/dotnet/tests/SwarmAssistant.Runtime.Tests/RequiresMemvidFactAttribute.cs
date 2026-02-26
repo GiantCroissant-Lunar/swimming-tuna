@@ -26,22 +26,14 @@ public sealed class RequiresMemvidFactAttribute : FactAttribute
         }
 
         var options = new RuntimeOptions();
-        var repoRoot = FindRepoRoot();
-
-        var svcDir = ResolveServiceDir(
-            Environment.GetEnvironmentVariable("MEMVID_SVC_DIR"),
-            options.MemvidSvcDir,
-            repoRoot);
+        var memvidPaths = MemvidTestEnvironment.ResolvePaths(options);
+        var svcDir = memvidPaths.ServiceDirectory;
         if (!Directory.Exists(svcDir))
         {
             return (false, $"memvid service directory not found: {svcDir}");
         }
 
-        var pythonPath = ResolvePythonPath(
-            Environment.GetEnvironmentVariable("MEMVID_PYTHON_PATH"),
-            options.MemvidPythonPath,
-            svcDir,
-            repoRoot);
+        var pythonPath = memvidPaths.PythonPath;
         if (LooksLikePath(pythonPath) && !File.Exists(pythonPath))
         {
             return (false, $"memvid python executable not found: {pythonPath}");
@@ -53,28 +45,6 @@ public sealed class RequiresMemvidFactAttribute : FactAttribute
         }
 
         return (true, string.Empty);
-    }
-
-    private static string ResolveServiceDir(string? envValue, string defaultValue, string repoRoot)
-    {
-        var value = string.IsNullOrWhiteSpace(envValue) ? defaultValue : envValue;
-        return Path.IsPathRooted(value)
-            ? value
-            : Path.GetFullPath(Path.Combine(repoRoot, value));
-    }
-
-    private static string ResolvePythonPath(string? envValue, string defaultValue, string svcDir, string repoRoot)
-    {
-        if (string.IsNullOrWhiteSpace(envValue))
-        {
-            return Path.IsPathRooted(defaultValue)
-                ? defaultValue
-                : Path.GetFullPath(Path.Combine(svcDir, defaultValue));
-        }
-
-        return Path.IsPathRooted(envValue)
-            ? envValue
-            : Path.GetFullPath(Path.Combine(repoRoot, envValue));
     }
 
     private static bool CanImportMemvidSdk(string pythonPath, string svcDir)
@@ -123,49 +93,4 @@ public sealed class RequiresMemvidFactAttribute : FactAttribute
         Path.IsPathRooted(value) ||
         value.Contains(Path.DirectorySeparatorChar) ||
         value.Contains(Path.AltDirectorySeparatorChar);
-
-    private static string FindRepoRoot()
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = "rev-parse --show-toplevel",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process is not null)
-            {
-                var output = process.StandardOutput.ReadToEnd().Trim();
-                process.WaitForExit();
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                {
-                    return output;
-                }
-            }
-        }
-        catch
-        {
-            // Fall through to directory walk.
-        }
-
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir is not null)
-        {
-            var gitPath = Path.Combine(dir.FullName, ".git");
-            if (Directory.Exists(gitPath) || File.Exists(gitPath))
-            {
-                return dir.FullName;
-            }
-
-            dir = dir.Parent;
-        }
-
-        return Directory.GetCurrentDirectory();
-    }
 }

@@ -505,13 +505,14 @@ public sealed class Worker : BackgroundService
 
                 if (shouldSpawn)
                 {
-                    _dynamicAgentCount++;
+                    var newDynamic = Interlocked.Increment(ref _dynamicAgentCount);
+                    var newTotalAgents = _fixedPoolSize + newDynamic;
                     _dispatcher.Tell(new SpawnAgent(AllRoles, TimeSpan.FromMinutes(5)));
                     _logger.LogInformation(
                         "Auto-scale up: spawning dynamic agent activeTasks={ActiveTasks} threshold={Threshold} totalAgents={TotalAgents}",
                         activeTasks,
                         _options.ScaleUpThreshold,
-                        totalAgents + 1);
+                        newTotalAgents);
                 }
             }
         }

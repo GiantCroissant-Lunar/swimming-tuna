@@ -1003,13 +1003,7 @@ if (options.A2AEnabled)
             var dtos = result.Agents.Select(entry => new AgentRegistryEntryDto(
                 AgentId: entry.AgentId,
                 Capabilities: entry.Capabilities.Select(c => c.ToString()).ToArray(),
-                Status: entry.Budget?.IsExhausted == true
-                    ? "exhausted"
-                    : entry.Budget?.IsLowBudget == true
-                        ? "low-budget"
-                        : entry.ConsecutiveFailures > 0
-                            ? "unhealthy"
-                            : "active",
+                Status: AgentStatusResolver.ResolveAgentStatus(entry.Budget, entry.ConsecutiveFailures),
                 Provider: entry.Provider is not null
                     ? new ProviderInfoDto(
                         Adapter: entry.Provider.Adapter,

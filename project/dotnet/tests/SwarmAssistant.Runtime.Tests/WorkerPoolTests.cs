@@ -104,6 +104,20 @@ public sealed class WorkerPoolTests
         Assert.Equal(expected, options.BudgetHardLimit, precision: 3);
     }
 
+    [Fact]
+    public void RuntimeOptions_BudgetThresholds_PreserveOrdering_WhenWarningExceedsHardLimit()
+    {
+        var options = new RuntimeOptions
+        {
+            BudgetWarningThreshold = 0.9,
+            BudgetHardLimit = 0.4
+        };
+
+        Assert.InRange(options.BudgetWarningThreshold, 0.0, 1.0);
+        Assert.InRange(options.BudgetHardLimit, 0.0, 1.0);
+        Assert.True(options.BudgetWarningThreshold <= options.BudgetHardLimit);
+    }
+
     [Theory]
     [InlineData(-10, 1)]
     [InlineData(4, 4)]
