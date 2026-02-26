@@ -88,4 +88,33 @@ public sealed class RoleModelMappingTests
 
         Assert.Contains("Invalid model format", exception.Message);
     }
+
+    [Fact]
+    public void ParseModelSpec_WithPiAdapter_ResolvesToPiAgentProvider()
+    {
+        var spec = RoleModelMapping.ParseModelSpec("pi-model", adapterId: "pi");
+
+        Assert.Equal("pi-agent", spec.Provider);
+        Assert.Equal("pi-model", spec.Id);
+        Assert.Equal("pi-model", spec.DisplayName);
+    }
+
+    [Fact]
+    public void Resolve_WithPiAdapter_UsesPiAgentProviderFallback()
+    {
+        var options = new RuntimeOptions
+        {
+            RoleModelMapping = new Dictionary<string, RoleModelPreference>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Builder"] = new() { Model = "pi-model-v1" }
+            }
+        };
+
+        var mapping = RoleModelMapping.FromOptions(options);
+        var resolved = mapping.Resolve(SwarmRole.Builder, "pi");
+
+        Assert.NotNull(resolved);
+        Assert.Equal("pi-agent", resolved!.Model.Provider);
+        Assert.Equal("pi-model-v1", resolved.Model.Id);
+    }
 }

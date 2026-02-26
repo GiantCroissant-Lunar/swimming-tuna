@@ -12,6 +12,7 @@ internal sealed class RoleModelMapping
             ["cline"] = "cline",
             ["kimi"] = "moonshot",
             ["kilo"] = "kilo",
+            ["pi"] = "pi-agent",
             ["local-echo"] = "local-echo"
         };
 

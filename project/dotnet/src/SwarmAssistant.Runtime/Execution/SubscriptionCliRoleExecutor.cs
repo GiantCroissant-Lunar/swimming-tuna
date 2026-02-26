@@ -9,7 +9,7 @@ namespace SwarmAssistant.Runtime.Execution;
 
 internal sealed class SubscriptionCliRoleExecutor : IDisposable
 {
-    private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "kilo", "local-echo"];
+    private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "kilo", "pi", "local-echo"];
 
     private static readonly Regex AnsiEscapeRegex = new(
         @"\x1B\[[0-?]*[ -/]*[@-~]",
@@ -68,6 +68,15 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 [],
                 ModelFlag: "--model",
                 ReasoningFlag: "--variant"),
+            ["pi"] = new(
+                "pi",
+                "pi",
+                ["--help"],
+                "pi",
+                ["--print", "--prompt", "{{prompt}}"],
+                ["error: no api key", "error: authentication"],
+                ModelFlag: "--model",
+                ReasoningFlag: "--thinking"),
             ["local-echo"] = new(
                 "local-echo",
                 string.Empty,
