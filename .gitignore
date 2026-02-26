@@ -40,3 +40,6 @@ __pycache__/
 
 # Worktree local state
 .worktrees/
+
+# gh-aw audit logs (local-only, downloaded by `gh aw audit`)
+.github/aw/logs/

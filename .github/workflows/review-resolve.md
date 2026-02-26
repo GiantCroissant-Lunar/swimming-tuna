@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
   bots: ['gemini-code-assist[bot]', 'coderabbitai[bot]', 'github-actions[bot]', 'copilot[bot]']
 engine: copilot
+network:
+  allowed:
+    - defaults
+    - dotnet
 permissions:
   contents: read
   pull-requests: read

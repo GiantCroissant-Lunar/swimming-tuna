@@ -1,0 +1,7 @@
+steps:
+  - name: Setup .NET 9
+    uses: actions/setup-dotnet@v4
+    with:
+      dotnet-version: "9.0"
+  - name: Restore dependencies
+    run: dotnet restore project/dotnet/SwarmAssistant.sln
