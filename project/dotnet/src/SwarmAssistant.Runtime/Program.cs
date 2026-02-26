@@ -67,8 +67,11 @@ if (bootstrapOptions.MemvidEnabled)
     {
         var opts = sp.GetRequiredService<IOptions<RuntimeOptions>>().Value;
         var logger = sp.GetRequiredService<ILogger<MemvidClient>>();
+        var pythonPath = Path.IsPathRooted(opts.MemvidPythonPath)
+            ? opts.MemvidPythonPath
+            : Path.GetFullPath(Path.Combine(opts.MemvidSvcDir, opts.MemvidPythonPath));
         return new MemvidClient(
-            opts.MemvidPythonPath,
+            pythonPath,
             opts.MemvidSvcDir,
             opts.MemvidTimeoutSeconds * 1000,
             logger);

@@ -171,7 +171,7 @@ public sealed class MemvidClientTests
         var opts = new RuntimeOptions();
 
         Assert.False(opts.MemvidEnabled);
-        Assert.Equal("python3", opts.MemvidPythonPath);
+        Assert.Equal(".venv/bin/python", opts.MemvidPythonPath);
         Assert.Equal("project/infra/memvid-svc", opts.MemvidSvcDir);
         Assert.Equal(30, opts.MemvidTimeoutSeconds);
         Assert.Equal(5, opts.MemvidSiblingMaxChunks);

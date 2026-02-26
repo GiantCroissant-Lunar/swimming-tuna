@@ -255,7 +255,7 @@ public sealed class RuntimeOptions
     /// <summary>
     /// Path to the Python interpreter used to invoke the memvid CLI.
     /// </summary>
-    public string MemvidPythonPath { get; init; } = "python3";
+    public string MemvidPythonPath { get; init; } = ".venv/bin/python";
 
     /// <summary>
     /// Working directory containing the memvid-svc Python package
