@@ -33,6 +33,10 @@ repomix-output.*
 .claude/
 !.claude/launch.json
 
+# Kiro IDE generated settings (synced by agent:sync:kiro)
+.kiro/
+!.kiro/settings/
+
 # Python
 __pycache__/
 *.pyc
