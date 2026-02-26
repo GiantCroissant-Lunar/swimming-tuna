@@ -157,7 +157,7 @@ CLI tool:
 | codex | Codex CLI | none | `task agent:sync:codex` |
 | cline | Cline CLI | TaskStart, PreToolUse | `task agent:sync:cline` |
 | copilot | Copilot CLI | sessionStart, preToolUse | `task agent:sync:copilot` |
-| kiro | Kiro IDE | fileEdited, preToolUse, promptSubmit, agentStop | `task agent:sync:kiro` |
+| kiro | Kiro IDE | fileEdited, preToolUse, postToolUse, promptSubmit, agentStop | `task agent:sync:kiro` |
 
 Run `task agent:sync` to sync all adapters at once.
 
