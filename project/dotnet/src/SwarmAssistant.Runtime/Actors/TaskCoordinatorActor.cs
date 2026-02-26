@@ -433,6 +433,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("builder_output", message.Output);
                 StoreBlackboard("builder_confidence", message.Confidence.ToString("F2"));
+                await TryEncodeTaskMemoryAsync(message.Role, message.Output, message.Confidence);
                 break;
 
             case SwarmRole.Reviewer:
@@ -470,6 +471,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     StoreBlackboard("review_passed", passed.ToString());
                     StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
 
+                    await TryEncodeTaskMemoryAsync(message.Role, message.Output, message.Confidence);
                     await TryWriteReviewerVerdictAsync(passed, message.Output);
 
                     await DecideAndExecuteAsync();
@@ -1587,6 +1589,38 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to create run memory; continuing without memvid");
+        }
+    }
+
+    private async Task TryEncodeTaskMemoryAsync(SwarmRole role, string output, double confidence)
+    {
+        if (_memvidClient is null) return;
+
+        try
+        {
+            var taskPath = GetTaskMemoryPath(_taskId);
+            if (!File.Exists(taskPath))
+            {
+                await _memvidClient.CreateStoreAsync(taskPath, CancellationToken.None);
+            }
+
+            await _memvidClient.PutAsync(taskPath, new MemvidDocument(
+                Title: $"{_title} — {role}",
+                Label: role.ToString().ToLowerInvariant(),
+                Text: output,
+                Metadata: new Dictionary<string, string>
+                {
+                    ["task_id"] = _taskId,
+                    ["role"] = role.ToString().ToLowerInvariant(),
+                    ["confidence"] = confidence.ToString("F2"),
+                    ["run_id"] = _runId ?? "",
+                }), CancellationToken.None);
+
+            _logger.LogDebug("Encoded {Role} output to {Path}", role, taskPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to encode {Role} output to memvid; continuing", role);
         }
     }
 
