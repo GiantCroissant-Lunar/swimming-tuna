@@ -29,6 +29,11 @@ internal static class RolePromptFactory
 
     public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext, IReadOnlyList<MatchedSkill>? matchedSkills)
     {
+        return BuildPrompt(command, strategyAdvice, codeContext, projectContext, matchedSkills, langfuseContext: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext, IReadOnlyList<MatchedSkill>? matchedSkills, string? langfuseContext)
+    {
         var basePrompt = command.Role switch
         {
             SwarmRole.Planner => string.Join(
@@ -128,6 +133,13 @@ internal static class RolePromptFactory
             command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
         {
             contextParts.Add(BuildCodeContext(codeContext));
+        }
+
+        // Langfuse context (6th layer)
+        if (!string.IsNullOrWhiteSpace(langfuseContext) &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            contextParts.Add("\n### Historical Learning (Langfuse)\n" + langfuseContext);
         }
 
         if (contextParts.Count == 0)

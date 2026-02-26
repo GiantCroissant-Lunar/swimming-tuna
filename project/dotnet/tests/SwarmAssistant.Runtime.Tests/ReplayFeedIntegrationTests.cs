@@ -95,7 +95,7 @@ public sealed class ReplayFeedIntegrationTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null, null)),
             $"rf-dp{suffix}-{Guid.NewGuid():N}");
 
         return (dispatcher, writer);

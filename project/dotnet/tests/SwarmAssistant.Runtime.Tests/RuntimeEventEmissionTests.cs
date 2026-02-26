@@ -94,7 +94,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 projectContext,
                 null,
                 null,
-                null)),
+                null, null)),
             $"dp{suffix}-{Guid.NewGuid():N}");
 
         return (dispatcher, writer);
@@ -457,7 +457,7 @@ public sealed class RuntimeEventEmissionTests : TestKit
                 null,
                 null,
                 null
-            )),
+            , null)),
             $"dp-noop-{Guid.NewGuid():N}");
 
         var taskId = $"emit-noop-{Guid.NewGuid():N}";
