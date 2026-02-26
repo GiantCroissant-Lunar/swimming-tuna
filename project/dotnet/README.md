@@ -80,6 +80,23 @@ Prerequisites:
 - `kimi` and `kilo` CLIs installed and on `PATH`
 - both CLIs authenticated (`kimi --prompt "ping"` and `kilo run "ping" --auto`)
 
+### RFC-010 Model Mapping (Initial)
+
+`RuntimeOptions` now supports role-level model hints via `RoleModelMapping`.
+When a role is executed, supported adapters receive model/reasoning hints via
+their CLI flags or env vars.
+
+```json
+{
+  "Runtime": {
+    "RoleModelMapping": {
+      "Planner": { "Model": "anthropic/claude-sonnet-4-6", "Reasoning": "high" },
+      "Builder": { "Model": "kilo/giga-potato" }
+    }
+  }
+}
+```
+
 ## AG-UI + A2UI Gateway (Phase 6)
 
 - Runtime now hosts AG-UI-compatible endpoints:

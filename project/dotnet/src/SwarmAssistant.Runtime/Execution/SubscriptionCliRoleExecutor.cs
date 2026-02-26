@@ -40,28 +40,34 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 ["--help"],
                 "copilot",
                 ["--prompt", "{{prompt}}", "--allow-all-tools", "--allow-all-paths", "--stream", "off", "--no-color"],
-                ["deprecated in favor", "No commands will be executed."]),
+                ["deprecated in favor", "No commands will be executed."],
+                ModelEnvVar: "COPILOT_MODEL",
+                ReasoningEnvVar: "COPILOT_REASONING_EFFORT"),
             ["cline"] = new(
                 "cline",
                 "cline",
                 ["--help"],
                 "cline",
                 ["{{prompt}}", "--oneshot", "--no-interactive", "--output-format", "plain"],
-                []),
+                [],
+                ModelFlag: "--model"),
             ["kimi"] = new(
                 "kimi",
                 "kimi",
                 ["--help"],
                 "kimi",
                 ["--prompt", "{{prompt}}"],
-                ["token expired", "session expired"]),
+                ["token expired", "session expired"],
+                ModelFlag: "--model"),
             ["kilo"] = new(
                 "kilo",
                 "kilo",
                 ["run", "--help"],
                 "kilo",
                 ["run", "{{prompt}}", "--auto"],
-                []),
+                [],
+                ModelFlag: "--model",
+                ReasoningFlag: "--variant"),
             ["local-echo"] = new(
                 "local-echo",
                 string.Empty,
@@ -77,6 +83,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
     private readonly ILogger _logger;
     private readonly SandboxLevelEnforcer _sandboxLevelEnforcer;
     private readonly string _workspacePath;
+    private readonly RoleModelMapping _roleModelMapping;
 
     public SubscriptionCliRoleExecutor(RuntimeOptions options, ILoggerFactory loggerFactory)
     {
@@ -85,6 +92,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         _logger = loggerFactory.CreateLogger<SubscriptionCliRoleExecutor>();
         _sandboxLevelEnforcer = new SandboxLevelEnforcer();
         _workspacePath = GetWorkspacePath(options);
+        _roleModelMapping = RoleModelMapping.FromOptions(options);
     }
 
     private static string GetWorkspacePath(RuntimeOptions options)
@@ -193,9 +201,15 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 continue;
             }
 
+            var resolvedRoleModel = _roleModelMapping.Resolve(command.Role, adapter.Id);
+
             if (adapter.IsInternal)
             {
-                return new CliRoleExecutionResult(BuildInternalEcho(command), adapter.Id);
+                return new CliRoleExecutionResult(
+                    BuildInternalEcho(command),
+                    adapter.Id,
+                    resolvedRoleModel?.Model,
+                    resolvedRoleModel?.Reasoning);
             }
 
             SandboxCommand probeCommand;
@@ -242,7 +256,9 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 ["role"] = command.Role.ToString().ToLowerInvariant(),
                 ["workspace"] = effectiveWorkspace
             };
-            var executeArgs = RenderArgs(adapter.ExecuteArgs, vars);
+            var executeArgs = RenderArgs(adapter.ExecuteArgs, vars).ToList();
+            var executionEnvironment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ApplyModelExecutionHints(adapter, command.Role, resolvedRoleModel, executeArgs, executionEnvironment);
             SandboxCommand executeCommand;
             try
             {
@@ -252,13 +268,13 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                     executeCommand = SandboxCommandBuilder.BuildForLevel(
                         SandboxLevel.OsSandboxed,
                         adapter.ExecuteCommand,
-                        executeArgs,
+                        executeArgs.ToArray(),
                         effectiveWorkspace,
                         _options.SandboxAllowedHosts);
                 }
                 else
                 {
-                    executeCommand = SandboxCommandBuilder.Build(_options, adapter.ExecuteCommand, executeArgs);
+                    executeCommand = SandboxCommandBuilder.Build(_options, adapter.ExecuteCommand, executeArgs.ToArray());
                 }
             }
             catch (Exception exception)
@@ -274,7 +290,12 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 command.TaskId,
                 _options.SandboxMode);
 
-            var execution = await RunProcessAsync(executeCommand, timeout, cancellationToken, effectiveWorkspace);
+            var execution = await RunProcessAsync(
+                executeCommand,
+                timeout,
+                cancellationToken,
+                effectiveWorkspace,
+                executionEnvironment);
             if (!execution.Ok)
             {
                 errors.Add($"{adapter.Id}: {execution.ErrorSummary}");
@@ -295,7 +316,11 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 continue;
             }
 
-            return new CliRoleExecutionResult(output, adapter.Id);
+            return new CliRoleExecutionResult(
+                output,
+                adapter.Id,
+                resolvedRoleModel?.Model,
+                resolvedRoleModel?.Reasoning);
         }
 
         throw new InvalidOperationException(
@@ -426,11 +451,77 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         return null;
     }
 
+    private static void ApplyModelExecutionHints(
+        AdapterDefinition adapter,
+        SwarmRole role,
+        ResolvedRoleModel? resolvedRoleModel,
+        IList<string> executeArgs,
+        IDictionary<string, string> environment)
+    {
+        if (resolvedRoleModel is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(adapter.ModelFlag))
+        {
+            executeArgs.Add(adapter.ModelFlag);
+            executeArgs.Add(resolvedRoleModel.Model.Id);
+        }
+
+        if (!string.IsNullOrWhiteSpace(adapter.ModelEnvVar))
+        {
+            environment[adapter.ModelEnvVar] = resolvedRoleModel.Model.Id;
+        }
+
+        if (!string.IsNullOrWhiteSpace(resolvedRoleModel.Reasoning))
+        {
+            if (!string.IsNullOrWhiteSpace(adapter.ReasoningFlag))
+            {
+                executeArgs.Add(adapter.ReasoningFlag);
+                executeArgs.Add(resolvedRoleModel.Reasoning);
+            }
+
+            if (!string.IsNullOrWhiteSpace(adapter.ReasoningEnvVar))
+            {
+                environment[adapter.ReasoningEnvVar] = resolvedRoleModel.Reasoning;
+            }
+        }
+
+        var cliMode = ResolveCliMode(role, adapter);
+        if (!string.IsNullOrWhiteSpace(cliMode) && !string.IsNullOrWhiteSpace(adapter.ModeFlag))
+        {
+            executeArgs.Add(adapter.ModeFlag);
+            executeArgs.Add(cliMode);
+        }
+    }
+
+    private static string? ResolveCliMode(SwarmRole role, AdapterDefinition adapter)
+    {
+        if (string.IsNullOrWhiteSpace(adapter.ModeFlag))
+        {
+            return null;
+        }
+
+        return role switch
+        {
+            SwarmRole.Planner => "plan",
+            SwarmRole.Reviewer => "plan",
+            SwarmRole.Researcher => "plan",
+            SwarmRole.Orchestrator => "plan",
+            SwarmRole.Builder => "act",
+            SwarmRole.Debugger => "act",
+            SwarmRole.Tester => "act",
+            _ => null
+        };
+    }
+
     private async Task<ProcessResult> RunProcessAsync(
         SandboxCommand sandboxCommand,
         TimeSpan timeout,
         CancellationToken cancellationToken,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         using var process = new Process
         {
@@ -448,6 +539,14 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         foreach (var arg in sandboxCommand.Args)
         {
             process.StartInfo.ArgumentList.Add(arg);
+        }
+
+        if (environment is not null)
+        {
+            foreach (var (key, value) in environment)
+            {
+                process.StartInfo.Environment[key] = value;
+            }
         }
 
         var stdout = new StringBuilder();
@@ -553,7 +652,14 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         string ExecuteCommand,
         string[] ExecuteArgs,
         string[] RejectOutputSubstrings,
-        bool IsInternal = false);
+        bool IsInternal = false,
+        string? ModelFlag = null,
+        string? ModelEnvVar = null,
+        string? ModeFlag = null,
+        string? ReasoningFlag = null,
+        string? ReasoningEnvVar = null,
+        bool SupportsTokenReporting = false,
+        string? TokenOutputPattern = null);
 
     private sealed record ProcessResult(bool Ok, string Output, string ErrorSummary);
 
@@ -563,4 +669,8 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
     }
 }
 
-internal sealed record CliRoleExecutionResult(string Output, string AdapterId);
+internal sealed record CliRoleExecutionResult(
+    string Output,
+    string AdapterId,
+    ModelSpec? Model = null,
+    string? Reasoning = null);

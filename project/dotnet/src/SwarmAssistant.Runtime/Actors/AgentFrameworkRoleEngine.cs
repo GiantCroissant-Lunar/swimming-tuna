@@ -114,13 +114,23 @@ public sealed class AgentFrameworkRoleEngine
         var result = await _subscriptionCliRoleExecutor.ExecuteAsync(command, cancellationToken);
         activity?.SetTag("agent.framework.cli.adapter", result.AdapterId);
         activity?.SetTag("output.length", result.Output.Length);
+        if (result.Model is not null)
+        {
+            activity?.SetTag("gen_ai.request.model", result.Model.Id);
+            activity?.SetTag("gen_ai.request.provider", result.Model.Provider);
+        }
+        if (!string.IsNullOrWhiteSpace(result.Reasoning))
+        {
+            activity?.SetTag("gen_ai.request.reasoning", result.Reasoning);
+        }
         activity?.SetStatus(ActivityStatusCode.Ok);
 
         _logger.LogInformation(
-            "Role completed through subscription CLI adapter={AdapterId} role={Role} taskId={TaskId}",
+            "Role completed through subscription CLI adapter={AdapterId} role={Role} taskId={TaskId} model={ModelId}",
             result.AdapterId,
             command.Role,
-            command.TaskId);
+            command.TaskId,
+            result.Model?.Id ?? "(default)");
 
         return result;
     }

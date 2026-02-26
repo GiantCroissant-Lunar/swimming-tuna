@@ -13,6 +13,8 @@ public sealed class RuntimeOptions
     public string AgentFrameworkExecutionMode { get; init; } = "in-process-workflow";
     public int RoleExecutionTimeoutSeconds { get; init; } = 120;
     public string[] CliAdapterOrder { get; init; } = [];
+    public Dictionary<string, RoleModelPreference> RoleModelMapping { get; init; } =
+        new(StringComparer.OrdinalIgnoreCase);
     public string SandboxMode { get; init; } = "docker";
     public SandboxWrapperOptions DockerSandboxWrapper { get; init; } = new();
     public SandboxWrapperOptions AppleContainerSandboxWrapper { get; init; } = new();
