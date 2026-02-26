@@ -68,6 +68,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 [],
                 ModelFlag: "--model",
                 ReasoningFlag: "--variant"),
+            // Pi — minimal coding agent by Mario Zechner (4 built-in tools, self-extending, session-based)
             ["pi"] = new(
                 "pi",
                 "pi",
