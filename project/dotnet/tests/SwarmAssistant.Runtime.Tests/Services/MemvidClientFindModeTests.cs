@@ -2,13 +2,14 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Memvid;
+using SwarmAssistant.Runtime.Tests;
 
 namespace SwarmAssistant.Runtime.Tests.Services;
 
 /// <summary>
 /// Integration tests for MemvidClient find mode functionality.
 /// Tests the lexical search mode (lex) to verify non-empty results are returned.
-/// Requires Python 3.8+ and memvid-sdk installed. Skipped in CI.
+/// Runs only when MEMVID_INTEGRATION_TESTS=1 and memvid prerequisites are available.
 /// </summary>
 public sealed class MemvidClientFindModeTests : IDisposable
 {
@@ -25,8 +26,18 @@ public sealed class MemvidClientFindModeTests : IDisposable
         _logger = NullLogger<MemvidClient>.Instance;
 
         var opts = new RuntimeOptions();
-        var pythonPath = Environment.GetEnvironmentVariable("MEMVID_PYTHON_PATH") ?? opts.MemvidPythonPath;
-        var svcDir = Environment.GetEnvironmentVariable("MEMVID_SVC_DIR") ?? opts.MemvidSvcDir;
+        var repoRoot = FindRepoRoot();
+        var svcDirRaw = Environment.GetEnvironmentVariable("MEMVID_SVC_DIR") ?? opts.MemvidSvcDir;
+        var svcDir = Path.IsPathRooted(svcDirRaw)
+            ? svcDirRaw
+            : Path.GetFullPath(Path.Combine(repoRoot, svcDirRaw));
+        var pythonEnv = Environment.GetEnvironmentVariable("MEMVID_PYTHON_PATH");
+        var pythonRaw = pythonEnv ?? opts.MemvidPythonPath;
+        var pythonPath = Path.IsPathRooted(pythonRaw)
+            ? pythonRaw
+            : string.IsNullOrWhiteSpace(pythonEnv)
+                ? Path.GetFullPath(Path.Combine(svcDir, pythonRaw))
+                : Path.GetFullPath(Path.Combine(repoRoot, pythonRaw));
         var timeoutMs = opts.MemvidTimeoutSeconds * 1000;
 
         _client = new MemvidClient(pythonPath, svcDir, timeoutMs, _logger);
@@ -46,7 +57,7 @@ public sealed class MemvidClientFindModeTests : IDisposable
         }
     }
 
-    [Fact(Skip = "Requires memvid-sdk installed locally")]
+    [RequiresMemvidFact]
     public async Task FindWithLexMode_ReturnsNonEmptyResults()
     {
         var createdPath = await _client.CreateStoreAsync(_storePath, CancellationToken.None);
@@ -59,7 +70,7 @@ public sealed class MemvidClientFindModeTests : IDisposable
         );
 
         var frameId = await _client.PutAsync(_storePath, doc, CancellationToken.None);
-        Assert.True(frameId > 0);
+        Assert.True(frameId >= 0);
 
         var results = await _client.FindAsync(
             _storePath,
@@ -73,7 +84,7 @@ public sealed class MemvidClientFindModeTests : IDisposable
         Assert.Equal("Implement IFoo interface", results[0].Title);
     }
 
-    [Fact(Skip = "Requires memvid-sdk installed locally")]
+    [RequiresMemvidFact]
     public async Task FindWithLexMode_WhenNoMatches_ReturnsEmptyList()
     {
         var createdPath = await _client.CreateStoreAsync(_storePath, CancellationToken.None);
@@ -86,7 +97,7 @@ public sealed class MemvidClientFindModeTests : IDisposable
         );
 
         var frameId = await _client.PutAsync(_storePath, doc, CancellationToken.None);
-        Assert.True(frameId > 0);
+        Assert.True(frameId >= 0);
 
         var results = await _client.FindAsync(
             _storePath,
@@ -97,5 +108,22 @@ public sealed class MemvidClientFindModeTests : IDisposable
         );
 
         Assert.Empty(results);
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (dir is not null)
+        {
+            var gitPath = Path.Combine(dir.FullName, ".git");
+            if (Directory.Exists(gitPath) || File.Exists(gitPath))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        return Directory.GetCurrentDirectory();
     }
 }

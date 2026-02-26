@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Akka.Actor;
 using Microsoft.Extensions.Options;
@@ -16,10 +17,38 @@ using SwarmAssistant.Runtime.Ui;
 // dotnet run --project changes CWD to the project dir, so we can't rely on it.
 static string FindRepoRoot()
 {
+    try
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = "rev-parse --show-toplevel",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        using var process = Process.Start(startInfo);
+        if (process is not null)
+        {
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
+            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                return output;
+            }
+        }
+    }
+    catch
+    {
+        // Fall through to filesystem walk.
+    }
+
     var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
     while (dir is not null)
     {
-        if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+        var gitPath = Path.Combine(dir.FullName, ".git");
+        if (Directory.Exists(gitPath) || File.Exists(gitPath))
             return dir.FullName;
         dir = dir.Parent;
     }

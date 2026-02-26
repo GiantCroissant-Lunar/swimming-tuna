@@ -193,6 +193,32 @@ dotnet build project/dotnet/SwarmAssistant.sln
 dotnet test project/dotnet/SwarmAssistant.sln
 ```
 
+### Memvid Integration Tests
+
+Memvid integration tests are opt-in and run only when `MEMVID_INTEGRATION_TESTS=1`.
+
+Set up the Python environment:
+
+```bash
+cd project/infra/memvid-svc
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Run only memvid integration tests:
+
+```bash
+MEMVID_INTEGRATION_TESTS=1 \
+dotnet test project/dotnet/tests/SwarmAssistant.Runtime.Tests/SwarmAssistant.Runtime.Tests.csproj \
+  --filter "MemvidIntegrationTests|MemvidClientFindModeTests"
+```
+
+Optional overrides:
+
+- `MEMVID_PYTHON_PATH` to point to a different Python executable
+- `MEMVID_SVC_DIR` to point to a different memvid service directory
+
 ## Run with Profile
 
 ```bash
