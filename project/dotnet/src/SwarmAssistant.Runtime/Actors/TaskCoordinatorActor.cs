@@ -7,6 +7,7 @@ using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Langfuse;
+using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -65,6 +66,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
+    private readonly MemvidClient? _memvidClient;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -79,6 +81,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _reviewOutput;
     private string? _workspaceBranchName;
     private string? _worktreePath;
+    private string? _siblingContext;
 
     private int _retryCount;
     private readonly int _maxRetries;
@@ -122,7 +125,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         WorkspaceBranchManager? workspaceBranchManager = null,
         BuildVerifier? buildVerifier = null,
         SandboxLevelEnforcer? sandboxEnforcer = null,
-        ILangfuseScoreWriter? langfuseScoreWriter = null)
+        ILangfuseScoreWriter? langfuseScoreWriter = null,
+        MemvidClient? memvidClient = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -145,6 +149,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
         _sandboxEnforcer = sandboxEnforcer;
         _langfuseScoreWriter = langfuseScoreWriter;
+        _memvidClient = memvidClient;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -420,6 +425,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 StoreBlackboard("planner_output", message.Output);
                 StoreBlackboard("planner_confidence", message.Confidence.ToString("F2"));
                 SpawnSubTasksIfPresent(message.Output);
+                await TryCreateRunMemoryAsync(message.Output);
                 break;
 
             case SwarmRole.Builder:
@@ -428,6 +434,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskRegistry.SetRoleOutput(_taskId, message.Role, message.Output);
                 StoreBlackboard("builder_output", message.Output);
                 StoreBlackboard("builder_confidence", message.Confidence.ToString("F2"));
+                await TryEncodeTaskMemoryAsync(message.Role, message.Output, message.Confidence);
                 break;
 
             case SwarmRole.Reviewer:
@@ -465,6 +472,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     StoreBlackboard("review_passed", passed.ToString());
                     StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
 
+                    await TryEncodeTaskMemoryAsync(message.Role, message.Output, message.Confidence);
                     await TryWriteReviewerVerdictAsync(passed, message.Output);
 
                     await DecideAndExecuteAsync();
@@ -1130,6 +1138,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                         }
                     }
                 }
+                _siblingContext = await TryBuildSiblingContextAsync();
                 TransitionTo(TaskState.Building);
                 _uiEvents.Publish(
                     type: "agui.role.dispatched",
@@ -1139,7 +1148,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    matchedSkills: null,
+                    langfuseContext: null,
+                    siblingContext: _siblingContext);
                 EmitDiagnosticContext("Build", SwarmRole.Builder, buildPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId, WorkspacePath: _worktreePath));
@@ -1243,6 +1255,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             case "Rework":
                 StoreBlackboard($"rework_attempt_{_retryCount}", "Reworking after review rejection");
+                _siblingContext = await TryBuildSiblingContextAsync();
                 TransitionTo(TaskState.Building);
                 _uiEvents.Publish(
                     type: "agui.role.dispatched",
@@ -1252,7 +1265,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    matchedSkills: null,
+                    langfuseContext: null,
+                    siblingContext: _siblingContext);
                 EmitDiagnosticContext("Rework", SwarmRole.Builder, reworkPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId, WorkspacePath: _worktreePath));
@@ -1541,6 +1557,148 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 approved: approved,
                 comment: comment,
                 ct: CancellationToken.None);
+        }
+    }
+
+    private string GetMemoryDir()
+    {
+        // Always use the process CWD (git repo root) so all tasks in a run
+        // share the same memory directory, even when worktree isolation is active.
+        return Path.Combine(Directory.GetCurrentDirectory(), ".swarm", "memory");
+    }
+
+    private string GetRunMemoryPath() => Path.Combine(GetMemoryDir(), "run.mv2");
+
+    private string GetTaskMemoryPath(string taskId) =>
+        Path.Combine(GetMemoryDir(), "tasks", $"{taskId}.mv2");
+
+    private async Task TryCreateRunMemoryAsync(string planOutput)
+    {
+        if (_memvidClient is null) return;
+
+        try
+        {
+            var memDir = GetMemoryDir();
+            Directory.CreateDirectory(memDir);
+            Directory.CreateDirectory(Path.Combine(memDir, "tasks"));
+
+            var runPath = GetRunMemoryPath();
+            if (!File.Exists(runPath))
+            {
+                await _memvidClient.CreateStoreAsync(runPath, CancellationToken.None);
+            }
+            await _memvidClient.PutAsync(runPath, new MemvidDocument(
+                Title: _title,
+                Label: "plan",
+                Text: planOutput,
+                Metadata: new Dictionary<string, string>
+                {
+                    ["task_id"] = _taskId,
+                    ["run_id"] = _runId ?? "",
+                }), CancellationToken.None);
+
+            // Write meta.json for run tracking
+            var metaPath = Path.Combine(memDir, "meta.json");
+            var meta = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                run_id = _runId ?? "",
+                task_id = _taskId,
+                langfuse_trace_id = _runId ?? "",
+                created_at = DateTimeOffset.UtcNow.ToString("o"),
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(metaPath, meta);
+
+            _logger.LogInformation("Created run memory at {Path}", runPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create run memory; continuing without memvid");
+        }
+    }
+
+    private async Task TryEncodeTaskMemoryAsync(SwarmRole role, string output, double confidence)
+    {
+        if (_memvidClient is null) return;
+
+        try
+        {
+            var taskPath = GetTaskMemoryPath(_taskId);
+            if (!File.Exists(taskPath))
+            {
+                await _memvidClient.CreateStoreAsync(taskPath, CancellationToken.None);
+            }
+
+            await _memvidClient.PutAsync(taskPath, new MemvidDocument(
+                Title: $"{_title} — {role}",
+                Label: role.ToString().ToLowerInvariant(),
+                Text: output,
+                Metadata: new Dictionary<string, string>
+                {
+                    ["task_id"] = _taskId,
+                    ["role"] = role.ToString().ToLowerInvariant(),
+                    ["confidence"] = confidence.ToString("F2"),
+                    ["run_id"] = _runId ?? "",
+                }), CancellationToken.None);
+
+            _logger.LogDebug("Encoded {Role} output to {Path}", role, taskPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to encode {Role} output to memvid; continuing", role);
+        }
+    }
+
+    private async Task<string?> TryBuildSiblingContextAsync()
+    {
+        if (_memvidClient is null) return null;
+
+        try
+        {
+            var tasksDir = Path.Combine(GetMemoryDir(), "tasks");
+            if (!Directory.Exists(tasksDir)) return null;
+
+            var siblingFiles = Directory.GetFiles(tasksDir, "*.mv2")
+                .Where(f => !Path.GetFileNameWithoutExtension(f)
+                    .Equals(_taskId, StringComparison.Ordinal))
+                .ToList();
+
+            if (siblingFiles.Count == 0) return null;
+
+            var contextParts = new List<string> { "--- Sibling Task Context ---" };
+
+            var findTasks = siblingFiles.Select(async siblingPath =>
+            {
+                var siblingId = Path.GetFileNameWithoutExtension(siblingPath);
+                var results = await _memvidClient.FindAsync(
+                    siblingPath,
+                    _description,
+                    _options.MemvidSiblingMaxChunks,
+                    _options.MemvidSearchMode,
+                    CancellationToken.None);
+
+                return results.Select(r =>
+                {
+                    var text = r.Text.Length > 500 ? r.Text[..500] : r.Text;
+                    return $"  [{siblingId}] {r.Title}: {text}";
+                });
+            });
+
+            var allResults = await Task.WhenAll(findTasks);
+            contextParts.AddRange(allResults.SelectMany(r => r));
+
+            contextParts.Add("--- End Sibling Task Context ---");
+
+            if (contextParts.Count <= 2) return null;
+
+            var context = string.Join("\n", contextParts);
+            _logger.LogInformation("Built sibling context from {Count} stores ({Length} chars)",
+                siblingFiles.Count, context.Length);
+            return context;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to build sibling context; continuing without");
+            return null;
         }
     }
 

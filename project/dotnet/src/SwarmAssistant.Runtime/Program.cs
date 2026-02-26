@@ -8,6 +8,7 @@ using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Dto;
 using SwarmAssistant.Runtime.Langfuse;
+using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Ui;
 
@@ -59,6 +60,19 @@ if (bootstrapOptions.LangfuseTracingEnabled)
     });
     builder.Services.AddSingleton<ILangfuseApiClient, HttpLangfuseApiClient>();
     builder.Services.AddSingleton<ILangfuseScoreWriter, LangfuseScoreWriter>();
+}
+if (bootstrapOptions.MemvidEnabled)
+{
+    builder.Services.AddSingleton(sp =>
+    {
+        var opts = sp.GetRequiredService<IOptions<RuntimeOptions>>().Value;
+        var logger = sp.GetRequiredService<ILogger<MemvidClient>>();
+        return new MemvidClient(
+            opts.MemvidPythonPath,
+            opts.MemvidSvcDir,
+            opts.MemvidTimeoutSeconds * 1000,
+            logger);
+    });
 }
 builder.Services.AddHostedService<Worker>();
 

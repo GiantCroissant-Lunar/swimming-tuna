@@ -34,6 +34,11 @@ internal static class RolePromptFactory
 
     public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext, IReadOnlyList<MatchedSkill>? matchedSkills, string? langfuseContext)
     {
+        return BuildPrompt(command, strategyAdvice, codeContext, projectContext, matchedSkills, langfuseContext, siblingContext: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext, IReadOnlyList<MatchedSkill>? matchedSkills, string? langfuseContext, string? siblingContext)
+    {
         var basePrompt = command.Role switch
         {
             SwarmRole.Planner => string.Join(
@@ -140,6 +145,17 @@ internal static class RolePromptFactory
             command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
         {
             contextParts.Add("\n### Historical Learning (Langfuse)\n" + langfuseContext);
+        }
+
+        // Sibling context (7th layer)
+        if (!string.IsNullOrWhiteSpace(siblingContext) &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            const int maxSiblingContextChars = 8_000;
+            var truncated = siblingContext.Length > maxSiblingContextChars
+                ? siblingContext[..maxSiblingContextChars] + "\n... (truncated)"
+                : siblingContext;
+            contextParts.Add("\n### Sibling Task Context\n" + truncated);
         }
 
         if (contextParts.Count == 0)

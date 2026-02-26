@@ -244,6 +244,42 @@ public sealed class RuntimeOptions
     /// </summary>
     public bool CodeIndexForReviewer { get; init; } = true;
 
+    // ── Memvid Run Memory ───────────────────────────────────────
+
+    /// <summary>
+    /// When true, enables memvid-backed run memory. Each task run gets a .mv2
+    /// video store for encoding and retrieving sibling context.
+    /// </summary>
+    public bool MemvidEnabled { get; init; } = false;
+
+    /// <summary>
+    /// Path to the Python interpreter used to invoke the memvid CLI.
+    /// </summary>
+    public string MemvidPythonPath { get; init; } = "python3";
+
+    /// <summary>
+    /// Working directory containing the memvid-svc Python package
+    /// (i.e. the directory with <c>src/__main__.py</c>).
+    /// </summary>
+    public string MemvidSvcDir { get; init; } = "project/infra/memvid-svc";
+
+    /// <summary>
+    /// Timeout in seconds for each memvid subprocess invocation.
+    /// </summary>
+    public int MemvidTimeoutSeconds { get; init; } = 30;
+
+    /// <summary>
+    /// Maximum number of sibling context chunks to retrieve from the memvid
+    /// store when enriching builder prompts.
+    /// </summary>
+    public int MemvidSiblingMaxChunks { get; init; } = 5;
+
+    /// <summary>
+    /// Search mode passed to <c>memvid find --mode</c>.
+    /// Supported values: <c>auto</c>, <c>sem</c> (semantic), <c>lex</c> (keyword).
+    /// </summary>
+    public string MemvidSearchMode { get; init; } = "auto";
+
     /// <summary>
     /// Optional path to a project-level context file (e.g. AGENTS.md).
     /// When set, the file content is loaded at startup and injected into agent prompts
