@@ -1659,19 +1659,30 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         try
         {
             var tasksDir = Path.Combine(GetMemoryDir(), "tasks");
-            if (!Directory.Exists(tasksDir)) return null;
+            if (!Directory.Exists(tasksDir))
+            {
+                _logger.LogInformation("Sibling context skipped: tasks dir {Dir} does not exist", tasksDir);
+                return null;
+            }
 
             var siblingFiles = Directory.GetFiles(tasksDir, "*.mv2")
                 .Where(f => !Path.GetFileNameWithoutExtension(f)
                     .Equals(_taskId, StringComparison.Ordinal))
                 .ToList();
 
-            if (siblingFiles.Count == 0) return null;
+            if (siblingFiles.Count == 0)
+            {
+                _logger.LogInformation("Sibling context skipped: no sibling .mv2 files in {Dir}", tasksDir);
+                return null;
+            }
+
+            _logger.LogInformation("Sibling context: found {Count} sibling stores in {Dir}", siblingFiles.Count, tasksDir);
 
             var contextParts = new List<string> { "--- Sibling Task Context ---" };
 
-            // Sanitize query — memvid SDK parser chokes on parentheses and brackets
-            var sanitizedQuery = SanitizeMemvidQuery(_description);
+            // Use title (short, keyword-rich) instead of full description — lex search
+            // returns empty when the query has many terms absent from the stored content.
+            var sanitizedQuery = SanitizeMemvidQuery(_title);
 
             var findTasks = siblingFiles.Select(async siblingPath =>
             {
@@ -1682,6 +1693,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _options.MemvidSiblingMaxChunks,
                     _options.MemvidSearchMode,
                     CancellationToken.None);
+
+                // Fall back to timeline if keyword search returns nothing
+                if (results.Count == 0)
+                {
+                    _logger.LogDebug("Sibling find empty for {SiblingId}, falling back to timeline", siblingId);
+                    var timeline = await _memvidClient.TimelineAsync(
+                        siblingPath, _options.MemvidSiblingMaxChunks, CancellationToken.None);
+                    return timeline.Select(e =>
+                    {
+                        var text = e.Text.Length > 500 ? e.Text[..500] : e.Text;
+                        return $"  [{siblingId}] {e.Title}: {text}";
+                    });
+                }
 
                 return results.Select(r =>
                 {
@@ -1695,7 +1719,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             contextParts.Add("--- End Sibling Task Context ---");
 
-            if (contextParts.Count <= 2) return null;
+            if (contextParts.Count <= 2)
+            {
+                _logger.LogInformation(
+                    "Sibling context empty: queried {Count} stores with mode={Mode} query=\"{Query}\" but got 0 hits even after timeline fallback",
+                    siblingFiles.Count, _options.MemvidSearchMode, sanitizedQuery);
+                return null;
+            }
 
             var context = string.Join("\n", contextParts);
             _logger.LogInformation("Built sibling context from {Count} stores ({Length} chars)",

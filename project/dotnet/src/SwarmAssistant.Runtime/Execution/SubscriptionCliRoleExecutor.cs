@@ -56,7 +56,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 "kimi",
                 ["--help"],
                 "kimi",
-                ["--prompt", "{{prompt}}"],
+                ["--print", "--prompt", "{{prompt}}"],
                 ["token expired", "session expired"],
                 ModelFlag: "--model"),
             ["kilo"] = new(

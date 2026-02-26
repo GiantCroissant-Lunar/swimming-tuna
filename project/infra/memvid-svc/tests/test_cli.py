@@ -7,7 +7,7 @@ import sys
 import pytest
 from pytest_mock import MockerFixture
 
-from cli import cmd_create, cmd_find, cmd_put, cmd_timeline
+from cli import cmd_create, cmd_find, cmd_info, cmd_put, cmd_timeline
 
 
 @pytest.fixture
@@ -467,3 +467,27 @@ class TestCmdTimeline:
         result = json.loads(captured.err)
         assert result == {"error": "Invalid limit"}
         assert captured.out == ""
+
+
+class TestCmdInfo:
+    def test_cmd_info_success(self, mock_mem_sdk, capsys, mocker):
+        mock_create, mock_use = mock_mem_sdk
+        mock_mem = mocker.MagicMock()
+        mock_mem.__len__.return_value = 42
+        mock_use.return_value = mock_mem
+
+        mocker.patch("os.path.getsize", return_value=1024)
+
+        args = argparse.Namespace(path="/path/to/store.mv2")
+
+        cmd_info(args)
+
+        mock_use.assert_called_once_with("basic", "/path/to/store.mv2")
+        mock_mem.__len__.assert_called_once()
+
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert result["path"] == "/path/to/store.mv2"
+        assert result["frames"] == 42
+        assert result["size_bytes"] == 1024
+        assert captured.err == ""

@@ -175,6 +175,6 @@ public sealed class MemvidClientTests
         Assert.Equal("project/infra/memvid-svc", opts.MemvidSvcDir);
         Assert.Equal(30, opts.MemvidTimeoutSeconds);
         Assert.Equal(5, opts.MemvidSiblingMaxChunks);
-        Assert.Equal("auto", opts.MemvidSearchMode);
+        Assert.Equal("lex", opts.MemvidSearchMode);
     }
 }

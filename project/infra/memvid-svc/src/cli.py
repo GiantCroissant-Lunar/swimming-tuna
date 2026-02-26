@@ -9,14 +9,14 @@ import memvid_sdk
 
 
 def _error(message: str) -> None:
-    """Print error JSON to stderr and exit 1."""
+    """Serialize error message as JSON to stderr and terminate process with exit code 1."""
     json.dump({"error": message}, sys.stderr)
     sys.stderr.write("\n")
     sys.exit(1)
 
 
 def _output(data: dict) -> None:
-    """Print result JSON to stdout."""
+    """Serialize a dict to JSON and write to stdout with a trailing newline."""
     json.dump(data, sys.stdout)
     sys.stdout.write("\n")
 

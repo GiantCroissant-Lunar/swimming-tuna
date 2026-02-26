@@ -253,8 +253,7 @@ public sealed class RuntimeOptions
     // ── Memvid Run Memory ───────────────────────────────────────
 
     /// <summary>
-    /// When true, enables memvid-backed run memory. Each task run gets a .mv2
-    /// video store for encoding and retrieving sibling context.
+    /// Enables memvid memory integration for run and task context storage.
     /// </summary>
     public bool MemvidEnabled { get; init; } = false;
 
@@ -275,8 +274,8 @@ public sealed class RuntimeOptions
     public int MemvidTimeoutSeconds { get; init; } = 30;
 
     /// <summary>
-    /// Maximum number of sibling context chunks to retrieve from the memvid
-    /// store when enriching builder prompts.
+    /// Maximum number of chunks to retrieve from sibling task memvid stores
+    /// when enriching builder prompts.
     /// </summary>
     public int MemvidSiblingMaxChunks { get; init; } = 5;
 
@@ -284,7 +283,7 @@ public sealed class RuntimeOptions
     /// Search mode passed to <c>memvid find --mode</c>.
     /// Supported values: <c>auto</c>, <c>sem</c> (semantic), <c>lex</c> (keyword).
     /// </summary>
-    public string MemvidSearchMode { get; init; } = "auto";
+    public string MemvidSearchMode { get; init; } = "lex";
 
     /// <summary>
     /// Optional path to a project-level context file (e.g. AGENTS.md).
@@ -312,6 +311,11 @@ public sealed class RuntimeOptions
     /// When empty, build verification is skipped.
     /// </summary>
     public string? VerifySolutionPath { get; init; }
+
+    /// <summary>
+    /// Maximum number of build verification retry attempts before marking the task as failed.
+    /// </summary>
+    public int VerifyMaxRetries { get; init; } = 3;
 
     /// <summary>
     /// Workspace root path for Level 1 (OsSandboxed) sandbox execution.
