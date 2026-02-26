@@ -17,6 +17,9 @@ public sealed class RuntimeOptions
     public string OpenAiApiKeyEnvVar { get; init; } = "OPENAI_API_KEY";
     public string OpenAiBaseUrl { get; init; } = "https://api.openai.com/v1";
     public int OpenAiRequestTimeoutSeconds { get; init; } = 120;
+    public string AnthropicApiKeyEnvVar { get; init; } = "ANTHROPIC_API_KEY";
+    public string AnthropicBaseUrl { get; init; } = "https://api.anthropic.com/v1";
+    public int AnthropicRequestTimeoutSeconds { get; init; } = 120;
     public Dictionary<string, RoleModelPreference> RoleModelMapping { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
     public string SandboxMode { get; init; } = "docker";

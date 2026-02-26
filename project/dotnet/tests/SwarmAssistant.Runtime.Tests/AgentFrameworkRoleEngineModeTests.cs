@@ -99,6 +99,64 @@ public sealed class AgentFrameworkRoleEngineModeTests
         Assert.Contains("RoleModelMapping", exception.Message);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ApiDirect_UsesAnthropicProvider()
+    {
+        var options = new RuntimeOptions
+        {
+            AgentFrameworkExecutionMode = "api-direct",
+            RoleModelMapping = new Dictionary<string, RoleModelPreference>
+            {
+                ["Planner"] = new()
+                {
+                    Model = "anthropic/claude-sonnet-4-6",
+                    Reasoning = "high"
+                }
+            }
+        };
+
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        using var telemetry = new RuntimeTelemetry(options, loggerFactory);
+        var provider = new FakeModelProvider("anthropic", "anthropic-direct-output");
+        var engine = new AgentFrameworkRoleEngine(options, loggerFactory, telemetry, [provider]);
+
+        var result = await engine.ExecuteAsync(
+            new ExecuteRoleTask("task-4", SwarmRole.Planner, "plan", "desc", null, null),
+            CancellationToken.None);
+
+        Assert.Equal("api-anthropic", result.AdapterId);
+        Assert.Equal("anthropic-direct-output", result.Output);
+        Assert.NotNull(result.Model);
+        Assert.Equal("claude-sonnet-4-6", result.Model!.Id);
+        Assert.Equal("high", result.Reasoning);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Hybrid_FallsBackToCliWhenNoProviderMappingExistsForRole()
+    {
+        var options = new RuntimeOptions
+        {
+            AgentFrameworkExecutionMode = "hybrid",
+            CliAdapterOrder = ["local-echo"],
+            SandboxMode = "host"
+        };
+
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        using var telemetry = new RuntimeTelemetry(options, loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(
+            options,
+            loggerFactory,
+            telemetry,
+            [new FakeModelProvider("openai", "unused")]);
+
+        var result = await engine.ExecuteAsync(
+            new ExecuteRoleTask("task-5", SwarmRole.Builder, "build", "desc", null, null),
+            CancellationToken.None);
+
+        Assert.Equal("local-echo", result.AdapterId);
+        Assert.Contains("[LocalEcho/Builder]", result.Output);
+    }
+
     private sealed class FakeModelProvider(string providerId, string output) : IModelProvider
     {
         public string ProviderId { get; } = providerId;

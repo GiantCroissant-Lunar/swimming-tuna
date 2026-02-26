@@ -185,6 +185,10 @@ public sealed class AgentFrameworkRoleEngine
         activity?.SetTag("gen_ai.usage.cache_read_tokens", response.Usage.CacheReadTokens);
         activity?.SetTag("gen_ai.usage.cache_write_tokens", response.Usage.CacheWriteTokens);
         activity?.SetTag("gen_ai.usage.cost_usd", CalculateCostUsd(resolvedRoleModel.Model, response.Usage));
+        activity?.SetTag("gen_ai.request.messages",
+            prompt.Length > 10000 ? prompt[..10000] + "...[truncated]" : prompt);
+        activity?.SetTag("gen_ai.response.content",
+            response.Output.Length > 10000 ? response.Output[..10000] + "...[truncated]" : response.Output);
         activity?.SetTag("output.length", response.Output.Length);
         activity?.SetStatus(ActivityStatusCode.Ok);
 
@@ -249,6 +253,25 @@ public sealed class AgentFrameworkRoleEngine
                     apiKey,
                     options.OpenAiBaseUrl,
                     options.OpenAiRequestTimeoutSeconds));
+                continue;
+            }
+
+            if (normalizedProviderId.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+            {
+                var apiKey = Environment.GetEnvironmentVariable(options.AnthropicApiKeyEnvVar);
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    logger.LogWarning(
+                        "Model provider '{ProviderId}' skipped because env var '{ApiKeyEnvVar}' is not set.",
+                        providerId,
+                        options.AnthropicApiKeyEnvVar);
+                    continue;
+                }
+
+                providers.Add(new AnthropicModelProvider(
+                    apiKey,
+                    options.AnthropicBaseUrl,
+                    options.AnthropicRequestTimeoutSeconds));
                 continue;
             }
 
