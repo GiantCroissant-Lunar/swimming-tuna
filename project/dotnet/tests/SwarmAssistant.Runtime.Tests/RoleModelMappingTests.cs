@@ -60,4 +60,32 @@ public sealed class RoleModelMappingTests
 
         Assert.Null(resolved);
     }
+
+    [Fact]
+    public void ParseModelSpec_WhitespaceModel_ThrowsArgumentException()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            RoleModelMapping.ParseModelSpec("   ", adapterId: "kilo"));
+
+        Assert.Contains("Model value cannot be empty", exception.Message);
+    }
+
+    [Fact]
+    public void ParseModelSpec_MissingProvider_UsesFallbackProvider()
+    {
+        var spec = RoleModelMapping.ParseModelSpec("/gpt-4o-mini", adapterId: "api-openai");
+
+        Assert.Equal("openai", spec.Provider);
+        Assert.Equal("gpt-4o-mini", spec.Id);
+        Assert.Equal("gpt-4o-mini", spec.DisplayName);
+    }
+
+    [Fact]
+    public void ParseModelSpec_MissingModelId_ThrowsArgumentException()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            RoleModelMapping.ParseModelSpec("openai/ ", adapterId: "kilo"));
+
+        Assert.Contains("Invalid model format", exception.Message);
+    }
 }

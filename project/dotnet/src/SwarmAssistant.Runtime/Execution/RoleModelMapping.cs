@@ -28,9 +28,8 @@ internal sealed class RoleModelMapping
 
     public static RoleModelMapping FromOptions(RuntimeOptions options)
     {
-        var defaultProvider = options.ApiProviderOrder
-            .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p))
-            ?? "openai";
+        var defaultProvider = NormalizeProviderId(
+            options.ApiProviderOrder.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p)));
         var preferences = new Dictionary<SwarmRole, RoleModelPreference>();
         foreach (var (key, value) in options.RoleModelMapping)
         {
@@ -65,15 +64,29 @@ internal sealed class RoleModelMapping
     internal static ModelSpec ParseModelSpec(string modelValue, string? adapterId, string defaultProvider = "openai")
     {
         var trimmed = modelValue.Trim();
-        var slash = trimmed.IndexOf('/');
-        if (slash > 0 && slash < trimmed.Length - 1)
+        if (string.IsNullOrWhiteSpace(trimmed))
         {
-            var provider = trimmed[..slash].Trim();
-            var modelId = trimmed[(slash + 1)..].Trim();
+            throw new ArgumentException("Model value cannot be empty.", nameof(modelValue));
+        }
+
+        var slash = trimmed.IndexOf('/');
+        if (slash >= 0)
+        {
+            var provider = slash == 0 ? string.Empty : trimmed[..slash].Trim();
+            var modelId = slash == trimmed.Length - 1 ? string.Empty : trimmed[(slash + 1)..].Trim();
+            if (string.IsNullOrWhiteSpace(modelId))
+            {
+                throw new ArgumentException($"Invalid model format '{modelValue}'. Expected 'provider/model' or 'model'.", nameof(modelValue));
+            }
+
+            var resolvedProvider = string.IsNullOrWhiteSpace(provider)
+                ? ResolveProviderFallback(adapterId, defaultProvider)
+                : NormalizeProviderId(provider, defaultProvider);
+
             return new ModelSpec
             {
                 Id = modelId,
-                Provider = provider,
+                Provider = resolvedProvider,
                 DisplayName = modelId
             };
         }
@@ -88,17 +101,35 @@ internal sealed class RoleModelMapping
 
     private static string ResolveProviderFallback(string? adapterId, string defaultProvider)
     {
+        var normalizedDefaultProvider = NormalizeProviderId(defaultProvider);
         if (string.IsNullOrWhiteSpace(adapterId))
         {
-            return defaultProvider;
+            return normalizedDefaultProvider;
         }
 
-        if (AdapterProviderFallbacks.TryGetValue(adapterId, out var provider))
+        var normalizedAdapterId = adapterId.Trim();
+        if (AdapterProviderFallbacks.TryGetValue(normalizedAdapterId, out var provider))
         {
-            return provider;
+            return NormalizeProviderId(provider, normalizedDefaultProvider);
         }
 
-        return adapterId;
+        return NormalizeProviderId(normalizedAdapterId, normalizedDefaultProvider);
+    }
+
+    private static string NormalizeProviderId(string? providerId, string fallback = "openai")
+    {
+        if (string.IsNullOrWhiteSpace(providerId))
+        {
+            return fallback;
+        }
+
+        var normalized = providerId.Trim();
+        if (normalized.StartsWith("api-", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized["api-".Length..];
+        }
+
+        return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
     }
 }
 

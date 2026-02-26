@@ -16,6 +16,7 @@ public sealed class RuntimeOptions
     public string[] ApiProviderOrder { get; init; } = ["openai"];
     public string OpenAiApiKeyEnvVar { get; init; } = "OPENAI_API_KEY";
     public string OpenAiBaseUrl { get; init; } = "https://api.openai.com/v1";
+    public int OpenAiRequestTimeoutSeconds { get; init; } = 120;
     public Dictionary<string, RoleModelPreference> RoleModelMapping { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
     public string SandboxMode { get; init; } = "docker";

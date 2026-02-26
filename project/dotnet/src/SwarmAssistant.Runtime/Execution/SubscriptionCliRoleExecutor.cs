@@ -657,9 +657,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         string? ModelEnvVar = null,
         string? ModeFlag = null,
         string? ReasoningFlag = null,
-        string? ReasoningEnvVar = null,
-        bool SupportsTokenReporting = false,
-        string? TokenOutputPattern = null);
+        string? ReasoningEnvVar = null);
 
     private sealed record ProcessResult(bool Ok, string Output, string ErrorSummary);
 

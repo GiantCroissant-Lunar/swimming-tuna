@@ -404,7 +404,18 @@ public sealed class SwarmAgentActor : ReceiveActor
         if (_options.AgentFrameworkExecutionMode.Equals("api-direct", StringComparison.OrdinalIgnoreCase))
         {
             var configuredApiProvider = _options.ApiProviderOrder?.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
-            return string.IsNullOrWhiteSpace(configuredApiProvider) ? "api-openai" : $"api-{configuredApiProvider}";
+            if (string.IsNullOrWhiteSpace(configuredApiProvider))
+            {
+                return "api-openai";
+            }
+
+            var normalizedProvider = configuredApiProvider.Trim();
+            if (normalizedProvider.StartsWith("api-", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedProvider = normalizedProvider["api-".Length..];
+            }
+
+            return $"api-{normalizedProvider}";
         }
 
         return _options.CliAdapterOrder?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a)) ?? "local-echo";

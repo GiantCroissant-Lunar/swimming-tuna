@@ -92,6 +92,8 @@ their CLI flags or env vars.
 ```json
 {
   "Runtime": {
+    "ApiProviderOrder": ["openai"],
+    "OpenAiBaseUrl": "https://api.openai.com/v1",
     "RoleModelMapping": {
       "Planner": { "Model": "anthropic/claude-sonnet-4-6", "Reasoning": "high" },
       "Builder": { "Model": "kilo/giga-potato" }
@@ -99,6 +101,12 @@ their CLI flags or env vars.
   }
 }
 ```
+
+`ApiProviderOrder` controls provider precedence.
+`OpenAiApiKeyEnvVar` defines the environment-variable name used to fetch OpenAI
+credentials.
+`OpenAiBaseUrl` defines the OpenAI endpoint used when role model hints (for
+example `Planner`/`Builder`) resolve to API-backed providers.
 
 ## AG-UI + A2UI Gateway (Phase 6)
 

@@ -5,26 +5,67 @@ using System.Text.Json;
 
 namespace SwarmAssistant.Runtime.Execution;
 
-internal sealed class OpenAiModelProvider : IModelProvider
+internal sealed class OpenAiModelProvider : IModelProvider, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
+    private readonly bool _ownsHttpClient;
 
-    public OpenAiModelProvider(string apiKey, string baseUrl)
+    public OpenAiModelProvider(string apiKey, string baseUrl, int requestTimeoutSeconds = 120)
+        : this(
+            apiKey,
+            new HttpClient
+            {
+                BaseAddress = new Uri(NormalizeBaseUrl(baseUrl)),
+                Timeout = TimeSpan.FromSeconds(Math.Max(1, requestTimeoutSeconds))
+            },
+            ownsHttpClient: true)
     {
-        _apiKey = apiKey;
-        _httpClient = new HttpClient
+    }
+
+    internal OpenAiModelProvider(string apiKey, HttpClient httpClient, bool ownsHttpClient = false)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
-            BaseAddress = new Uri(NormalizeBaseUrl(baseUrl))
-        };
+            throw new ArgumentException("OpenAI API key cannot be empty.", nameof(apiKey));
+        }
+
+        ArgumentNullException.ThrowIfNull(httpClient);
+
+        _apiKey = apiKey;
+        _httpClient = httpClient;
+        _ownsHttpClient = ownsHttpClient;
+        if (_httpClient.BaseAddress is null)
+        {
+            _httpClient.BaseAddress = new Uri(NormalizeBaseUrl(string.Empty));
+        }
+
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
     }
 
     public string ProviderId => "openai";
 
-    public Task<bool> ProbeAsync(CancellationToken ct)
+    public async Task<bool> ProbeAsync(CancellationToken ct)
     {
-        return Task.FromResult(!string.IsNullOrWhiteSpace(_apiKey));
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "models");
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (HttpRequestException)
+        {
+            return false;
+        }
     }
 
     public async Task<ModelResponse> ExecuteAsync(
@@ -127,11 +168,12 @@ internal sealed class OpenAiModelProvider : IModelProvider
             return new TokenUsage();
         }
 
+        var hasPromptTokenDetails = usage.TryGetProperty("prompt_tokens_details", out var promptTokenDetails);
         return new TokenUsage
         {
             InputTokens = GetInt(usage, "prompt_tokens"),
             OutputTokens = GetInt(usage, "completion_tokens"),
-            CacheReadTokens = GetInt(usage, "cached_tokens"),
+            CacheReadTokens = hasPromptTokenDetails ? GetInt(promptTokenDetails, "cached_tokens") : 0,
             CacheWriteTokens = 0
         };
     }
@@ -141,5 +183,15 @@ internal sealed class OpenAiModelProvider : IModelProvider
         return parent.TryGetProperty(propertyName, out var element) && element.TryGetInt32(out var value)
             ? value
             : 0;
+    }
+
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+        {
+            _httpClient.Dispose();
+        }
+
+        GC.SuppressFinalize(this);
     }
 }

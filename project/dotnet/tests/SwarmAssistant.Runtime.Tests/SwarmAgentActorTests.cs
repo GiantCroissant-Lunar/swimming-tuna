@@ -313,6 +313,42 @@ public sealed class SwarmAgentActorTests : TestKit
         }, TimeSpan.FromSeconds(3), TimeSpan.FromMilliseconds(100));
     }
 
+    [Fact]
+    public void ApiDirectProviderPrefix_IsNormalizedForCapabilityAdvertisement()
+    {
+        var options = new RuntimeOptions
+        {
+            AgentFrameworkExecutionMode = "api-direct",
+            ApiProviderOrder = ["api-openai"],
+            CliAdapterOrder = [],
+            SandboxMode = "host"
+        };
+
+        var registry = Sys.ActorOf(Props.Create(() => new AgentRegistryActor(_loggerFactory, null, null, 30)));
+        var telemetry = new RuntimeTelemetry(options, _loggerFactory);
+        var engine = new AgentFrameworkRoleEngine(options, _loggerFactory, telemetry);
+
+        _ = Sys.ActorOf(Props.Create(() => new SwarmAgentActor(
+            options,
+            _loggerFactory,
+            engine,
+            telemetry,
+            registry,
+            new[] { SwarmRole.Planner },
+            default(TimeSpan),
+            null,
+            (int?)null)));
+
+        AwaitAssert(() =>
+        {
+            registry.Tell(new GetCapabilitySnapshot());
+            var snapshot = ExpectMsg<CapabilitySnapshot>();
+            Assert.Single(snapshot.Agents);
+            Assert.NotNull(snapshot.Agents[0].Provider);
+            Assert.Equal("api-openai", snapshot.Agents[0].Provider!.Adapter);
+        }, TimeSpan.FromSeconds(3), TimeSpan.FromMilliseconds(100));
+    }
+
     [Theory]
     [InlineData(PeerMessageType.TaskRequest, "msg-001", "{ \"task\": \"test\" }")]
     [InlineData(PeerMessageType.HelpRequest, "msg-002", "{ \"help\": \"needed\" }")]

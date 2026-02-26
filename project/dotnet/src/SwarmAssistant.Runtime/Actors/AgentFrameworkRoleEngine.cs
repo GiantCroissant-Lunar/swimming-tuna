@@ -219,29 +219,62 @@ public sealed class AgentFrameworkRoleEngine
 
     private static IReadOnlyList<IModelProvider> BuildDefaultModelProviders(RuntimeOptions options, ILoggerFactory loggerFactory)
     {
+        var logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
         var providers = new List<IModelProvider>();
-        foreach (var providerId in options.ApiProviderOrder.Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var configuredProvider in options.ApiProviderOrder.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (providerId.Equals("openai", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(configuredProvider))
+            {
+                continue;
+            }
+
+            var providerId = configuredProvider.Trim();
+            var normalizedProviderId = providerId.StartsWith("api-", StringComparison.OrdinalIgnoreCase)
+                ? providerId["api-".Length..]
+                : providerId;
+
+            if (normalizedProviderId.Equals("openai", StringComparison.OrdinalIgnoreCase))
             {
                 var apiKey = Environment.GetEnvironmentVariable(options.OpenAiApiKeyEnvVar);
-                if (!string.IsNullOrWhiteSpace(apiKey))
+                if (string.IsNullOrWhiteSpace(apiKey))
                 {
-                    providers.Add(new OpenAiModelProvider(apiKey, options.OpenAiBaseUrl));
+                    logger.LogWarning(
+                        "Model provider '{ProviderId}' skipped because env var '{ApiKeyEnvVar}' is not set.",
+                        providerId,
+                        options.OpenAiApiKeyEnvVar);
+                    continue;
                 }
+
+                providers.Add(new OpenAiModelProvider(
+                    apiKey,
+                    options.OpenAiBaseUrl,
+                    options.OpenAiRequestTimeoutSeconds));
+                continue;
             }
+
+            logger.LogWarning("Unrecognized model provider configured: {ProviderId}", providerId);
         }
 
-        var logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
         logger.LogInformation("Model providers registered: {Providers}", string.Join(",", providers.Select(p => p.ProviderId)));
         return providers;
     }
 
-    private static decimal CalculateCostUsd(ModelSpec model, TokenUsage usage)
+    private decimal CalculateCostUsd(ModelSpec model, TokenUsage usage)
     {
-        var inputCost = (usage.InputTokens / 1_000_000m) * model.Cost.InputPerMillionTokens;
-        var outputCost = (usage.OutputTokens / 1_000_000m) * model.Cost.OutputPerMillionTokens;
-        var cacheReadCost = (usage.CacheReadTokens / 1_000_000m) * model.Cost.CacheReadPerMillionTokens;
+        var cost = model.Cost;
+        if (cost.InputPerMillionTokens == 0m &&
+            cost.OutputPerMillionTokens == 0m &&
+            cost.CacheReadPerMillionTokens == 0m)
+        {
+            _logger.LogWarning(
+                "Cost data unavailable for model={ModelId}; reporting unknown cost sentinel.",
+                model.Id);
+            return -1m;
+        }
+
+        var inputCost = (usage.InputTokens / 1_000_000m) * cost.InputPerMillionTokens;
+        var outputCost = (usage.OutputTokens / 1_000_000m) * cost.OutputPerMillionTokens;
+        var cacheReadCost = (usage.CacheReadTokens / 1_000_000m) * cost.CacheReadPerMillionTokens;
         return inputCost + outputCost + cacheReadCost;
     }
 
