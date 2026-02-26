@@ -1562,8 +1562,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private string GetMemoryDir()
     {
-        var basePath = _worktreePath ?? Directory.GetCurrentDirectory();
-        return Path.Combine(basePath, ".swarm", "memory");
+        // Always use the process CWD (git repo root) so all tasks in a run
+        // share the same memory directory, even when worktree isolation is active.
+        return Path.Combine(Directory.GetCurrentDirectory(), ".swarm", "memory");
     }
 
     private string GetRunMemoryPath() => Path.Combine(GetMemoryDir(), "run.mv2");
@@ -1582,7 +1583,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             Directory.CreateDirectory(Path.Combine(memDir, "tasks"));
 
             var runPath = GetRunMemoryPath();
-            await _memvidClient.CreateStoreAsync(runPath, CancellationToken.None);
+            if (!File.Exists(runPath))
+            {
+                await _memvidClient.CreateStoreAsync(runPath, CancellationToken.None);
+            }
             await _memvidClient.PutAsync(runPath, new MemvidDocument(
                 Title: _title,
                 Label: "plan",
@@ -1662,7 +1666,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             var contextParts = new List<string> { "--- Sibling Task Context ---" };
 
-            foreach (var siblingPath in siblingFiles)
+            var findTasks = siblingFiles.Select(async siblingPath =>
             {
                 var siblingId = Path.GetFileNameWithoutExtension(siblingPath);
                 var results = await _memvidClient.FindAsync(
@@ -1672,12 +1676,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _options.MemvidSearchMode,
                     CancellationToken.None);
 
-                foreach (var r in results)
+                return results.Select(r =>
                 {
                     var text = r.Text.Length > 500 ? r.Text[..500] : r.Text;
-                    contextParts.Add($"  [{siblingId}] {r.Title}: {text}");
-                }
-            }
+                    return $"  [{siblingId}] {r.Title}: {text}";
+                });
+            });
+
+            var allResults = await Task.WhenAll(findTasks);
+            contextParts.AddRange(allResults.SelectMany(r => r));
 
             contextParts.Add("--- End Sibling Task Context ---");
 

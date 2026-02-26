@@ -276,7 +276,7 @@ public sealed class RuntimeOptions
 
     /// <summary>
     /// Search mode passed to <c>memvid find --mode</c>.
-    /// Supported values: <c>auto</c>, <c>semantic</c>, <c>keyword</c>.
+    /// Supported values: <c>auto</c>, <c>sem</c> (semantic), <c>lex</c> (keyword).
     /// </summary>
     public string MemvidSearchMode { get; init; } = "auto";
 

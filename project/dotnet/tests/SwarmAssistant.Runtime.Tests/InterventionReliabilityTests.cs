@@ -461,7 +461,9 @@ public sealed class InterventionReliabilityTests : TestKit
                 /* projectContext: */ null,
                 /* workspaceBranchManager: */ null,
                 /* buildVerifier: */ null,
-                /* sandboxEnforcer: */ null, null, null)));
+                /* sandboxEnforcer: */ null,
+                /* langfuseScoreWriter: */ null,
+                /* memvidClient: */ null)));
 
         _registries[suffix] = registry;
         return (taskId, coordinator, registry, uiEvents);

@@ -151,7 +151,11 @@ internal static class RolePromptFactory
         if (!string.IsNullOrWhiteSpace(siblingContext) &&
             command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
         {
-            contextParts.Add("\n### Sibling Task Context\n" + siblingContext);
+            const int maxSiblingContextChars = 8_000;
+            var truncated = siblingContext.Length > maxSiblingContextChars
+                ? siblingContext[..maxSiblingContextChars] + "\n... (truncated)"
+                : siblingContext;
+            contextParts.Add("\n### Sibling Task Context\n" + truncated);
         }
 
         if (contextParts.Count == 0)
