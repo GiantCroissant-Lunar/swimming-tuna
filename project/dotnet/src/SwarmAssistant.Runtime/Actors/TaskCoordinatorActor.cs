@@ -75,6 +75,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _buildOutput;
     private string? _reviewOutput;
     private string? _workspaceBranchName;
+    private string? _worktreePath;
 
     private int _retryCount;
     private readonly int _maxRetries;
@@ -188,6 +189,13 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
         Context.System.EventStream.Unsubscribe(Self, typeof(RoleLifecycleEvent));
         _blackboardActor.Tell(new RemoveBlackboard(_taskId));
+
+        // Clean up worktree on task completion
+        if (_worktreePath is not null && _workspaceBranchManager is not null)
+        {
+            _ = _workspaceBranchManager.RemoveWorktreeAsync(_taskId);
+        }
+
         base.PostStop();
     }
 
@@ -1088,11 +1096,22 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             case "Build":
                 if (_workspaceBranchManager is not null)
                 {
-                    var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
-                    if (branch is not null)
+                    // Prefer worktree isolation over branch-only
+                    var worktree = await _workspaceBranchManager.EnsureWorktreeAsync(_taskId);
+                    if (worktree is not null)
                     {
-                        _workspaceBranchName = branch;
-                        _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
+                        _worktreePath = worktree;
+                        _workspaceBranchName = WorkspaceBranchManager.BranchNameForTask(_taskId);
+                        _logger.LogInformation("Builder isolated to worktree {Worktree} for task {TaskId}", worktree, _taskId);
+                    }
+                    else
+                    {
+                        var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
+                        if (branch is not null)
+                        {
+                            _workspaceBranchName = branch;
+                            _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
+                        }
                     }
                 }
                 TransitionTo(TaskState.Building);
@@ -1107,7 +1126,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("Build", SwarmRole.Builder, buildPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId, WorkspacePath: _worktreePath));
                 break;
 
             case "Verify":
@@ -1130,7 +1149,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     {
                         try
                         {
-                            var result = await _buildVerifier.VerifyAsync(ct);
+                            var result = await _buildVerifier.VerifyAsync(ct, _worktreePath);
                             self.Tell(new VerifyCompleted(taskId, result));
                         }
                         catch (Exception ex)
@@ -1163,7 +1182,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("Review", SwarmRole.Reviewer, reviewPrompt, codeContext);
                 var reviewTask = new ExecuteRoleTask(
-                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId);
+                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId, WorkspacePath: _worktreePath);
                 if (reviewCount == 1)
                 {
                     _reviewerActor.Tell(reviewTask);
@@ -1199,7 +1218,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("SecondOpinion", SwarmRole.Reviewer, secondOpinionPrompt, codeContext);
                 var secondOpinionTask = new ExecuteRoleTask(
-                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId);
+                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId, WorkspacePath: _worktreePath);
                 for (int i = 0; i < currentRequiredVotes + additionalReviewCount; i++)
                 {
                     _reviewerActor.Tell(secondOpinionTask);
@@ -1220,7 +1239,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("Rework", SwarmRole.Builder, reworkPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId, WorkspacePath: _worktreePath));
                 break;
 
             case "Finalize":
@@ -1626,7 +1645,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId,
                 _runId,
                 agentId,
-                role);
+                role,
+                _worktreePath);
 
             if (_workspaceBranchName is { Length: > 0 })
             {

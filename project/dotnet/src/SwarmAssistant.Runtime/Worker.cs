@@ -294,7 +294,8 @@ public sealed class Worker : BackgroundService
 
         var workspaceBranchManager = new WorkspaceBranchManager(
             _options.WorkspaceBranchEnabled,
-            _loggerFactory.CreateLogger<WorkspaceBranchManager>());
+            _loggerFactory.CreateLogger<WorkspaceBranchManager>(),
+            _options.WorktreeIsolationEnabled);
 
         var sandboxEnforcer = new SandboxLevelEnforcer(
             containerAvailable: string.Equals(_options.SandboxMode, "docker", StringComparison.OrdinalIgnoreCase)

@@ -16,7 +16,8 @@ internal sealed record ExecuteRoleTask(
     string? PreferredAdapter = null,
     double? PreviousConfidence = null,
     string? RunId = null,
-    string? Prompt = null  // Pre-built prompt (optional, used with code context)
+    string? Prompt = null,  // Pre-built prompt (optional, used with code context)
+    string? WorkspacePath = null  // Per-task worktree path for isolation
 );
 
 

@@ -29,12 +29,13 @@ public sealed class BuildVerifier
         _timeout = timeout ?? TimeSpan.FromMinutes(5);
     }
 
-    public async Task<BuildVerifyResult> VerifyAsync(CancellationToken ct = default)
+    public async Task<BuildVerifyResult> VerifyAsync(CancellationToken ct = default, string? workingDirectory = null)
     {
-        _logger.LogInformation("Starting build verification for {SolutionPath}", _solutionPath);
+        _logger.LogInformation("Starting build verification for {SolutionPath} workingDirectory={WorkingDirectory}",
+            _solutionPath, workingDirectory ?? "(default)");
 
         // 1. Run dotnet build --verbosity quiet
-        var buildResult = await RunCommandAsync("dotnet", $"build \"{_solutionPath}\" --verbosity quiet", ct);
+        var buildResult = await RunCommandAsync("dotnet", $"build \"{_solutionPath}\" --verbosity quiet", ct, workingDirectory);
         if (buildResult.ExitCode != 0)
         {
             _logger.LogWarning("Build failed exitCode={ExitCode}", buildResult.ExitCode);
@@ -44,7 +45,7 @@ public sealed class BuildVerifier
         _logger.LogInformation("Build succeeded, running tests");
 
         // 2. Run dotnet test --verbosity quiet
-        var testResult = await RunCommandAsync("dotnet", $"test \"{_solutionPath}\" --verbosity quiet", ct);
+        var testResult = await RunCommandAsync("dotnet", $"test \"{_solutionPath}\" --verbosity quiet", ct, workingDirectory);
 
         // Parse test results
         var (passed, failed) = ParseTestResults(testResult.Output);
@@ -60,9 +61,9 @@ public sealed class BuildVerifier
     }
 
     private async Task<(int ExitCode, string Output)> RunCommandAsync(
-        string fileName, string arguments, CancellationToken ct)
+        string fileName, string arguments, CancellationToken ct, string? workingDirectory = null)
     {
-        _logger.LogDebug("Running {FileName} {Arguments}", fileName, arguments);
+        _logger.LogDebug("Running {FileName} {Arguments} in {WorkingDirectory}", fileName, arguments, workingDirectory ?? "(default)");
 
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -73,6 +74,7 @@ public sealed class BuildVerifier
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
+            WorkingDirectory = workingDirectory ?? string.Empty,
         };
 
         process.Start();

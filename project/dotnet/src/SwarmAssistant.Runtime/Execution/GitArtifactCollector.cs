@@ -21,21 +21,22 @@ public sealed class GitArtifactCollector
         string? runId,
         string agentId,
         string role,
+        string? workspacePath = null,
         CancellationToken cancellationToken = default)
     {
-        var topLevel = await RunGitAsync(["rev-parse", "--show-toplevel"], cancellationToken);
+        var topLevel = await RunGitAsync(["rev-parse", "--show-toplevel"], cancellationToken, workspacePath);
         if (topLevel.ExitCode != 0 || string.IsNullOrWhiteSpace(topLevel.StdOut))
         {
             return [];
         }
 
         var repositoryRoot = topLevel.StdOut.Trim();
-        var branchResult = await RunGitAsync(["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken);
+        var branchResult = await RunGitAsync(["rev-parse", "--abbrev-ref", "HEAD"], cancellationToken, workspacePath);
         var branch = branchResult.ExitCode == 0
             ? branchResult.StdOut.Trim()
             : string.Empty;
 
-        var statusResult = await RunGitAsync(["status", "--porcelain"], cancellationToken);
+        var statusResult = await RunGitAsync(["status", "--porcelain"], cancellationToken, workspacePath);
         if (statusResult.ExitCode != 0 || string.IsNullOrWhiteSpace(statusResult.StdOut))
         {
             return [];
@@ -84,7 +85,7 @@ public sealed class GitArtifactCollector
                 contentHash = TaskArtifact.ComputeContentHash($"deleted:{normalizedPath}:{status}");
             }
 
-            var (linesAdded, linesRemoved) = await GetNumStatAsync(normalizedPath, cancellationToken);
+            var (linesAdded, linesRemoved) = await GetNumStatAsync(normalizedPath, cancellationToken, workspacePath);
             if (linesAdded == 0 && linesRemoved == 0 && File.Exists(fullPath))
             {
                 try
@@ -131,7 +132,8 @@ public sealed class GitArtifactCollector
 
     private async Task<(int ExitCode, string StdOut, string StdErr)> RunGitAsync(
         string[] args,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? workingDirectory = null)
     {
         try
         {
@@ -147,7 +149,8 @@ public sealed class GitArtifactCollector
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
-                    CreateNoWindow = true
+                    CreateNoWindow = true,
+                    WorkingDirectory = workingDirectory ?? string.Empty
                 }
             };
 
@@ -207,9 +210,9 @@ public sealed class GitArtifactCollector
         }
     }
 
-    private async Task<(int LinesAdded, int LinesRemoved)> GetNumStatAsync(string path, CancellationToken cancellationToken)
+    private async Task<(int LinesAdded, int LinesRemoved)> GetNumStatAsync(string path, CancellationToken cancellationToken, string? workingDirectory = null)
     {
-        var result = await RunGitAsync(["diff", "--numstat", "--", path], cancellationToken);
+        var result = await RunGitAsync(["diff", "--numstat", "--", path], cancellationToken, workingDirectory);
         if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
         {
             return (0, 0);
