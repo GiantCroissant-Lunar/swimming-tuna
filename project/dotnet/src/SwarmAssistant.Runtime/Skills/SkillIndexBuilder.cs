@@ -28,11 +28,20 @@ public sealed class SkillIndexBuilder
         _skillsByName.Clear();
         _tagIndex.Clear();
 
-        var skillFiles = Directory.EnumerateFiles(
-            basePath,
-            "SKILL.md",
-            SearchOption.AllDirectories
-        ).OrderBy(path => path, StringComparer.Ordinal);
+        IEnumerable<string> skillFiles;
+        try
+        {
+            skillFiles = Directory.EnumerateFiles(
+                basePath,
+                "SKILL.md",
+                SearchOption.AllDirectories
+            ).OrderBy(path => path, StringComparer.Ordinal);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Access denied enumerating skill files under {BasePath}", basePath);
+            return;
+        }
 
         foreach (var filePath in skillFiles)
         {
@@ -60,7 +69,7 @@ public sealed class SkillIndexBuilder
 
                 _skillsByName[skill.Name] = skill;
 
-                foreach (var tag in skill.Tags)
+                foreach (var tag in skill.Tags.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
                     if (!_tagIndex.TryGetValue(tag, out var skillNames))
                     {

@@ -81,7 +81,15 @@ For each actionable comment:
 - Follow the project's coding conventions: C# uses PascalCase and file-scoped namespaces; JavaScript uses camelCase and ES modules; Python uses snake_case with ruff formatting.
 - Use conventional commit style for the PR title.
 
-## Step 5 — Create follow-up PR
+## Step 5 — Verify fixes compile
+
+Before creating the PR, verify that applied fixes compile and don't break existing functionality. The `.github/copilot-setup-steps.yml` installs .NET 9 SDK and runs `dotnet restore` as part of the environment setup. The `network.allowed: dotnet` policy permits NuGet package access for this step.
+
+1. Ensure the solution builds successfully after applying fixes
+2. If the build fails, re-examine the applied changes and fix compilation errors
+3. Do not create a PR with broken code
+
+## Step 6 — Create follow-up PR
 
 After making all fixes, create exactly **one** pull request with:
 

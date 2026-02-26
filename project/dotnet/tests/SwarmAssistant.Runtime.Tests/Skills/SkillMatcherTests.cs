@@ -143,7 +143,7 @@ public sealed class SkillMatcherTests
             budgetChars: 4000
         );
 
-        Assert.True(results.Count <= 2);
+        Assert.Single(results);
         var totalLength = results.Sum(r => r.Definition.Body?.Length ?? 0);
         Assert.True(totalLength <= 4000);
     }
@@ -301,7 +301,7 @@ public sealed class SkillMatcherTests
             maxResults: 3
         );
 
-        Assert.True(results.Count <= 3);
+        Assert.Equal(3, results.Count);
     }
 
     [Fact]
@@ -321,7 +321,7 @@ public sealed class SkillMatcherTests
         };
 
         var matcher = new SkillMatcher(skills);
-        var results = matcher.Match("", "description", SwarmRole.Builder);
+        var results = matcher.Match("", "test related description", SwarmRole.Builder);
 
         Assert.Empty(results);
     }
