@@ -9,7 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace SwarmAssistant.Runtime.Actors;
 
-[SuppressMessage("IDisposable", "CA1001:Types that own disposable fields should be disposable",
+[SuppressMessage("Reliability", "CA1001",
     Justification = "Akka actors clean up disposable fields in PostStop(), not via IDisposable")]
 public sealed class SwarmAgentActor : ReceiveActor
 {

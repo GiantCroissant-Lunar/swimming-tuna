@@ -20,7 +20,7 @@ namespace SwarmAssistant.Runtime.Actors;
 /// Falls back to GOAP recommendation directly if CLI orchestrator fails.
 /// Integrates learning and adaptation via StrategyAdvisorActor and OutcomeTracker.
 /// </summary>
-[SuppressMessage("IDisposable", "CA1001:Types that own disposable fields should be disposable",
+[SuppressMessage("Reliability", "CA1001",
     Justification = "Akka actors clean up disposable fields in PostStop(), not via IDisposable")]
 public sealed class TaskCoordinatorActor : ReceiveActor
 {
