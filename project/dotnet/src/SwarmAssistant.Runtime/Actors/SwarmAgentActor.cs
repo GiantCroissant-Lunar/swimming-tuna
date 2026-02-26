@@ -5,9 +5,13 @@ using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Telemetry;
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace SwarmAssistant.Runtime.Actors;
 
-public sealed class SwarmAgentActor : ReceiveActor, IDisposable
+[SuppressMessage("Reliability", "CA1001",
+    Justification = "Akka actors clean up disposable fields in PostStop(), not via IDisposable")]
+public sealed class SwarmAgentActor : ReceiveActor
 {
     private const int MaxConcurrentAgentTasks = 1;
     private const int EstimatedTimePerCostMs = 1_000;
@@ -383,17 +387,5 @@ public sealed class SwarmAgentActor : ReceiveActor, IDisposable
             SandboxLevel = _options.SandboxLevel,
             Budget = budget
         }, Self);
-    }
-
-    public void Dispose()
-    {
-        _heartbeatSchedule?.Cancel();
-        _heartbeatSchedule = null;
-
-        if (_endpointHost is not null)
-        {
-            _endpointHost.StopAsync().GetAwaiter().GetResult();
-            _endpointHost = null;
-        }
     }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
@@ -19,7 +20,9 @@ namespace SwarmAssistant.Runtime.Actors;
 /// Falls back to GOAP recommendation directly if CLI orchestrator fails.
 /// Integrates learning and adaptation via StrategyAdvisorActor and OutcomeTracker.
 /// </summary>
-public sealed class TaskCoordinatorActor : ReceiveActor, IDisposable
+[SuppressMessage("Reliability", "CA1001",
+    Justification = "Akka actors clean up disposable fields in PostStop(), not via IDisposable")]
+public sealed class TaskCoordinatorActor : ReceiveActor
 {
     private static readonly Regex ActionRegex = new(
         @"ACTION:\s*(\w+)",
@@ -1938,12 +1941,5 @@ public sealed class TaskCoordinatorActor : ReceiveActor, IDisposable
                 _taskId, _runId,
                 message.Role.ToString().ToLowerInvariant());
         }
-    }
-
-    public void Dispose()
-    {
-        _verifyCts?.Cancel();
-        _verifyCts?.Dispose();
-        _verifyCts = null;
     }
 }
