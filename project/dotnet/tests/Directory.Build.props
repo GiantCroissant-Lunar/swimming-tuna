@@ -1,0 +1,24 @@
+<Project>
+  <!-- Inherit from parent Directory.Build.props -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- Never treat warnings as errors in test projects, even in CI -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!--
+      Suppress noisy analyzers that don't add value in test code:
+        CA1305  - IFormatProvider in Convert calls (test data, not user-facing)
+        CA1307  - StringComparison in Assert calls (xUnit doesn't always offer overloads)
+        CA1310  - StringComparison in IndexOf (test assertions, not production)
+        CA1707  - Underscores in test method names are idiomatic xUnit
+        CA1822  - Mark members as static (test helper methods often need instance context)
+        CA1849  - Prefer async overloads (Akka TestKit uses sync ExpectMsg)
+        CA1859  - Concrete type suggestions (not useful in test mocks/stubs)
+        CA1861  - Constant arrays in test data (readability over perf)
+        CA2000  - Disposable handling managed by test framework
+        CA2213  - Disposable fields managed by test framework
+    -->
+    <NoWarn>$(NoWarn);CA1707;CA1307;CA1305;CA1310;CA1822;CA1849;CA1859;CA1861;CA2000;CA2213;CA2234;CA1001;IDE0065</NoWarn>
+  </PropertyGroup>
+</Project>
