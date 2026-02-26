@@ -56,6 +56,30 @@ sync:
         event: preToolUse
         toolTypes: ["write", "shell"]
         description: Validate tool calls against project security and convention rules
+      supermemory-save:
+        event: agentStop
+        action: askAgent
+        description: Save important decisions, findings, and context from this session to Supermemory
+        prompt: >
+          Review the conversation that just completed. If there were significant
+          decisions, architectural findings, debugging insights, implementation patterns,
+          or project knowledge worth preserving, save them to Supermemory by running:
+          python .agent/skills/memory/scripts/save.py "<memory content>"
+          Tag each memory with [swimming-tuna]. Focus on information that would help
+          a future session pick up where this one left off. You can make multiple
+          save calls for distinct topics. Skip saving if the conversation was trivial
+          or exploratory with no actionable outcomes.
+      supermemory-search:
+        event: promptSubmit
+        action: askAgent
+        description: Search Supermemory for relevant context from prior sessions
+        prompt: >
+          Before responding to the user's message, search Supermemory for relevant
+          prior context by running:
+          python .agent/skills/memory/scripts/search.py "<keywords from user request>"
+          If relevant memories are found, incorporate that context silently into your
+          response. If nothing relevant is found or the search fails, proceed normally
+          without mentioning the search.
 
   # Hooks config for shared Python hooks
   hooks_config:

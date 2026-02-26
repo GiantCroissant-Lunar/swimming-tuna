@@ -243,28 +243,39 @@ def execute_merge_kiro_hooks(
                 "description", f"Auto-synced from {hook_file}"
             )
 
-        # Build the script command path
-        script_path = hooks_dir / hook_file
-        if project_root is not None and script_path.exists():
-            try:
-                rel_path = script_path.relative_to(project_root.resolve())
-                command = f"python3 {rel_path}"
-            except ValueError:
-                command = f"python3 {script_path}"
-        else:
-            command = f"python3 .kiro/hooks/{hook_file}"
+        # Determine hook action type: askAgent or runCommand
+        hook_action = (
+            hook_config.get("action", "runCommand")
+            if isinstance(hook_config, dict)
+            else "runCommand"
+        )
+        prompt = hook_config.get("prompt") if isinstance(hook_config, dict) else None
 
-        # Derive a hook name from the script filename
+        # Derive a hook name from the mapping key
         hook_name = hook_file.replace(".py", "").replace("_", "-")
         target_file = hooks_dir / f"{hook_name}.json"
 
-        hook_json = {
+        hook_json: dict = {
             "name": hook_name.replace("-", " ").title(),
             "version": "1.0.0",
             "description": description,
             "when": {"type": event_type},
-            "then": {"type": "runCommand", "command": command},
         }
+
+        if hook_action == "askAgent" and prompt:
+            hook_json["then"] = {"type": "askAgent", "prompt": prompt}
+        else:
+            # Build the script command path
+            script_path = hooks_dir / hook_file
+            if project_root is not None and script_path.exists():
+                try:
+                    rel_path = script_path.relative_to(project_root.resolve())
+                    command = f"python3 {rel_path}"
+                except ValueError:
+                    command = f"python3 {script_path}"
+            else:
+                command = f"python3 .kiro/hooks/{hook_file}"
+            hook_json["then"] = {"type": "runCommand", "command": command}
 
         if tool_types and event_type in ("preToolUse", "postToolUse"):
             hook_json["when"]["toolTypes"] = tool_types
