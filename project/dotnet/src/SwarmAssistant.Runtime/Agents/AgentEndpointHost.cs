@@ -1,12 +1,9 @@
-namespace SwarmAssistant.Runtime.Agents;
 
 using System.Collections.Concurrent;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
 
+namespace SwarmAssistant.Runtime.Agents;
 public sealed class AgentEndpointHost : IAsyncDisposable
 {
     private readonly AgentCard _card;

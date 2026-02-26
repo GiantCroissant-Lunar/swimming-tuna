@@ -106,7 +106,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
         while (DateTime.UtcNow < deadline)
         {
             var snapshot = _taskRegistry.GetTask(taskId);
-            if (snapshot?.Status == expected) return;
+            if (snapshot?.Status == expected)
+                return;
             if (snapshot?.Status == TaskState.Blocked)
                 throw new InvalidOperationException(
                     $"Task {taskId} reached Blocked instead of {expected}. Error: {snapshot.Error}");
@@ -126,7 +127,8 @@ public sealed class RuntimeEventEmissionTests : TestKit
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            if (writer.Events.Any(predicate)) return;
+            if (writer.Events.Any(predicate))
+                return;
             await Task.Delay(50);
         }
     }

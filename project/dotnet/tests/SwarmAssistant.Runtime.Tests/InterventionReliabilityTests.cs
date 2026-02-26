@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Planning;
@@ -517,7 +516,8 @@ public sealed class InterventionReliabilityTests : TestKit
         while (DateTime.UtcNow < deadline)
         {
             var evt = eventStream.GetRecent(200).FirstOrDefault(predicate);
-            if (evt != null) return evt;
+            if (evt != null)
+                return evt;
             Thread.Sleep(20);
         }
 

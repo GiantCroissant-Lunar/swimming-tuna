@@ -82,9 +82,12 @@ public sealed class WorldState : IWorldState, IEquatable<WorldState>
 
     public bool Equals(WorldState? other)
     {
-        if (other is null) return false;
-        if (ReferenceEquals(this, other)) return true;
-        if (_state.Count != other._state.Count) return false;
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+        if (_state.Count != other._state.Count)
+            return false;
 
         foreach (var (key, value) in _state)
         {

@@ -1,8 +1,8 @@
-namespace SwarmAssistant.Runtime.Agents;
 
 using System.Text.Json.Serialization;
 using SwarmAssistant.Contracts.Messaging;
 
+namespace SwarmAssistant.Runtime.Agents;
 public sealed record AgentCard
 {
     [JsonPropertyName("agentId")]

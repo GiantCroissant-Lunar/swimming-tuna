@@ -1,6 +1,4 @@
 using Akka.Actor;
-using Akka.Pattern;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Runtime.Telemetry;
 
 namespace SwarmAssistant.Runtime.Actors;

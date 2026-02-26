@@ -1,7 +1,7 @@
 namespace SwarmAssistant.Runtime.Tests;
 
-using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Agents;
 
 public sealed class AgentCardTests
 {

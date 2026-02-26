@@ -1,14 +1,13 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 
 namespace SwarmAssistant.Runtime.Execution;
 
-internal sealed class SubscriptionCliRoleExecutor
+internal sealed class SubscriptionCliRoleExecutor : IDisposable
 {
     private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "local-echo"];
 
@@ -125,7 +124,7 @@ internal sealed class SubscriptionCliRoleExecutor
             AdapterDefinitions.ContainsKey(preferredAdapter))
         {
             // Return preferred adapter first, then the rest (excluding preferred to avoid duplication)
-            return [preferredAdapter, ..baseOrder.Where(a => !a.Equals(preferredAdapter, StringComparison.OrdinalIgnoreCase))];
+            return [preferredAdapter, .. baseOrder.Where(a => !a.Equals(preferredAdapter, StringComparison.OrdinalIgnoreCase))];
         }
 
         return baseOrder;
@@ -491,6 +490,11 @@ internal sealed class SubscriptionCliRoleExecutor
         bool IsInternal = false);
 
     private sealed record ProcessResult(bool Ok, string Output, string ErrorSummary);
+
+    public void Dispose()
+    {
+        throw new NotImplementedException();
+    }
 }
 
 internal sealed record CliRoleExecutionResult(string Output, string AdapterId);

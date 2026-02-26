@@ -1,7 +1,7 @@
-namespace SwarmAssistant.Runtime.Execution;
 
 using SwarmAssistant.Contracts.Messaging;
 
+namespace SwarmAssistant.Runtime.Execution;
 public static class SandboxSpectrumPolicy
 {
     public static SandboxLevel RecommendLevel(SandboxRequirements requirements)

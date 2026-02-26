@@ -57,16 +57,20 @@ public sealed record GenUiComponent(
     public static GenUiComponent Text(string id, string text, string? themeVariation = null, string? fontColor = null, int? fontSize = null)
     {
         var props = new Dictionary<string, object?> { ["text"] = text };
-        if (fontColor != null) props["font_color"] = fontColor;
-        if (fontSize != null) props["font_size"] = fontSize;
+        if (fontColor != null)
+            props["font_color"] = fontColor;
+        if (fontSize != null)
+            props["font_size"] = fontSize;
         return new(id, "text", props, ThemeTypeVariation: themeVariation);
     }
 
     public static GenUiComponent RichText(string id, string text, bool bbcode = false, string? fontColor = null, int? fontSize = null)
     {
         var props = new Dictionary<string, object?> { ["text"] = text, ["bbcode"] = bbcode };
-        if (fontColor != null) props["font_color"] = fontColor;
-        if (fontSize != null) props["font_size"] = fontSize;
+        if (fontColor != null)
+            props["font_color"] = fontColor;
+        if (fontSize != null)
+            props["font_size"] = fontSize;
         return new(id, "rich_text", props);
     }
 

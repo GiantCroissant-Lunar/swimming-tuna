@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 
 namespace SwarmAssistant.Runtime.Execution;
 
@@ -91,7 +90,8 @@ public sealed class BuildVerifier
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             _logger.LogWarning("Command timed out after {Timeout}", _timeout);
-            try { process.Kill(entireProcessTree: true); }
+            try
+            { process.Kill(entireProcessTree: true); }
             catch (Exception ex) { _logger.LogDebug(ex, "Failed to kill process, it may have already exited"); }
             return (-1, $"Command timed out after {_timeout}");
         }

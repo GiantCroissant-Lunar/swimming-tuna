@@ -2,16 +2,13 @@ using Akka.Actor;
 using Akka.TestKit.Xunit2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
-using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Tests;
 
@@ -480,7 +477,8 @@ public sealed class LifecycleEventsTests : TestKit
         while (DateTime.UtcNow < deadline)
         {
             var evt = eventStream.GetRecent(200).FirstOrDefault(predicate);
-            if (evt != null) return evt;
+            if (evt != null)
+                return evt;
             Thread.Sleep(20);
         }
 
@@ -497,7 +495,8 @@ public sealed class LifecycleEventsTests : TestKit
         while (DateTime.UtcNow < deadline)
         {
             var events = eventStream.GetRecent(200).Where(predicate).ToList();
-            if (events.Count >= count) return events;
+            if (events.Count >= count)
+                return events;
             Thread.Sleep(20);
         }
 

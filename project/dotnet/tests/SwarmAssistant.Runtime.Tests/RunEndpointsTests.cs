@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Tasks;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 

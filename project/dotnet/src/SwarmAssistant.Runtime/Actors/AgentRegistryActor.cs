@@ -1,5 +1,4 @@
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Ui;
 
@@ -365,7 +364,8 @@ public sealed class AgentRegistryActor : ReceiveActor, IWithTimers
 
     private void EmitDashboardEvent()
     {
-        if (_uiEvents is null) return;
+        if (_uiEvents is null)
+            return;
 
         var entries = _agents
             .Where(static pair => pair.Key != ActorRefs.Nobody)

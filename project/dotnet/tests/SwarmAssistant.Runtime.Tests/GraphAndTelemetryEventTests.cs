@@ -5,14 +5,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
-using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Tests;
 
@@ -378,7 +376,8 @@ public sealed class GraphAndTelemetryEventTests : TestKit
         while (DateTime.UtcNow < deadline)
         {
             var evt = eventStream.GetRecent(200).FirstOrDefault(predicate);
-            if (evt != null) return evt;
+            if (evt != null)
+                return evt;
             Thread.Sleep(20);
         }
 

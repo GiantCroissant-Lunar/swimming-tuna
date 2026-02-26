@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 
 namespace SwarmAssistant.Runtime.Skills;
@@ -56,12 +55,12 @@ public sealed class SkillIndexBuilder
                     continue;
                 }
 
-                if (_skillsByName.ContainsKey(skill.Name))
+                if (_skillsByName.TryGetValue(skill.Name, out SkillDefinition? value))
                 {
                     _logger.LogWarning(
                         "Duplicate skill name '{SkillName}' found. Existing: {ExistingPath}, Duplicate: {DuplicatePath}. Keeping first.",
                         skill.Name,
-                        _skillsByName[skill.Name].SourcePath,
+value.SourcePath,
                         filePath
                     );
                     continue;

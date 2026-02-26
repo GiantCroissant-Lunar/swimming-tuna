@@ -1,17 +1,14 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
-using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Tasks;
 
 /// <summary>
 /// Writes task outcomes to ArcadeDB for persistent learning data.
 /// </summary>
-public sealed class ArcadeDbOutcomeWriter : IOutcomeWriter
+public sealed class ArcadeDbOutcomeWriter : IOutcomeWriter, IDisposable
 {
     internal const char RoleExecutionDelimiter = '|';
     internal const char KeywordDelimiter = ',';
@@ -265,6 +262,11 @@ public sealed class ArcadeDbOutcomeWriter : IOutcomeWriter
             _options.ArcadeDbHttpUrl,
             _options.ArcadeDbDatabase,
             _consecutiveFailures);
+    }
+
+    public void Dispose()
+    {
+        throw new NotImplementedException();
     }
 }
 

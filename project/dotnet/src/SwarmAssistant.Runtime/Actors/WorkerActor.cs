@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Tasks;
@@ -259,7 +258,8 @@ public sealed class WorkerActor : ReceiveActor
             _ => Array.Empty<string>()
         };
 
-        if (keywords.Length == 0) return 0.5;
+        if (keywords.Length == 0)
+            return 0.5;
 
         var matches = keywords.Count(k => lowerOutput.Contains(k));
         return (double)matches / keywords.Length;

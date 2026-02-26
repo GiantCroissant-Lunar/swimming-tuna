@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Tasks;
 using SwarmAssistant.Runtime.Tasks;
