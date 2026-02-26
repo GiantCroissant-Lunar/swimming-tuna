@@ -81,6 +81,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _reviewOutput;
     private string? _workspaceBranchName;
     private string? _worktreePath;
+    private string? _siblingContext;
 
     private int _retryCount;
     private readonly int _maxRetries;
@@ -1137,6 +1138,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                         }
                     }
                 }
+                _siblingContext = await TryBuildSiblingContextAsync();
                 TransitionTo(TaskState.Building);
                 _uiEvents.Publish(
                     type: "agui.role.dispatched",
@@ -1146,7 +1148,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    matchedSkills: null,
+                    langfuseContext: null,
+                    siblingContext: _siblingContext);
                 EmitDiagnosticContext("Build", SwarmRole.Builder, buildPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId, WorkspacePath: _worktreePath));
@@ -1250,6 +1255,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             case "Rework":
                 StoreBlackboard($"rework_attempt_{_retryCount}", "Reworking after review rejection");
+                _siblingContext = await TryBuildSiblingContextAsync();
                 TransitionTo(TaskState.Building);
                 _uiEvents.Publish(
                     type: "agui.role.dispatched",
@@ -1259,7 +1265,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     new ExecuteRoleTask(_taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, RunId: _runId),
                     _strategyAdvice,
                     codeContext,
-                    _projectContext);
+                    _projectContext,
+                    matchedSkills: null,
+                    langfuseContext: null,
+                    siblingContext: _siblingContext);
                 EmitDiagnosticContext("Rework", SwarmRole.Builder, reworkPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
                     _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId, WorkspacePath: _worktreePath));
@@ -1621,6 +1630,57 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to encode {Role} output to memvid; continuing", role);
+        }
+    }
+
+    private async Task<string?> TryBuildSiblingContextAsync()
+    {
+        if (_memvidClient is null) return null;
+
+        try
+        {
+            var tasksDir = Path.Combine(GetMemoryDir(), "tasks");
+            if (!Directory.Exists(tasksDir)) return null;
+
+            var siblingFiles = Directory.GetFiles(tasksDir, "*.mv2")
+                .Where(f => !Path.GetFileNameWithoutExtension(f)
+                    .Equals(_taskId, StringComparison.Ordinal))
+                .ToList();
+
+            if (siblingFiles.Count == 0) return null;
+
+            var contextParts = new List<string> { "--- Sibling Task Context ---" };
+
+            foreach (var siblingPath in siblingFiles)
+            {
+                var siblingId = Path.GetFileNameWithoutExtension(siblingPath);
+                var results = await _memvidClient.FindAsync(
+                    siblingPath,
+                    _description,
+                    _options.MemvidSiblingMaxChunks,
+                    _options.MemvidSearchMode,
+                    CancellationToken.None);
+
+                foreach (var r in results)
+                {
+                    var text = r.Text.Length > 500 ? r.Text[..500] : r.Text;
+                    contextParts.Add($"  [{siblingId}] {r.Title}: {text}");
+                }
+            }
+
+            contextParts.Add("--- End Sibling Task Context ---");
+
+            if (contextParts.Count <= 2) return null;
+
+            var context = string.Join("\n", contextParts);
+            _logger.LogInformation("Built sibling context from {Count} stores ({Length} chars)",
+                siblingFiles.Count, context.Length);
+            return context;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to build sibling context; continuing without");
+            return null;
         }
     }
 
