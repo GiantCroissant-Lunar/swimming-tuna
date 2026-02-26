@@ -346,6 +346,6 @@ public sealed class ArcadeDbSwarmRunRepository : ISwarmRunWriter, ISwarmRunReade
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _schemaLock.Dispose();
     }
 }

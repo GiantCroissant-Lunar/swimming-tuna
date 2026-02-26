@@ -60,7 +60,7 @@ public sealed class SkillIndexBuilder
                     _logger.LogWarning(
                         "Duplicate skill name '{SkillName}' found. Existing: {ExistingPath}, Duplicate: {DuplicatePath}. Keeping first.",
                         skill.Name,
-value.SourcePath,
+                        value.SourcePath,
                         filePath
                     );
                     continue;

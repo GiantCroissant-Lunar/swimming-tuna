@@ -229,6 +229,6 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter, IDisposable
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _schemaLock.Dispose();
     }
 }

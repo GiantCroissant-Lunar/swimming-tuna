@@ -493,7 +493,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _concurrencyGate.Dispose();
     }
 }
 

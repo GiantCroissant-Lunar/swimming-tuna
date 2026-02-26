@@ -366,6 +366,19 @@ if (options.AgUiEnabled)
             {
                 result = await dispatcher.Ask<TaskInterventionResult>(command, TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
             }
+            catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return Results.Problem(
+                    detail: "Request was cancelled",
+                    statusCode: StatusCodes.Status499ClientClosedRequest);
+            }
+            catch (TaskCanceledException)
+            {
+                return RejectAction(
+                    reasonCode: "dispatch_timeout",
+                    error: "Task intervention dispatch timed out.",
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
             catch (Exception ex)
             {
                 return RejectAction(
