@@ -86,4 +86,31 @@ public sealed class SubscriptionCliRoleExecutorTests
         Assert.Equal("local-echo", result.AdapterId);
         Assert.Contains("[LocalEcho/Builder]", result.Output);
     }
+
+    [Fact]
+    public void NormalizeOutput_StripsAnsiAndTrims()
+    {
+        var normalized = SubscriptionCliRoleExecutor.NormalizeOutput("\u001b[0mhi\u001b[0m\r\n");
+        Assert.Equal("hi", normalized);
+    }
+
+    [Fact]
+    public void FindRejectedOutputMatch_ReturnsCommonAuthSnippet()
+    {
+        var match = SubscriptionCliRoleExecutor.FindRejectedOutputMatch(
+            "Authorization failed, please check your login status",
+            []);
+
+        Assert.Equal("authorization failed", match);
+    }
+
+    [Fact]
+    public void FindRejectedOutputMatch_ReturnsAdapterSpecificSnippet()
+    {
+        var match = SubscriptionCliRoleExecutor.FindRejectedOutputMatch(
+            "token expired",
+            ["token expired"]);
+
+        Assert.Equal("token expired", match);
+    }
 }

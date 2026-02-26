@@ -43,6 +43,7 @@ export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/tr
 - `copilot`
 - `cline`
 - `kimi`
+- `kilo`
 - `local-echo` (deterministic fallback)
 - Local profile defaults to `subscription-cli-fallback` with `SandboxMode=host`.
   > **⚠️ Security note:** `SandboxMode=host` executes adapter CLI commands directly on your
@@ -64,6 +65,20 @@ export Runtime__DockerSandboxWrapper__Args__3=sh
 export Runtime__DockerSandboxWrapper__Args__4=-lc
 export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 ```
+
+### Kimi + Kilo Dogfood Profile
+
+Use the `Dogfood` environment profile to run the swarm with Kimi/Kilo only
+(`CliAdapterOrder=["kimi","kilo"]`, no `local-echo` fallback):
+
+```bash
+DOTNET_ENVIRONMENT=Dogfood dotnet run --project project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
+```
+
+Prerequisites:
+
+- `kimi` and `kilo` CLIs installed and on `PATH`
+- both CLIs authenticated (`kimi --prompt "ping"` and `kilo run "ping" --auto`)
 
 ## AG-UI + A2UI Gateway (Phase 6)
 

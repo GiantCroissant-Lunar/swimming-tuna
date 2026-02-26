@@ -9,7 +9,23 @@ namespace SwarmAssistant.Runtime.Execution;
 
 internal sealed class SubscriptionCliRoleExecutor : IDisposable
 {
-    private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "local-echo"];
+    private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "kilo", "local-echo"];
+
+    private static readonly Regex AnsiEscapeRegex = new(
+        @"\x1B\[[0-?]*[ -/]*[@-~]",
+        RegexOptions.Compiled);
+
+    private static readonly string[] CommonRejectedOutputSubstrings =
+    [
+        "authorization failed",
+        "check your login status",
+        "authentication required",
+        "not authenticated",
+        "not logged in",
+        "please log in",
+        "please login",
+        "unauthorized"
+    ];
 
     private static readonly Regex RecommendedPlanRegex = new(
         @"Recommended plan:\s*(\w+)",
@@ -38,6 +54,13 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 ["--help"],
                 "kimi",
                 ["--prompt", "{{prompt}}"],
+                ["token expired", "session expired"]),
+            ["kilo"] = new(
+                "kilo",
+                "kilo",
+                ["run", "--help"],
+                "kilo",
+                ["run", "{{prompt}}", "--auto"],
                 []),
             ["local-echo"] = new(
                 "local-echo",
@@ -258,15 +281,14 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 continue;
             }
 
-            var output = execution.Output.Trim();
+            var output = NormalizeOutput(execution.Output);
             if (output.Length == 0)
             {
                 errors.Add($"{adapter.Id}: empty output");
                 continue;
             }
 
-            var rejection = adapter.RejectOutputSubstrings.FirstOrDefault(snippet =>
-                output.Contains(snippet, StringComparison.OrdinalIgnoreCase));
+            var rejection = FindRejectedOutputMatch(output, adapter.RejectOutputSubstrings);
             if (!string.IsNullOrWhiteSpace(rejection))
             {
                 errors.Add($"{adapter.Id}: rejected output match ({rejection})");
@@ -365,6 +387,43 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         }
 
         return output;
+    }
+
+    internal static string NormalizeOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return string.Empty;
+        }
+
+        var withoutAnsi = AnsiEscapeRegex.Replace(output, string.Empty);
+        return withoutAnsi.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+    }
+
+    internal static string? FindRejectedOutputMatch(string output, IReadOnlyList<string> adapterRejectOutputSubstrings)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return null;
+        }
+
+        foreach (var snippet in CommonRejectedOutputSubstrings)
+        {
+            if (output.Contains(snippet, StringComparison.OrdinalIgnoreCase))
+            {
+                return snippet;
+            }
+        }
+
+        foreach (var snippet in adapterRejectOutputSubstrings)
+        {
+            if (output.Contains(snippet, StringComparison.OrdinalIgnoreCase))
+            {
+                return snippet;
+            }
+        }
+
+        return null;
     }
 
     private async Task<ProcessResult> RunProcessAsync(
