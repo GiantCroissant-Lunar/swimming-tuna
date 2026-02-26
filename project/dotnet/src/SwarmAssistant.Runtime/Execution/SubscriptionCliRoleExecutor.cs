@@ -138,7 +138,9 @@ internal sealed class SubscriptionCliRoleExecutor
         // Use pre-built prompt if provided (with code context), otherwise build from scratch
         var prompt = command.Prompt ?? RolePromptFactory.BuildPrompt(command);
         // Per-task worktree path takes priority over global workspace
-        var effectiveWorkspace = command.WorkspacePath ?? _workspacePath;
+        var effectiveWorkspace = string.IsNullOrWhiteSpace(command.WorkspacePath)
+            ? _workspacePath
+            : command.WorkspacePath;
 
         var adapterOrder = BuildAdapterOrder(command.PreferredAdapter);
 

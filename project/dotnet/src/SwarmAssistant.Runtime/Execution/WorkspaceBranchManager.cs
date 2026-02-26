@@ -92,12 +92,30 @@ public sealed partial class WorkspaceBranchManager
 
         try
         {
-            await RunGitAsync(["worktree", "remove", worktreePath, "--force"]);
-            _logger?.LogInformation("Worktree removed path={WorktreePath} taskId={TaskId}", worktreePath, taskId);
+            var removeResult = await RunGitAsync(["worktree", "remove", worktreePath, "--force"]);
+            if (removeResult.ExitCode == 0)
+            {
+                _logger?.LogInformation("Worktree removed path={WorktreePath} taskId={TaskId}", worktreePath, taskId);
+            }
+            else
+            {
+                _logger?.LogWarning(
+                    "git worktree remove failed exitCode={ExitCode} stderr={Stderr} taskId={TaskId}",
+                    removeResult.ExitCode, removeResult.StdErr, taskId);
+            }
 
             // Clean up the branch too
-            await RunGitAsync(["branch", "-D", branchName]);
-            _logger?.LogDebug("Branch deleted branch={Branch} taskId={TaskId}", branchName, taskId);
+            var branchResult = await RunGitAsync(["branch", "-D", branchName]);
+            if (branchResult.ExitCode == 0)
+            {
+                _logger?.LogDebug("Branch deleted branch={Branch} taskId={TaskId}", branchName, taskId);
+            }
+            else
+            {
+                _logger?.LogDebug(
+                    "git branch -D failed exitCode={ExitCode} stderr={Stderr} taskId={TaskId}",
+                    branchResult.ExitCode, branchResult.StdErr, taskId);
+            }
         }
         catch (Exception ex)
         {
@@ -194,7 +212,28 @@ public sealed partial class WorkspaceBranchManager
         var stderrTask = process.StandardError.ReadToEndAsync();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await process.WaitForExitAsync(cts.Token);
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // best-effort kill
+            }
+
+            await Task.WhenAll(stdoutTask, stderrTask);
+            return (124, await stdoutTask, "git command timed out after 30 seconds");
+        }
+
         await Task.WhenAll(stdoutTask, stderrTask);
 
         return (process.ExitCode, await stdoutTask, await stderrTask);

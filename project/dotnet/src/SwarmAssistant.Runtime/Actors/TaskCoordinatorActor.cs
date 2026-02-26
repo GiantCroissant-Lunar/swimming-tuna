@@ -1096,21 +1096,28 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             case "Build":
                 if (_workspaceBranchManager is not null)
                 {
-                    // Prefer worktree isolation over branch-only
-                    var worktree = await _workspaceBranchManager.EnsureWorktreeAsync(_taskId);
-                    if (worktree is not null)
+                    // Reuse existing worktree on retry
+                    if (!string.IsNullOrWhiteSpace(_worktreePath) && Directory.Exists(_worktreePath))
                     {
-                        _worktreePath = worktree;
-                        _workspaceBranchName = WorkspaceBranchManager.BranchNameForTask(_taskId);
-                        _logger.LogInformation("Builder isolated to worktree {Worktree} for task {TaskId}", worktree, _taskId);
+                        _logger.LogInformation("Reusing worktree {Worktree} for task {TaskId}", _worktreePath, _taskId);
                     }
                     else
                     {
-                        var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
-                        if (branch is not null)
+                        var worktree = await _workspaceBranchManager.EnsureWorktreeAsync(_taskId);
+                        if (worktree is not null)
                         {
-                            _workspaceBranchName = branch;
-                            _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
+                            _worktreePath = worktree;
+                            _workspaceBranchName = WorkspaceBranchManager.BranchNameForTask(_taskId);
+                            _logger.LogInformation("Builder isolated to worktree {Worktree} for task {TaskId}", worktree, _taskId);
+                        }
+                        else
+                        {
+                            var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
+                            if (branch is not null)
+                            {
+                                _workspaceBranchName = branch;
+                                _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
+                            }
                         }
                     }
                 }
