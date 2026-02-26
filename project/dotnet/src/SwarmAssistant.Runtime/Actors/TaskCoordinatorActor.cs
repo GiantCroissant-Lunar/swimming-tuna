@@ -6,6 +6,7 @@ using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -63,6 +64,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private CancellationTokenSource? _verifyCts;
     private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
+    private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -119,7 +121,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         string? projectContext = null,
         WorkspaceBranchManager? workspaceBranchManager = null,
         BuildVerifier? buildVerifier = null,
-        SandboxLevelEnforcer? sandboxEnforcer = null)
+        SandboxLevelEnforcer? sandboxEnforcer = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -141,6 +144,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _buildVerifier = buildVerifier;
         _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
         _sandboxEnforcer = sandboxEnforcer;
+        _langfuseScoreWriter = langfuseScoreWriter;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -234,6 +238,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _taskRegistry.SetRoleOutput(_taskId, SwarmRole.Reviewer, combinedFeedback);
         StoreBlackboard("reviewer_output", combinedFeedback);
         StoreBlackboard("review_passed", message.Approved.ToString());
+
+        if (_langfuseScoreWriter is not null && _runId is not null)
+        {
+            await _langfuseScoreWriter.WriteReviewerVerdictAsync(
+                traceId: _runId,
+                observationId: _taskId,
+                approved: message.Approved,
+                comment: combinedFeedback,
+                ct: CancellationToken.None);
+        }
 
         _uiEvents.Publish(
             type: "agui.task.transition",
@@ -458,6 +472,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     StoreBlackboard("reviewer_output", message.Output);
                     StoreBlackboard("review_passed", passed.ToString());
                     StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
+
+                    if (_langfuseScoreWriter is not null && _runId is not null)
+                    {
+                        await _langfuseScoreWriter.WriteReviewerVerdictAsync(
+                            traceId: _runId,
+                            observationId: _taskId,
+                            approved: passed,
+                            comment: message.Output,
+                            ct: CancellationToken.None);
+                    }
 
                     await DecideAndExecuteAsync();
                 }

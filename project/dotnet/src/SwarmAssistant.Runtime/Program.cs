@@ -7,6 +7,7 @@ using SwarmAssistant.Runtime.A2A;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Dto;
+using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Ui;
 
@@ -42,6 +43,23 @@ builder.Services.AddSingleton<OutcomeTracker>();
 builder.Services.AddSingleton<TaskRegistry>();
 builder.Services.AddSingleton<RunRegistry>();
 builder.Services.AddSingleton<StartupMemoryBootstrapper>();
+if (bootstrapOptions.LangfuseTracingEnabled)
+{
+    builder.Services.AddHttpClient("langfuse", (serviceProvider, client) =>
+    {
+        var opts = serviceProvider.GetRequiredService<IOptions<RuntimeOptions>>().Value;
+        client.BaseAddress = new Uri(opts.LangfuseBaseUrl);
+        if (!string.IsNullOrEmpty(opts.LangfusePublicKey) && !string.IsNullOrEmpty(opts.LangfuseSecretKey))
+        {
+            var creds = Convert.ToBase64String(
+                System.Text.Encoding.ASCII.GetBytes($"{opts.LangfusePublicKey}:{opts.LangfuseSecretKey}"));
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", creds);
+        }
+    });
+    builder.Services.AddSingleton<ILangfuseApiClient, HttpLangfuseApiClient>();
+    builder.Services.AddSingleton<ILangfuseScoreWriter, LangfuseScoreWriter>();
+}
 builder.Services.AddHostedService<Worker>();
 
 if (bootstrapOptions.SwaggerEnabled)

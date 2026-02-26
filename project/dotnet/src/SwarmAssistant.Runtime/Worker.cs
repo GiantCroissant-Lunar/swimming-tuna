@@ -7,6 +7,7 @@ using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -37,6 +38,7 @@ public sealed class Worker : BackgroundService
     private readonly OutcomeTracker _outcomeTracker;
     private readonly IOutcomeReader _outcomeReader;
     private readonly ITaskExecutionEventWriter? _eventWriter;
+    private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -55,7 +57,8 @@ public sealed class Worker : BackgroundService
         StartupMemoryBootstrapper startupMemoryBootstrapper,
         OutcomeTracker outcomeTracker,
         IOutcomeReader outcomeReader,
-        ITaskExecutionEventWriter? eventWriter = null)
+        ITaskExecutionEventWriter? eventWriter = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -68,6 +71,7 @@ public sealed class Worker : BackgroundService
         _outcomeTracker = outcomeTracker;
         _outcomeReader = outcomeReader;
         _eventWriter = eventWriter;
+        _langfuseScoreWriter = langfuseScoreWriter;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -329,7 +333,8 @@ public sealed class Worker : BackgroundService
                 projectContext,
                 workspaceBranchManager,
                 buildVerifier,
-                sandboxEnforcer)),
+                sandboxEnforcer,
+                _langfuseScoreWriter)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;
