@@ -148,7 +148,9 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
 
     private string[] BuildAdapterOrder(string? preferredAdapter)
     {
-        var baseOrder = _options.CliAdapterOrder.Length > 0 ? _options.CliAdapterOrder : DefaultAdapterOrder;
+        var baseOrder = _options.CliAdapterOrder.Length > 0
+            ? _options.CliAdapterOrder.Where(a => !string.IsNullOrWhiteSpace(a)).Distinct().ToArray()
+            : DefaultAdapterOrder;
 
         // If a preferred adapter is specified and exists, prioritize it
         if (!string.IsNullOrWhiteSpace(preferredAdapter) &&

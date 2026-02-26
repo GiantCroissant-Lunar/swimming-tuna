@@ -1562,9 +1562,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     private string GetMemoryDir()
     {
-        // Always use the process CWD (git repo root) so all tasks in a run
-        // share the same memory directory, even when worktree isolation is active.
-        return Path.Combine(Directory.GetCurrentDirectory(), ".swarm", "memory");
+        // Use the repo root (captured before ASP.NET changes CWD) so all tasks
+        // in a run share the same memory directory, even under worktree isolation.
+        var basePath = _options.RepoRootPath ?? Directory.GetCurrentDirectory();
+        return Path.Combine(basePath, ".swarm", "memory");
     }
 
     private string GetRunMemoryPath() => Path.Combine(GetMemoryDir(), "run.mv2");
@@ -1622,6 +1623,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
         try
         {
+            var tasksDir = Path.Combine(GetMemoryDir(), "tasks");
+            Directory.CreateDirectory(tasksDir);
+
             var taskPath = GetTaskMemoryPath(_taskId);
             if (!File.Exists(taskPath))
             {
@@ -1666,12 +1670,15 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
             var contextParts = new List<string> { "--- Sibling Task Context ---" };
 
+            // Sanitize query — memvid SDK parser chokes on parentheses and brackets
+            var sanitizedQuery = SanitizeMemvidQuery(_description);
+
             var findTasks = siblingFiles.Select(async siblingPath =>
             {
                 var siblingId = Path.GetFileNameWithoutExtension(siblingPath);
                 var results = await _memvidClient.FindAsync(
                     siblingPath,
-                    _description,
+                    sanitizedQuery,
                     _options.MemvidSiblingMaxChunks,
                     _options.MemvidSearchMode,
                     CancellationToken.None);
@@ -1700,6 +1707,18 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             _logger.LogWarning(ex, "Failed to build sibling context; continuing without");
             return null;
         }
+    }
+
+    private static string SanitizeMemvidQuery(string query)
+    {
+        // Strip characters that memvid SDK query parser interprets as syntax tokens
+        var sb = new System.Text.StringBuilder(query.Length);
+        foreach (var ch in query)
+        {
+            if (ch is not ('(' or ')' or '[' or ']' or '{' or '}'))
+                sb.Append(ch);
+        }
+        return sb.ToString();
     }
 
     private void StoreBlackboard(string key, string value)

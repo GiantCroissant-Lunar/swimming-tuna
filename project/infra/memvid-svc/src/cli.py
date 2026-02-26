@@ -50,8 +50,7 @@ def cmd_put(args: argparse.Namespace) -> None:
             text=doc["text"],
             metadata=doc.get("metadata"),
         )
-        mem.commit()
-        _output({"frame_id": frame_id})
+        _output({"frame_id": int(frame_id)})
     except Exception as e:
         _error(str(e))
 
@@ -60,8 +59,16 @@ def cmd_find(args: argparse.Namespace) -> None:
     """Search the store for matching entries."""
     try:
         mem = memvid_sdk.use("basic", args.path)
-        hits = mem.find(args.query, k=args.k, mode=args.mode)
-        results = [{"title": h.title, "text": h.text, "score": h.score} for h in hits]
+        response = mem.find(args.query, k=args.k, mode=args.mode)
+        hits = response.get("hits", []) if isinstance(response, dict) else []
+        results = [
+            {
+                "title": h.get("title", ""),
+                "text": h.get("text", ""),
+                "score": h.get("score", 0.0),
+            }
+            for h in hits
+        ]
         _output({"results": results})
     except Exception as e:
         _error(str(e))
@@ -72,7 +79,14 @@ def cmd_timeline(args: argparse.Namespace) -> None:
     try:
         mem = memvid_sdk.use("basic", args.path)
         entries = mem.timeline(limit=args.limit)
-        items = [{"title": e.title, "label": e.label, "text": e.text} for e in entries]
+        items = [
+            {
+                "title": e.get("title", ""),
+                "label": e.get("labels", ""),
+                "text": e.get("preview", ""),
+            }
+            for e in entries
+        ]
         _output({"entries": items})
     except Exception as e:
         _error(str(e))

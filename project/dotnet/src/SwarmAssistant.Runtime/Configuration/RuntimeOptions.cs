@@ -295,6 +295,12 @@ public sealed class RuntimeOptions
     public string? ProjectContextPath { get; init; }
 
     /// <summary>
+    /// Repository root path, set at startup from the original CWD before
+    /// ASP.NET changes it to the content root. Used for resolving memory paths.
+    /// </summary>
+    internal string? RepoRootPath { get; set; }
+
+    /// <summary>
     /// Languages to include in code index queries.
     /// When empty or null, no language filter is applied (all indexed languages are searched).
     /// Example: ["csharp", "javascript", "python"]

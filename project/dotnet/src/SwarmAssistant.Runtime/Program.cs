@@ -12,6 +12,21 @@ using SwarmAssistant.Runtime.Memvid;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Ui;
 
+// Resolve the git repo root by walking up from the current directory.
+// dotnet run --project changes CWD to the project dir, so we can't rely on it.
+static string FindRepoRoot()
+{
+    var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+    while (dir is not null)
+    {
+        if (Directory.Exists(Path.Combine(dir.FullName, ".git")))
+            return dir.FullName;
+        dir = dir.Parent;
+    }
+    return Directory.GetCurrentDirectory(); // fallback
+}
+var repoRoot = FindRepoRoot();
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -26,7 +41,8 @@ if (bootstrapOptions.AgUiEnabled && !string.IsNullOrWhiteSpace(bootstrapOptions.
 }
 
 builder.Services.AddOptions<RuntimeOptions>()
-    .Bind(builder.Configuration.GetSection(RuntimeOptions.SectionName));
+    .Bind(builder.Configuration.GetSection(RuntimeOptions.SectionName))
+    .PostConfigure(opts => opts.RepoRootPath ??= repoRoot);
 builder.Services.AddSingleton<UiEventStream>();
 builder.Services.AddSingleton<RuntimeActorRegistry>();
 builder.Services.AddHttpClient("arcadedb");
@@ -67,12 +83,15 @@ if (bootstrapOptions.MemvidEnabled)
     {
         var opts = sp.GetRequiredService<IOptions<RuntimeOptions>>().Value;
         var logger = sp.GetRequiredService<ILogger<MemvidClient>>();
+        var svcDir = Path.IsPathRooted(opts.MemvidSvcDir)
+            ? opts.MemvidSvcDir
+            : Path.GetFullPath(Path.Combine(repoRoot, opts.MemvidSvcDir));
         var pythonPath = Path.IsPathRooted(opts.MemvidPythonPath)
             ? opts.MemvidPythonPath
-            : Path.GetFullPath(Path.Combine(opts.MemvidSvcDir, opts.MemvidPythonPath));
+            : Path.GetFullPath(Path.Combine(svcDir, opts.MemvidPythonPath));
         return new MemvidClient(
             pythonPath,
-            opts.MemvidSvcDir,
+            svcDir,
             opts.MemvidTimeoutSeconds * 1000,
             logger);
     });
