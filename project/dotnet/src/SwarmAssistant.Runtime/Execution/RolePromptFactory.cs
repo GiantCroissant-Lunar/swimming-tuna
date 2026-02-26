@@ -49,6 +49,10 @@ internal static class RolePromptFactory
                 "## Implementation Plan",
                 command.PlanningOutput ?? "No plan provided. Infer the necessary changes from the task description.",
                 string.Empty,
+                "## Code Quality",
+                "Pre-commit hooks enforce: no trailing whitespace, files must end with a newline,",
+                "no merge conflict markers. Ensure all produced code satisfies these constraints.",
+                string.Empty,
                 "Produce the minimal code changes to complete this task. Include file paths for each change."),
             SwarmRole.Reviewer => string.Join(
                 Environment.NewLine,
