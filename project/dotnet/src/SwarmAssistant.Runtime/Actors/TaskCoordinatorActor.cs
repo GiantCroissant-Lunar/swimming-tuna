@@ -1593,6 +1593,17 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     ["run_id"] = _runId ?? "",
                 }), CancellationToken.None);
 
+            // Write meta.json for run tracking
+            var metaPath = Path.Combine(memDir, "meta.json");
+            var meta = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                run_id = _runId ?? "",
+                task_id = _taskId,
+                langfuse_trace_id = _runId ?? "",
+                created_at = DateTimeOffset.UtcNow.ToString("o"),
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(metaPath, meta);
+
             _logger.LogInformation("Created run memory at {Path}", runPath);
         }
         catch (Exception ex)
