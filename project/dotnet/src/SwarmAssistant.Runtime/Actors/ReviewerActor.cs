@@ -121,7 +121,7 @@ public sealed class ReviewerActor : ReceiveActor
                 // Re-execute with adjusted strategy (skip the adapter that produced low quality)
                 var adjustedCommand = command with
                 {
-                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId),
+                    PreferredAdapter = QualityEvaluator.GetAlternativeAdapter(adapterId, _options.CliAdapterOrder),
                     PreviousConfidence = confidence
                 };
 

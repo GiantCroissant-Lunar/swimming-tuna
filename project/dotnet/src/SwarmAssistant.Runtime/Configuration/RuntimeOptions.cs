@@ -265,7 +265,10 @@ public sealed class RuntimeOptions
     [
         "api.github.com",
         "copilot-proxy.githubusercontent.com",
-        "api.openai.com"
+        "api.openai.com",
+        "api.moonshot.ai",
+        "openrouter.ai",
+        "api.z.ai"
     ];
 
     public SandboxLevel SandboxLevel => SandboxCommandBuilder.ParseLevel(SandboxMode);

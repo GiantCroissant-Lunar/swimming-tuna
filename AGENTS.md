@@ -175,7 +175,8 @@ Priority is subscription-backed local CLIs (no direct API keys in MVP):
 1. Copilot CLI
 2. Cline CLI
 3. Kimi CLI
-4. Local fallback adapter (echo)
+4. Kilo CLI
+5. Local fallback adapter (echo)
 
 Adapter probes validate command availability; execution can still fail on auth or
 environment restrictions, triggering fallback to the next adapter.

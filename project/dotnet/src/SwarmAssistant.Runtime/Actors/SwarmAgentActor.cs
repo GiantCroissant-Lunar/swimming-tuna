@@ -22,6 +22,7 @@ public sealed class SwarmAgentActor : ReceiveActor
     private readonly string _agentId;
     private readonly int? _httpPort;
     private readonly Dictionary<string, int> _reservedContractCounts = new(StringComparer.Ordinal);
+    private string _currentProviderAdapter;
 
     private int _currentLoad;
     private readonly TimeSpan _idleTtl;
@@ -48,6 +49,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         _agentId = agentId ?? $"agent-{Guid.NewGuid():N}"[..16];
         _idleTtl = idleTtl;
         _httpPort = httpPort;
+        _currentProviderAdapter = ResolveConfiguredProviderAdapter();
 
         ReceiveAsync<ExecuteRoleTask>(HandleAsync);
         Receive<HealthCheckRequest>(HandleHealthCheck);
@@ -83,7 +85,7 @@ public sealed class SwarmAgentActor : ReceiveActor
                     Version = "phase-12",
                     Protocol = "a2a",
                     Capabilities = _capabilities.ToArray(),
-                    Provider = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
+                    Provider = _currentProviderAdapter,
                     SandboxLevel = 0,
                     EndpointUrl = $"http://127.0.0.1:{_httpPort.Value}"
                 };
@@ -206,6 +208,10 @@ public sealed class SwarmAgentActor : ReceiveActor
             }
 
             var result = await _agentFrameworkRoleEngine.ExecuteAsync(command);
+            if (!string.IsNullOrWhiteSpace(result.AdapterId))
+            {
+                _currentProviderAdapter = result.AdapterId;
+            }
             activity?.SetTag("output.length", result.Output.Length);
             activity?.SetStatus(ActivityStatusCode.Ok);
 
@@ -342,7 +348,7 @@ public sealed class SwarmAgentActor : ReceiveActor
     {
         var provider = new ProviderInfo
         {
-            Adapter = _options.CliAdapterOrder?.FirstOrDefault() ?? "local-echo",
+            Adapter = _currentProviderAdapter,
             Type = _options.AgentFrameworkExecutionMode == "subscription-cli-fallback"
                 ? "subscription"
                 : "api"
@@ -361,5 +367,10 @@ public sealed class SwarmAgentActor : ReceiveActor
             SandboxLevel = _options.SandboxLevel,
             Budget = budget
         }, Self);
+    }
+
+    private string ResolveConfiguredProviderAdapter()
+    {
+        return _options.CliAdapterOrder?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a)) ?? "local-echo";
     }
 }

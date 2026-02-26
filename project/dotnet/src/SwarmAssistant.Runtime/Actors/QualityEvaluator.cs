@@ -31,6 +31,7 @@ internal static class QualityEvaluator
         {
             "copilot" => 0.85,
             "kimi" => 0.80,
+            "kilo" => 0.80,
             "cline" => 0.75,
             "local-echo" => 0.50,
             _ => 0.60
@@ -82,17 +83,33 @@ internal static class QualityEvaluator
     }
 
     // ── Alternative adapter selection ───────────────────────────────────
-    private static readonly string[] Adapters = ["copilot", "kimi", "cline", "local-echo"];
+    private static readonly string[] DefaultAdapters = ["copilot", "kimi", "kilo", "cline", "local-echo"];
 
-    public static string? GetAlternativeAdapter(string? currentAdapter)
+    public static string? GetAlternativeAdapter(string? currentAdapter, IReadOnlyList<string>? configuredAdapters = null)
     {
+        var adapters = GetAdapterRotation(configuredAdapters);
         var index = Array.FindIndex(
-            Adapters,
+            adapters,
             a => a.Equals(currentAdapter, StringComparison.OrdinalIgnoreCase));
 
         // When the current adapter is not found (index == -1) start from index 0;
         // otherwise advance to the next position in the round-robin.
-        var nextIndex = index < 0 ? 0 : (index + 1) % Adapters.Length;
-        return Adapters[nextIndex];
+        var nextIndex = index < 0 ? 0 : (index + 1) % adapters.Length;
+        return adapters[nextIndex];
+    }
+
+    private static string[] GetAdapterRotation(IReadOnlyList<string>? configuredAdapters)
+    {
+        if (configuredAdapters is null || configuredAdapters.Count == 0)
+        {
+            return DefaultAdapters;
+        }
+
+        var adapters = configuredAdapters
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return adapters.Length > 0 ? adapters : DefaultAdapters;
     }
 }
