@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sys
 
 import memvid_sdk
@@ -66,6 +67,28 @@ def cmd_find(args: argparse.Namespace) -> None:
         _error(str(e))
 
 
+def cmd_timeline(args: argparse.Namespace) -> None:
+    """List recent entries from the store."""
+    try:
+        mem = memvid_sdk.use("basic", args.path)
+        entries = mem.timeline(limit=args.limit)
+        items = [{"title": e.title, "label": e.label, "text": e.text} for e in entries]
+        _output({"entries": items})
+    except Exception as e:
+        _error(str(e))
+
+
+def cmd_info(args: argparse.Namespace) -> None:
+    """Return store metadata."""
+    try:
+        path = args.path
+        mem = memvid_sdk.use("basic", path)
+        size_bytes = os.path.getsize(path)
+        _output({"path": path, "frames": len(mem), "size_bytes": size_bytes})
+    except Exception as e:
+        _error(str(e))
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argparse parser with all subcommands."""
     parser = argparse.ArgumentParser(
@@ -96,6 +119,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Search mode",
     )
     p_find.set_defaults(func=cmd_find)
+
+    # timeline
+    p_timeline = subs.add_parser("timeline", help="List recent entries")
+    p_timeline.add_argument("path", help="Path to existing .mv2 store")
+    p_timeline.add_argument(
+        "--limit", type=int, default=50, help="Max entries to return"
+    )
+    p_timeline.set_defaults(func=cmd_timeline)
+
+    # info
+    p_info = subs.add_parser("info", help="Show store metadata")
+    p_info.add_argument("path", help="Path to existing .mv2 store")
+    p_info.set_defaults(func=cmd_info)
 
     return parser
 
