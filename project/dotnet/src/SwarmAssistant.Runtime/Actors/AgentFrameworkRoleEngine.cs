@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using Microsoft.Agents.AI.Workflows;
-using Microsoft.Extensions.Logging;
-using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
 using SwarmAssistant.Runtime.Telemetry;

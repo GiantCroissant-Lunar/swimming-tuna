@@ -1,11 +1,9 @@
 using Akka.Actor;
-using Akka.Pattern;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
-using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
@@ -37,7 +35,9 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly IActorRef? _codeIndexActor;
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
+    private readonly BuildVerifier? _buildVerifier;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
+    private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -66,7 +66,9 @@ public sealed class DispatcherActor : ReceiveActor
         IActorRef? codeIndexActor = null,
         string? projectContext = null,
         WorkspaceBranchManager? workspaceBranchManager = null,
-        SandboxLevelEnforcer? sandboxEnforcer = null)
+        BuildVerifier? buildVerifier = null,
+        SandboxLevelEnforcer? sandboxEnforcer = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -85,7 +87,9 @@ public sealed class DispatcherActor : ReceiveActor
         _codeIndexActor = codeIndexActor;
         _projectContext = projectContext;
         _workspaceBranchManager = workspaceBranchManager;
+        _buildVerifier = buildVerifier;
         _sandboxEnforcer = sandboxEnforcer;
+        _langfuseScoreWriter = langfuseScoreWriter;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -152,7 +156,9 @@ public sealed class DispatcherActor : ReceiveActor
                 _eventRecorder,
                 _projectContext,
                 _workspaceBranchManager,
-                _sandboxEnforcer)),
+                _buildVerifier,
+                _sandboxEnforcer,
+                _langfuseScoreWriter)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -212,7 +218,9 @@ public sealed class DispatcherActor : ReceiveActor
                 _eventRecorder,
                 _projectContext,
                 _workspaceBranchManager,
-                _sandboxEnforcer)),
+                _buildVerifier,
+                _sandboxEnforcer,
+                _langfuseScoreWriter)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;

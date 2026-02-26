@@ -1,6 +1,9 @@
 ---
 name: memory
 description: Save and search cross-session memory for architectural decisions, debugging insights, and user preferences. Uses Supermemory API. NOT for codebase indexing (use AGENTS.md for that).
+tags: [memory, persistence, storage, decisions, context]
+roles: [planner, builder, reviewer, researcher]
+scope: global
 ---
 
 # Memory Skill

@@ -1,6 +1,5 @@
 using Akka.Actor;
 using Akka.Configuration;
-using Akka.Pattern;
 using Akka.Routing;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
@@ -8,6 +7,7 @@ using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
@@ -38,6 +38,7 @@ public sealed class Worker : BackgroundService
     private readonly OutcomeTracker _outcomeTracker;
     private readonly IOutcomeReader _outcomeReader;
     private readonly ITaskExecutionEventWriter? _eventWriter;
+    private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -56,7 +57,8 @@ public sealed class Worker : BackgroundService
         StartupMemoryBootstrapper startupMemoryBootstrapper,
         OutcomeTracker outcomeTracker,
         IOutcomeReader outcomeReader,
-        ITaskExecutionEventWriter? eventWriter = null)
+        ITaskExecutionEventWriter? eventWriter = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -69,6 +71,7 @@ public sealed class Worker : BackgroundService
         _outcomeTracker = outcomeTracker;
         _outcomeReader = outcomeReader;
         _eventWriter = eventWriter;
+        _langfuseScoreWriter = langfuseScoreWriter;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -294,11 +297,21 @@ public sealed class Worker : BackgroundService
 
         var workspaceBranchManager = new WorkspaceBranchManager(
             _options.WorkspaceBranchEnabled,
-            _loggerFactory.CreateLogger<WorkspaceBranchManager>());
+            _loggerFactory.CreateLogger<WorkspaceBranchManager>(),
+            _options.WorktreeIsolationEnabled);
 
         var sandboxEnforcer = new SandboxLevelEnforcer(
             containerAvailable: string.Equals(_options.SandboxMode, "docker", StringComparison.OrdinalIgnoreCase)
                              || string.Equals(_options.SandboxMode, "apple-container", StringComparison.OrdinalIgnoreCase));
+
+        BuildVerifier? buildVerifier = null;
+        if (!string.IsNullOrWhiteSpace(_options.VerifySolutionPath))
+        {
+            buildVerifier = new BuildVerifier(
+                _options.VerifySolutionPath,
+                _loggerFactory.CreateLogger<BuildVerifier>());
+            _logger.LogInformation("BuildVerifier enabled solutionPath={SolutionPath}", _options.VerifySolutionPath);
+        }
 
         var dispatcher = _actorSystem.ActorOf(
             Props.Create(() => new DispatcherActor(
@@ -319,7 +332,9 @@ public sealed class Worker : BackgroundService
                 codeIndexActor,
                 projectContext,
                 workspaceBranchManager,
-                sandboxEnforcer)),
+                buildVerifier,
+                sandboxEnforcer,
+                _langfuseScoreWriter)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

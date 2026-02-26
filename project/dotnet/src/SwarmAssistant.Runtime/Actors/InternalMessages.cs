@@ -1,6 +1,7 @@
 using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Execution;
 
 namespace SwarmAssistant.Runtime.Actors;
 
@@ -15,7 +16,8 @@ internal sealed record ExecuteRoleTask(
     string? PreferredAdapter = null,
     double? PreviousConfidence = null,
     string? RunId = null,
-    string? Prompt = null  // Pre-built prompt (optional, used with code context)
+    string? Prompt = null,  // Pre-built prompt (optional, used with code context)
+    string? WorkspacePath = null  // Per-task worktree path for isolation
 );
 
 
@@ -263,3 +265,15 @@ internal sealed record DispatchWithCodeContext(
     string ActionName,
     CodeIndexResult? CodeContext = null
 );
+
+/// <summary>
+/// Sent by the Verify step back to the TaskCoordinatorActor when build+test verification completes.
+/// </summary>
+internal sealed record VerifyCompleted(string TaskId, BuildVerifyResult Result);
+
+// RFC-005: Peer-to-peer agent communication
+internal sealed record ResolvePeerAgent(string AgentId);
+
+internal sealed record PeerAgentResolved(string AgentId, bool Found, IActorRef? AgentRef = null, string? EndpointUrl = null);
+
+internal sealed record ForwardPeerMessage(SwarmAssistant.Contracts.Messaging.PeerMessage Message);

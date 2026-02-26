@@ -1,6 +1,4 @@
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
-using SwarmAssistant.Contracts.Messaging;
 
 namespace SwarmAssistant.Runtime.Actors;
 

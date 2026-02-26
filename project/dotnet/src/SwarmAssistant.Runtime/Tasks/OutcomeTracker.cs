@@ -1,7 +1,5 @@
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Runtime.Actors;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Tasks;

@@ -1,13 +1,16 @@
 using System.Diagnostics;
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Telemetry;
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace SwarmAssistant.Runtime.Actors;
 
+[SuppressMessage("Reliability", "CA1001",
+    Justification = "Akka actors clean up disposable fields in PostStop(), not via IDisposable")]
 public sealed class SwarmAgentActor : ReceiveActor
 {
     private const int MaxConcurrentAgentTasks = 1;
@@ -60,6 +63,7 @@ public sealed class SwarmAgentActor : ReceiveActor
         Receive<HelpResponse>(_ => { });
         Receive<ContractNetBidRequest>(HandleContractNetBidRequest);
         Receive<ContractNetAward>(HandleContractNetAward);
+        Receive<PeerMessage>(HandlePeerMessage);
         if (idleTtl > TimeSpan.Zero)
         {
             Receive<ReceiveTimeout>(_ => OnIdleTimeout());
@@ -315,6 +319,28 @@ public sealed class SwarmAgentActor : ReceiveActor
             "Won contract for task {TaskId} role {Role}; awaiting execution message.",
             award.TaskId,
             award.Role);
+    }
+
+    private void HandlePeerMessage(PeerMessage message)
+    {
+        _logger.LogInformation(
+            "Peer message received messageId={MessageId} from={From} type={Type}",
+            message.MessageId,
+            message.FromAgentId,
+            message.Type);
+
+        using var activity = _telemetry.StartActivity(
+            "swarm-agent.peer.message",
+            tags: new Dictionary<string, object?>
+            {
+                ["peer.messageId"] = message.MessageId,
+                ["peer.fromAgentId"] = message.FromAgentId,
+                ["peer.toAgentId"] = message.ToAgentId,
+                ["peer.type"] = message.Type.ToString(),
+                ["actor.name"] = Self.Path.Name
+            });
+
+        Sender.Tell(new PeerMessageAck(message.MessageId, Accepted: true));
     }
 
     private bool TryConsumeReservedContract(string taskId)

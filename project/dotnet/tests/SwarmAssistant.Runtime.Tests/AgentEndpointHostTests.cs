@@ -2,8 +2,8 @@ namespace SwarmAssistant.Runtime.Tests;
 
 using System.Net;
 using System.Net.Http.Json;
-using SwarmAssistant.Runtime.Agents;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Agents;
 
 public sealed class AgentEndpointHostTests : IAsyncDisposable
 {

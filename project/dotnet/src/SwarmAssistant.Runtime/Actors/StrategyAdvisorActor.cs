@@ -1,5 +1,4 @@
 using Akka.Actor;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Tasks;
@@ -120,11 +119,13 @@ public sealed class StrategyAdvisorActor : ReceiveActor
             {
                 if (roleExec.AdapterUsed is { } adapter)
                 {
-                    if (!adapterStats.ContainsKey(adapter))
+                    if (!adapterStats.TryGetValue(adapter, out List<(bool Succeeded, double Confidence)>? value))
                     {
-                        adapterStats[adapter] = new();
+                        value = new();
+                        adapterStats[adapter] = value;
                     }
-                    adapterStats[adapter].Add((roleExec.Succeeded, roleExec.Confidence));
+
+                    value.Add((roleExec.Succeeded, roleExec.Confidence));
                 }
             }
 

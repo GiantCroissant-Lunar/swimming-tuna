@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Messaging;
-using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Planning;
@@ -461,7 +460,8 @@ public sealed class InterventionReliabilityTests : TestKit
                 /* eventRecorder: */ null,
                 /* projectContext: */ null,
                 /* workspaceBranchManager: */ null,
-                /* sandboxEnforcer: */ null)));
+                /* buildVerifier: */ null,
+                /* sandboxEnforcer: */ null, null)));
 
         _registries[suffix] = registry;
         return (taskId, coordinator, registry, uiEvents);
@@ -502,7 +502,8 @@ public sealed class InterventionReliabilityTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             $"disp-{suffix}");
     }
 
@@ -515,7 +516,8 @@ public sealed class InterventionReliabilityTests : TestKit
         while (DateTime.UtcNow < deadline)
         {
             var evt = eventStream.GetRecent(200).FirstOrDefault(predicate);
-            if (evt != null) return evt;
+            if (evt != null)
+                return evt;
             Thread.Sleep(20);
         }
 

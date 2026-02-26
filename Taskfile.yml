@@ -262,6 +262,11 @@ tasks:
     cmds:
       - python .agent/tools/sync.py --adapter copilot
 
+  agent:sync:kiro:
+    desc: Sync agent config to Kiro IDE
+    cmds:
+      - python .agent/tools/sync.py --adapter kiro
+
   dogfood:diagnostic:
     desc: Run dogfood diagnostic (submits real task, traces pipeline)
     cmds:

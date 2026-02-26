@@ -1,16 +1,16 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using Akka.Actor;
-using Akka.Pattern;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Runtime.Langfuse;
 using SwarmAssistant.Runtime.Planning;
 using SwarmAssistant.Runtime.Tasks;
 using SwarmAssistant.Runtime.Telemetry;
 using SwarmAssistant.Runtime.Ui;
-using SwarmAssistant.Runtime.Configuration;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
@@ -21,6 +21,8 @@ namespace SwarmAssistant.Runtime.Actors;
 /// Falls back to GOAP recommendation directly if CLI orchestrator fails.
 /// Integrates learning and adaptation via StrategyAdvisorActor and OutcomeTracker.
 /// </summary>
+[SuppressMessage("Reliability", "CA1001",
+    Justification = "Akka actors clean up disposable fields in PostStop(), not via IDisposable")]
 public sealed class TaskCoordinatorActor : ReceiveActor
 {
     private static readonly Regex ActionRegex = new(
@@ -58,8 +60,11 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private readonly RuntimeEventRecorder? _eventRecorder;
     private readonly string? _projectContext;
     private readonly WorkspaceBranchManager? _workspaceBranchManager;
+    private readonly BuildVerifier? _buildVerifier;
+    private CancellationTokenSource? _verifyCts;
     private readonly GitArtifactCollector _gitArtifactCollector;
     private readonly SandboxLevelEnforcer? _sandboxEnforcer;
+    private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
     private readonly ILogger _logger;
 
     private readonly string _taskId;
@@ -73,6 +78,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _buildOutput;
     private string? _reviewOutput;
     private string? _workspaceBranchName;
+    private string? _worktreePath;
 
     private int _retryCount;
     private readonly int _maxRetries;
@@ -114,7 +120,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         RuntimeEventRecorder? eventRecorder = null,
         string? projectContext = null,
         WorkspaceBranchManager? workspaceBranchManager = null,
-        SandboxLevelEnforcer? sandboxEnforcer = null)
+        BuildVerifier? buildVerifier = null,
+        SandboxLevelEnforcer? sandboxEnforcer = null,
+        ILangfuseScoreWriter? langfuseScoreWriter = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -133,8 +141,10 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _eventRecorder = eventRecorder;
         _projectContext = projectContext;
         _workspaceBranchManager = workspaceBranchManager;
+        _buildVerifier = buildVerifier;
         _gitArtifactCollector = new GitArtifactCollector(loggerFactory.CreateLogger<GitArtifactCollector>());
         _sandboxEnforcer = sandboxEnforcer;
+        _langfuseScoreWriter = langfuseScoreWriter;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -161,6 +171,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         ReceiveAsync<TaskInterventionCommand>(OnTaskInterventionCommandAsync);
         Receive<RoleLifecycleEvent>(OnRoleLifecycleEvent);
         ReceiveAsync<DispatchWithCodeContext>(OnDispatchWithCodeContextAsync);
+        ReceiveAsync<VerifyCompleted>(OnVerifyCompletedAsync);
     }
 
     protected override void PreStart()
@@ -176,10 +187,20 @@ public sealed class TaskCoordinatorActor : ReceiveActor
 
     protected override void PostStop()
     {
+        _verifyCts?.Cancel();
+        _verifyCts?.Dispose();
+        _verifyCts = null;
         Context.System.EventStream.Unsubscribe(Self, typeof(GlobalBlackboardChanged));
         Context.System.EventStream.Unsubscribe(Self, typeof(QualityConcern));
         Context.System.EventStream.Unsubscribe(Self, typeof(RoleLifecycleEvent));
         _blackboardActor.Tell(new RemoveBlackboard(_taskId));
+
+        // Clean up worktree on task completion
+        if (_worktreePath is not null && _workspaceBranchManager is not null)
+        {
+            _ = _workspaceBranchManager.RemoveWorktreeAsync(_taskId);
+        }
+
         base.PostStop();
     }
 
@@ -217,6 +238,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _taskRegistry.SetRoleOutput(_taskId, SwarmRole.Reviewer, combinedFeedback);
         StoreBlackboard("reviewer_output", combinedFeedback);
         StoreBlackboard("review_passed", message.Approved.ToString());
+
+        await TryWriteReviewerVerdictAsync(message.Approved, combinedFeedback);
 
         _uiEvents.Publish(
             type: "agui.task.transition",
@@ -441,6 +464,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     StoreBlackboard("reviewer_output", message.Output);
                     StoreBlackboard("review_passed", passed.ToString());
                     StoreBlackboard("reviewer_confidence", message.Confidence.ToString("F2"));
+
+                    await TryWriteReviewerVerdictAsync(passed, message.Output);
 
                     await DecideAndExecuteAsync();
                 }
@@ -723,9 +748,9 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 return;
 
             case "request_rework":
-                if (CurrentStatus != TaskState.Building && CurrentStatus != TaskState.Reviewing)
+                if (CurrentStatus != TaskState.Building && CurrentStatus != TaskState.Verifying && CurrentStatus != TaskState.Reviewing)
                 {
-                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task must be building or reviewing."));
+                    Sender.Tell(RejectedIntervention(message, "invalid_state", "Task must be building, verifying, or reviewing."));
                     return;
                 }
 
@@ -1006,6 +1031,55 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     }
 
     /// <summary>
+    /// Handles the result of build+test verification (Verify GOAP step).
+    /// On success: sets BuildCompiles=true and continues to next GOAP step.
+    /// On failure: sets BuildCompiles=false and ReviewRejected=true to trigger Rework.
+    /// </summary>
+    private async Task OnVerifyCompletedAsync(VerifyCompleted message)
+    {
+        _logger.LogInformation(
+            "Verify completed taskId={TaskId} success={Success} passed={Passed} failed={Failed}",
+            _taskId, message.Result.Success, message.Result.TestsPassed, message.Result.TestsFailed);
+
+        StoreBlackboard("verify_output", message.Result.Output);
+        StoreBlackboard("verify_tests_passed", message.Result.TestsPassed.ToString());
+        StoreBlackboard("verify_tests_failed", message.Result.TestsFailed.ToString());
+
+        _uiEvents.Publish(
+            type: "agui.task.transition",
+            taskId: _taskId,
+            payload: new
+            {
+                source = Self.Path.Name,
+                action = message.Result.Success ? "VerifyPassed" : "VerifyFailed",
+                decidedBy = "verifier",
+                testsPassed = message.Result.TestsPassed,
+                testsFailed = message.Result.TestsFailed,
+            });
+
+        if (message.Result.Success)
+        {
+            _worldState = (WorldState)_worldState.With(WorldKey.BuildCompiles, true);
+        }
+        else
+        {
+            _worldState = (WorldState)_worldState
+                .With(WorldKey.BuildCompiles, false)
+                .With(WorldKey.ReviewRejected, true);
+
+            StoreBlackboard("verify_error", message.Result.Error ?? "Verification failed");
+
+            _retryCount++;
+            if (_retryCount >= _maxRetries)
+            {
+                _worldState = (WorldState)_worldState.With(WorldKey.RetryLimitReached, true);
+            }
+        }
+
+        await DecideAndExecuteAsync();
+    }
+
+    /// <summary>
     /// Performs the actual dispatch with optional code context.
     /// </summary>
     private async Task DoDispatchActionAsync(string actionName, CodeIndexResult? codeContext)
@@ -1031,11 +1105,29 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             case "Build":
                 if (_workspaceBranchManager is not null)
                 {
-                    var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
-                    if (branch is not null)
+                    // Reuse existing worktree on retry
+                    if (!string.IsNullOrWhiteSpace(_worktreePath) && Directory.Exists(_worktreePath))
                     {
-                        _workspaceBranchName = branch;
-                        _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
+                        _logger.LogInformation("Reusing worktree {Worktree} for task {TaskId}", _worktreePath, _taskId);
+                    }
+                    else
+                    {
+                        var worktree = await _workspaceBranchManager.EnsureWorktreeAsync(_taskId);
+                        if (worktree is not null)
+                        {
+                            _worktreePath = worktree;
+                            _workspaceBranchName = WorkspaceBranchManager.BranchNameForTask(_taskId);
+                            _logger.LogInformation("Builder isolated to worktree {Worktree} for task {TaskId}", worktree, _taskId);
+                        }
+                        else
+                        {
+                            var branch = await _workspaceBranchManager.EnsureBranchAsync(_taskId);
+                            if (branch is not null)
+                            {
+                                _workspaceBranchName = branch;
+                                _logger.LogInformation("Builder isolated to branch {Branch} for task {TaskId}", branch, _taskId);
+                            }
+                        }
                     }
                 }
                 TransitionTo(TaskState.Building);
@@ -1050,7 +1142,46 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("Build", SwarmRole.Builder, buildPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, null, Prompt: buildPrompt, RunId: _runId, WorkspacePath: _worktreePath));
+                break;
+
+            case "Verify":
+                TransitionTo(TaskState.Verifying);
+                _uiEvents.Publish(
+                    type: "agui.role.dispatched",
+                    taskId: _taskId,
+                    payload: new RoleDispatchedPayload("verifier", _taskId));
+                _logger.LogInformation("Running build verification for task {TaskId}", _taskId);
+
+                if (_buildVerifier is not null)
+                {
+                    _verifyCts?.Cancel();
+                    _verifyCts?.Dispose();
+                    _verifyCts = new CancellationTokenSource();
+                    var ct = _verifyCts.Token;
+                    var self = Self;
+                    var taskId = _taskId;
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var result = await _buildVerifier.VerifyAsync(ct, _worktreePath);
+                            self.Tell(new VerifyCompleted(taskId, result));
+                        }
+                        catch (Exception ex)
+                        {
+                            self.Tell(new VerifyCompleted(taskId,
+                                new BuildVerifyResult(false, 0, 0, ex.Message, ex.Message)));
+                        }
+                    });
+                }
+                else
+                {
+                    // No BuildVerifier configured — skip verification and assume success
+                    _logger.LogInformation("No BuildVerifier configured; skipping verification for task {TaskId}", _taskId);
+                    _worldState = (WorldState)_worldState.With(WorldKey.BuildCompiles, true);
+                    await DecideAndExecuteAsync();
+                }
                 break;
 
             case "Review":
@@ -1067,7 +1198,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("Review", SwarmRole.Reviewer, reviewPrompt, codeContext);
                 var reviewTask = new ExecuteRoleTask(
-                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId);
+                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: reviewPrompt, RunId: _runId, WorkspacePath: _worktreePath);
                 if (reviewCount == 1)
                 {
                     _reviewerActor.Tell(reviewTask);
@@ -1103,7 +1234,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("SecondOpinion", SwarmRole.Reviewer, secondOpinionPrompt, codeContext);
                 var secondOpinionTask = new ExecuteRoleTask(
-                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId);
+                    _taskId, SwarmRole.Reviewer, _title, _description, _planningOutput, _buildOutput, Prompt: secondOpinionPrompt, RunId: _runId, WorkspacePath: _worktreePath);
                 for (int i = 0; i < currentRequiredVotes + additionalReviewCount; i++)
                 {
                     _reviewerActor.Tell(secondOpinionTask);
@@ -1124,7 +1255,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     _projectContext);
                 EmitDiagnosticContext("Rework", SwarmRole.Builder, reworkPrompt, codeContext);
                 _workerActor.Tell(new ExecuteRoleTask(
-                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId));
+                    _taskId, SwarmRole.Builder, _title, _description, _planningOutput, _buildOutput, Prompt: reworkPrompt, RunId: _runId, WorkspacePath: _worktreePath));
                 break;
 
             case "Finalize":
@@ -1400,6 +1531,19 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         }
     }
 
+    private async Task TryWriteReviewerVerdictAsync(bool approved, string comment)
+    {
+        if (_langfuseScoreWriter is not null && _runId is not null)
+        {
+            await _langfuseScoreWriter.WriteReviewerVerdictAsync(
+                traceId: _runId,
+                observationId: _taskId,
+                approved: approved,
+                comment: comment,
+                ct: CancellationToken.None);
+        }
+    }
+
     private void StoreBlackboard(string key, string value)
     {
         _blackboardEntries[key] = value;
@@ -1530,7 +1674,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 _taskId,
                 _runId,
                 agentId,
-                role);
+                role,
+                _worktreePath);
 
             if (_workspaceBranchName is { Length: > 0 })
             {

@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -7,7 +6,7 @@ using SwarmAssistant.Runtime.Configuration;
 
 namespace SwarmAssistant.Runtime.Tasks;
 
-public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
+public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter, IDisposable
 {
     private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(15);
     internal const char ChildTaskIdDelimiter = ',';
@@ -226,5 +225,10 @@ public sealed class ArcadeDbTaskMemoryWriter : ITaskMemoryWriter
             _options.ArcadeDbHttpUrl,
             _options.ArcadeDbDatabase,
             _consecutiveFailures);
+    }
+
+    public void Dispose()
+    {
+        _schemaLock.Dispose();
     }
 }

@@ -90,7 +90,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             "dispatcher");
 
         var taskId = $"smoke-{Guid.NewGuid():N}";
@@ -159,7 +160,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             "dispatcher-ui");
 
         var taskId = $"smoke-ui-{Guid.NewGuid():N}";
@@ -230,7 +232,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             "dispatcher-parallel");
 
         var taskIds = Enumerable.Range(1, 3)
@@ -305,7 +308,8 @@ public sealed class TaskLifecycleSmokeTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             "dispatcher-tracking");
 
         var taskId = $"smoke-track-{Guid.NewGuid():N}";

@@ -33,6 +33,11 @@ repomix-output.*
 .claude/
 !.claude/launch.json
 
+# Kiro IDE generated settings (synced by agent:sync:kiro)
+.kiro/*
+!.kiro/settings/
+!.kiro/settings/**
+
 # Python
 __pycache__/
 *.pyc
@@ -40,3 +45,6 @@ __pycache__/
 
 # Worktree local state
 .worktrees/
+
+# gh-aw audit logs (local-only, downloaded by `gh aw audit`)
+.github/aw/logs/

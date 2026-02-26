@@ -1,4 +1,3 @@
-using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 
 namespace SwarmAssistant.Runtime.Actors;

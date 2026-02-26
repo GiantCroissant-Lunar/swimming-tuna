@@ -5,6 +5,7 @@ public enum TaskStatus
     Queued,
     Planning,
     Building,
+    Verifying,
     Reviewing,
     Done,
     Blocked

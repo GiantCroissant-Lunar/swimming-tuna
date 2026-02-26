@@ -1,8 +1,8 @@
-namespace SwarmAssistant.Runtime.Configuration;
 
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Execution;
 
+namespace SwarmAssistant.Runtime.Configuration;
 public sealed class RuntimeOptions
 {
     public const string SectionName = "Runtime";
@@ -166,6 +166,14 @@ public sealed class RuntimeOptions
     /// </summary>
     public bool WorkspaceBranchEnabled { get; init; } = false;
 
+    /// <summary>
+    /// When true (and WorkspaceBranchEnabled is true), each task gets an isolated
+    /// git worktree at .worktrees/swarm-{taskId} instead of sharing the main workspace.
+    /// CLI adapters execute in the worktree directory, preventing concurrent tasks
+    /// from interfering with each other's HEAD or file state.
+    /// </summary>
+    public bool WorktreeIsolationEnabled { get; init; } = false;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
@@ -250,6 +258,12 @@ public sealed class RuntimeOptions
     /// Example: ["csharp", "javascript", "python"]
     /// </summary>
     public string[] CodeIndexLanguages { get; init; } = [];
+
+    /// <summary>
+    /// Path to the solution file used by BuildVerifier for build+test verification.
+    /// When empty, build verification is skipped.
+    /// </summary>
+    public string? VerifySolutionPath { get; init; }
 
     /// <summary>
     /// Workspace root path for Level 1 (OsSandboxed) sandbox execution.

@@ -1,5 +1,6 @@
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
+using SwarmAssistant.Runtime.Skills;
 using SwarmAssistant.Runtime.Tasks;
 
 namespace SwarmAssistant.Runtime.Execution;
@@ -23,6 +24,16 @@ internal static class RolePromptFactory
 
     public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext)
     {
+        return BuildPrompt(command, strategyAdvice, codeContext, projectContext, matchedSkills: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext, IReadOnlyList<MatchedSkill>? matchedSkills)
+    {
+        return BuildPrompt(command, strategyAdvice, codeContext, projectContext, matchedSkills, langfuseContext: null);
+    }
+
+    public static string BuildPrompt(ExecuteRoleTask command, StrategyAdvice? strategyAdvice, CodeIndexResult? codeContext, string? projectContext, IReadOnlyList<MatchedSkill>? matchedSkills, string? langfuseContext)
+    {
         var basePrompt = command.Role switch
         {
             SwarmRole.Planner => string.Join(
@@ -42,6 +53,10 @@ internal static class RolePromptFactory
                 string.Empty,
                 "## Implementation Plan",
                 command.PlanningOutput ?? "No plan provided. Infer the necessary changes from the task description.",
+                string.Empty,
+                "## Code Quality",
+                "Pre-commit hooks enforce: no trailing whitespace, files must end with a newline,",
+                "no merge conflict markers. Ensure all produced code satisfies these constraints.",
                 string.Empty,
                 "Produce the minimal code changes to complete this task. Include file paths for each change."),
             SwarmRole.Reviewer => string.Join(
@@ -105,12 +120,26 @@ internal static class RolePromptFactory
             contextParts.Add(BuildHistoricalContext(strategyAdvice));
         }
 
+        // Skill context (5th layer)
+        if (matchedSkills is { Count: > 0 } &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            contextParts.Add(BuildSkillContext(matchedSkills));
+        }
+
         // Code context (4th layer)
         if (codeContext is not null &&
             codeContext.HasResults &&
             command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
         {
             contextParts.Add(BuildCodeContext(codeContext));
+        }
+
+        // Langfuse context (6th layer)
+        if (!string.IsNullOrWhiteSpace(langfuseContext) &&
+            command.Role is SwarmRole.Planner or SwarmRole.Builder or SwarmRole.Reviewer)
+        {
+            contextParts.Add("\n### Historical Learning (Langfuse)\n" + langfuseContext);
         }
 
         if (contextParts.Count == 0)
@@ -189,6 +218,59 @@ internal static class RolePromptFactory
             "## Project Context",
             projectContext,
             "## End Project Context");
+    }
+
+    /// <summary>
+    /// Builds a skill context section from matched skills.
+    /// This is the 5th context layer: agent skills injected between historical and code context.
+    /// Total budget is capped at 4,000 characters to avoid overwhelming the LLM context window.
+    /// </summary>
+    private static string BuildSkillContext(IReadOnlyList<MatchedSkill> skills)
+    {
+        if (skills is null || skills.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        const int maxTotalChars = 4_000;
+        var lines = new List<string>
+        {
+            "--- Agent Skills ---"
+        };
+
+        var totalChars = 0;
+        foreach (var skill in skills)
+        {
+            var skillName = skill.Definition.Name;
+            var skillBody = skill.Definition.Body;
+
+            var header = $"### {skillName}\n";
+            var availableSpace = maxTotalChars - totalChars - header.Length - 2; // 2 for newlines
+
+            if (availableSpace <= 0)
+            {
+                break;
+            }
+
+            var bodyToAdd = skillBody.Length <= availableSpace
+                ? skillBody
+                : skillBody[..availableSpace];
+
+            lines.Add(header + bodyToAdd);
+            lines.Add(string.Empty);
+
+            totalChars += header.Length + bodyToAdd.Length + 2;
+
+            if (totalChars >= maxTotalChars)
+            {
+                break;
+            }
+        }
+
+        lines.Add("--- End Agent Skills ---");
+        lines.Add("Apply these skills to your review/implementation.");
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>

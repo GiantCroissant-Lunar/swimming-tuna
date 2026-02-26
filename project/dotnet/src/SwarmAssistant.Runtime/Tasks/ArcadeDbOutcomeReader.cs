@@ -1,12 +1,10 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using SwarmAssistant.Runtime.Configuration;
-using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Contracts.Messaging;
+using SwarmAssistant.Runtime.Actors;
+using SwarmAssistant.Runtime.Configuration;
 using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Tasks;

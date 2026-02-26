@@ -1,14 +1,13 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
 
 namespace SwarmAssistant.Runtime.Execution;
 
-internal sealed class SubscriptionCliRoleExecutor
+internal sealed class SubscriptionCliRoleExecutor : IDisposable
 {
     private static readonly string[] DefaultAdapterOrder = ["copilot", "cline", "kimi", "kilo", "local-echo"];
 
@@ -148,7 +147,7 @@ internal sealed class SubscriptionCliRoleExecutor
             AdapterDefinitions.ContainsKey(preferredAdapter))
         {
             // Return preferred adapter first, then the rest (excluding preferred to avoid duplication)
-            return [preferredAdapter, ..baseOrder.Where(a => !a.Equals(preferredAdapter, StringComparison.OrdinalIgnoreCase))];
+            return [preferredAdapter, .. baseOrder.Where(a => !a.Equals(preferredAdapter, StringComparison.OrdinalIgnoreCase))];
         }
 
         return baseOrder;
@@ -160,6 +159,10 @@ internal sealed class SubscriptionCliRoleExecutor
         var errors = new List<string>();
         // Use pre-built prompt if provided (with code context), otherwise build from scratch
         var prompt = command.Prompt ?? RolePromptFactory.BuildPrompt(command);
+        // Per-task worktree path takes priority over global workspace
+        var effectiveWorkspace = string.IsNullOrWhiteSpace(command.WorkspacePath)
+            ? _workspacePath
+            : command.WorkspacePath;
 
         var adapterOrder = BuildAdapterOrder(command.PreferredAdapter);
 
@@ -209,7 +212,7 @@ internal sealed class SubscriptionCliRoleExecutor
                         SandboxLevel.OsSandboxed,
                         adapter.ProbeCommand,
                         adapter.ProbeArgs,
-                        _workspacePath,
+                        effectiveWorkspace,
                         _options.SandboxAllowedHosts);
                 }
                 else
@@ -236,7 +239,8 @@ internal sealed class SubscriptionCliRoleExecutor
                 ["task_id"] = command.TaskId,
                 ["task_title"] = command.Title,
                 ["task_description"] = command.Description,
-                ["role"] = command.Role.ToString().ToLowerInvariant()
+                ["role"] = command.Role.ToString().ToLowerInvariant(),
+                ["workspace"] = effectiveWorkspace
             };
             var executeArgs = RenderArgs(adapter.ExecuteArgs, vars);
             SandboxCommand executeCommand;
@@ -249,7 +253,7 @@ internal sealed class SubscriptionCliRoleExecutor
                         SandboxLevel.OsSandboxed,
                         adapter.ExecuteCommand,
                         executeArgs,
-                        _workspacePath,
+                        effectiveWorkspace,
                         _options.SandboxAllowedHosts);
                 }
                 else
@@ -270,7 +274,7 @@ internal sealed class SubscriptionCliRoleExecutor
                 command.TaskId,
                 _options.SandboxMode);
 
-            var execution = await RunProcessAsync(executeCommand, timeout, cancellationToken);
+            var execution = await RunProcessAsync(executeCommand, timeout, cancellationToken, effectiveWorkspace);
             if (!execution.Ok)
             {
                 errors.Add($"{adapter.Id}: {execution.ErrorSummary}");
@@ -425,7 +429,8 @@ internal sealed class SubscriptionCliRoleExecutor
     private async Task<ProcessResult> RunProcessAsync(
         SandboxCommand sandboxCommand,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? workingDirectory = null)
     {
         using var process = new Process
         {
@@ -435,7 +440,8 @@ internal sealed class SubscriptionCliRoleExecutor
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                WorkingDirectory = workingDirectory ?? string.Empty
             }
         };
 
@@ -550,6 +556,11 @@ internal sealed class SubscriptionCliRoleExecutor
         bool IsInternal = false);
 
     private sealed record ProcessResult(bool Ok, string Output, string ErrorSummary);
+
+    public void Dispose()
+    {
+        _concurrencyGate.Dispose();
+    }
 }
 
 internal sealed record CliRoleExecutionResult(string Output, string AdapterId);

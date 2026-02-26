@@ -97,7 +97,8 @@ public sealed class DynamicTopologyTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             "dispatcher-spawn-test");
 
         var caps = new[] { SwarmRole.Planner, SwarmRole.Researcher };
@@ -140,7 +141,8 @@ public sealed class DynamicTopologyTests : TestKit
                 null,
                 null,
                 null,
-                null)),
+                null,
+                null, null)),
             "dispatcher-register-test");
 
         var caps = new[] { SwarmRole.Tester, SwarmRole.Debugger };

@@ -32,4 +32,39 @@ public sealed class WorkspaceBranchManagerTests
         Assert.Null(result);
     }
 
+    [Fact]
+    public async Task EnsureWorktree_WhenDisabled_ReturnsNull()
+    {
+        var manager = new WorkspaceBranchManager(enabled: false, worktreeIsolation: true);
+
+        var result = await manager.EnsureWorktreeAsync("task-abc-123");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task EnsureWorktree_WhenWorktreeIsolationDisabled_ReturnsNull()
+    {
+        var manager = new WorkspaceBranchManager(enabled: true, worktreeIsolation: false);
+
+        var result = await manager.EnsureWorktreeAsync("task-abc-123");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task RemoveWorktree_WhenDisabled_DoesNotThrow()
+    {
+        var manager = new WorkspaceBranchManager(enabled: false, worktreeIsolation: true);
+
+        await manager.RemoveWorktreeAsync("task-abc-123");
+    }
+
+    [Fact]
+    public async Task RemoveWorktree_WhenWorktreeIsolationDisabled_DoesNotThrow()
+    {
+        var manager = new WorkspaceBranchManager(enabled: true, worktreeIsolation: false);
+
+        await manager.RemoveWorktreeAsync("task-abc-123");
+    }
 }
