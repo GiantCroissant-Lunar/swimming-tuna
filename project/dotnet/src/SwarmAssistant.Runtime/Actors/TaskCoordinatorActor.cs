@@ -424,6 +424,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 StoreBlackboard("planner_output", message.Output);
                 StoreBlackboard("planner_confidence", message.Confidence.ToString("F2"));
                 SpawnSubTasksIfPresent(message.Output);
+                await TryCreateRunMemoryAsync(message.Output);
                 break;
 
             case SwarmRole.Builder:
@@ -1545,6 +1546,47 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 approved: approved,
                 comment: comment,
                 ct: CancellationToken.None);
+        }
+    }
+
+    private string GetMemoryDir()
+    {
+        var basePath = _worktreePath ?? Directory.GetCurrentDirectory();
+        return Path.Combine(basePath, ".swarm", "memory");
+    }
+
+    private string GetRunMemoryPath() => Path.Combine(GetMemoryDir(), "run.mv2");
+
+    private string GetTaskMemoryPath(string taskId) =>
+        Path.Combine(GetMemoryDir(), "tasks", $"{taskId}.mv2");
+
+    private async Task TryCreateRunMemoryAsync(string planOutput)
+    {
+        if (_memvidClient is null) return;
+
+        try
+        {
+            var memDir = GetMemoryDir();
+            Directory.CreateDirectory(memDir);
+            Directory.CreateDirectory(Path.Combine(memDir, "tasks"));
+
+            var runPath = GetRunMemoryPath();
+            await _memvidClient.CreateStoreAsync(runPath, CancellationToken.None);
+            await _memvidClient.PutAsync(runPath, new MemvidDocument(
+                Title: _title,
+                Label: "plan",
+                Text: planOutput,
+                Metadata: new Dictionary<string, string>
+                {
+                    ["task_id"] = _taskId,
+                    ["run_id"] = _runId ?? "",
+                }), CancellationToken.None);
+
+            _logger.LogInformation("Created run memory at {Path}", runPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create run memory; continuing without memvid");
         }
     }
 
