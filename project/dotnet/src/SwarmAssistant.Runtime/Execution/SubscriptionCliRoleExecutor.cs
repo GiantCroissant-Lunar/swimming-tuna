@@ -136,6 +136,10 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         var errors = new List<string>();
         // Use pre-built prompt if provided (with code context), otherwise build from scratch
         var prompt = command.Prompt ?? RolePromptFactory.BuildPrompt(command);
+        // Per-task worktree path takes priority over global workspace
+        var effectiveWorkspace = string.IsNullOrWhiteSpace(command.WorkspacePath)
+            ? _workspacePath
+            : command.WorkspacePath;
 
         var adapterOrder = BuildAdapterOrder(command.PreferredAdapter);
 
@@ -185,7 +189,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                         SandboxLevel.OsSandboxed,
                         adapter.ProbeCommand,
                         adapter.ProbeArgs,
-                        _workspacePath,
+                        effectiveWorkspace,
                         _options.SandboxAllowedHosts);
                 }
                 else
@@ -212,7 +216,8 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 ["task_id"] = command.TaskId,
                 ["task_title"] = command.Title,
                 ["task_description"] = command.Description,
-                ["role"] = command.Role.ToString().ToLowerInvariant()
+                ["role"] = command.Role.ToString().ToLowerInvariant(),
+                ["workspace"] = effectiveWorkspace
             };
             var executeArgs = RenderArgs(adapter.ExecuteArgs, vars);
             SandboxCommand executeCommand;
@@ -225,7 +230,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                         SandboxLevel.OsSandboxed,
                         adapter.ExecuteCommand,
                         executeArgs,
-                        _workspacePath,
+                        effectiveWorkspace,
                         _options.SandboxAllowedHosts);
                 }
                 else
@@ -246,7 +251,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 command.TaskId,
                 _options.SandboxMode);
 
-            var execution = await RunProcessAsync(executeCommand, timeout, cancellationToken);
+            var execution = await RunProcessAsync(executeCommand, timeout, cancellationToken, effectiveWorkspace);
             if (!execution.Ok)
             {
                 errors.Add($"{adapter.Id}: {execution.ErrorSummary}");
@@ -365,7 +370,8 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
     private async Task<ProcessResult> RunProcessAsync(
         SandboxCommand sandboxCommand,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? workingDirectory = null)
     {
         using var process = new Process
         {
@@ -375,7 +381,8 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                WorkingDirectory = workingDirectory ?? string.Empty
             }
         };
 

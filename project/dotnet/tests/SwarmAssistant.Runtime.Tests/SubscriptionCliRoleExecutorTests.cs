@@ -59,4 +59,31 @@ public sealed class SubscriptionCliRoleExecutorTests
 
         Assert.Contains("No CLI adapter succeeded", exception.Message);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WithWorkspacePath_ReturnsOutput()
+    {
+        var options = new RuntimeOptions
+        {
+            CliAdapterOrder = ["local-echo"],
+            SandboxMode = "host"
+        };
+
+        using var loggerFactory = LoggerFactory.Create(builder => { });
+        var executor = new SubscriptionCliRoleExecutor(options, loggerFactory);
+
+        var result = await executor.ExecuteAsync(
+            new ExecuteRoleTask(
+                "task-worktree-1",
+                SwarmRole.Builder,
+                "Build feature",
+                "Build in isolated worktree",
+                "plan-output",
+                null,
+                WorkspacePath: "/tmp/worktree-test"),
+            CancellationToken.None);
+
+        Assert.Equal("local-echo", result.AdapterId);
+        Assert.Contains("[LocalEcho/Builder]", result.Output);
+    }
 }

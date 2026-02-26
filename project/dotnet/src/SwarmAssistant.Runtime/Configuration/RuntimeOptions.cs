@@ -166,6 +166,14 @@ public sealed class RuntimeOptions
     /// </summary>
     public bool WorkspaceBranchEnabled { get; init; } = false;
 
+    /// <summary>
+    /// When true (and WorkspaceBranchEnabled is true), each task gets an isolated
+    /// git worktree at .worktrees/swarm-{taskId} instead of sharing the main workspace.
+    /// CLI adapters execute in the worktree directory, preventing concurrent tasks
+    /// from interfering with each other's HEAD or file state.
+    /// </summary>
+    public bool WorktreeIsolationEnabled { get; init; } = false;
+
     public bool SimulateBuilderFailure { get; init; } = false;
     public bool SimulateReviewerFailure { get; init; } = false;
 
