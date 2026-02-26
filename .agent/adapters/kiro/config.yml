@@ -1,0 +1,79 @@
+name: kiro-ide
+description: Kiro IDE adapter
+
+capabilities:
+  hooks: [fileEdited, promptSubmit, agentStop, preToolUse, postToolUse]
+  mcp: true
+  skills: true
+  rules: true
+
+sync:
+  # Steering files — Kiro auto-includes these via front-matter
+  steering_agents:
+    target: .kiro/steering/agents.md
+    action: pointer
+    content: |
+      ---
+      inclusion: auto
+      ---
+      # Agent Guide
+
+      See [AGENTS.md](../../AGENTS.md) for all project guidance.
+      #[[file:AGENTS.md]]
+
+  steering_conventions:
+    target: .kiro/steering/conventions.md
+    action: pointer
+    content: |
+      ---
+      inclusion: auto
+      ---
+      #[[file:.agent/rules/conventions.md]]
+
+  steering_security:
+    target: .kiro/steering/security.md
+    action: pointer
+    content: |
+      ---
+      inclusion: auto
+      ---
+      #[[file:.agent/rules/security.md]]
+
+  # Skills — copy SKILL.md files as Kiro manual-inclusion steering files
+  skills:
+    target: .kiro/skills/
+    action: copy
+    source: .agent/skills/
+    glob: "*/SKILL.md"
+
+  # Hooks — Kiro uses JSON hook files in .kiro/hooks/
+  hooks:
+    target: .kiro/hooks/
+    action: merge
+    format: kiro-hooks-json
+    mapping:
+      pre_tool_use.py:
+        event: preToolUse
+        toolTypes: ["write", "shell"]
+        description: Validate tool calls against project security and convention rules
+
+  # Hooks config for shared Python hooks
+  hooks_config:
+    target: .kiro/hooks/config.json
+    action: pointer
+    content: |
+      {"adapter": "kiro", "supermemory": {"enabled": true}}
+
+  # Shared Python hooks (for runCommand hook actions)
+  hooks_scripts:
+    target: .kiro/hooks/
+    action: copy
+    source: .agent/hooks/
+    glob: "*.py"
+
+  # Shared lib (supermemory client etc.)
+  lib:
+    target: .kiro/lib/
+    action: copy
+    source: .agent/lib/
+    glob: "*.py"

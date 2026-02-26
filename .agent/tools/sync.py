@@ -43,7 +43,7 @@ def load_adapter_config(config_path: Path) -> dict:
     """
     if not config_path.exists():
         raise FileNotFoundError(f"Config not found: {config_path}")
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
         return {}
@@ -86,10 +86,13 @@ def execute_pointer(target: Path, content: str) -> str:
 def execute_copy(source: Path, target: Path, glob: str) -> list[str]:
     """Copy files matching a glob pattern from source dir to target dir.
 
+    When the glob contains path separators (e.g., ``*/SKILL.md``), the
+    relative directory structure from source is preserved under target.
+
     Args:
         source: Source directory to search for files.
         target: Target directory to copy files into.
-        glob: Glob pattern to match files (e.g., "*.md").
+        glob: Glob pattern to match files (e.g., "*.md", "*/SKILL.md").
 
     Returns:
         List of copied file descriptions.
@@ -98,12 +101,19 @@ def execute_copy(source: Path, target: Path, glob: str) -> list[str]:
     if not matching:
         return []
     target.mkdir(parents=True, exist_ok=True)
+    # Preserve subdirectory structure when glob spans directories
+    preserve_dirs = "/" in glob or "\\" in glob
     results = []
     for src_file in matching:
         if src_file.is_file():
-            dest = target / src_file.name
+            if preserve_dirs:
+                rel = src_file.relative_to(source)
+                dest = target / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                dest = target / src_file.name
             shutil.copy2(src_file, dest)
-            results.append(f"copy: {src_file.name} -> {dest}")
+            results.append(f"copy: {src_file.relative_to(source)} -> {dest}")
     return results
 
 
@@ -196,7 +206,80 @@ def execute_merge_claude_hooks(
     hook_names = list(mapping.values())
     return f"merge: updated {settings_path} with hooks {hook_names}"
 
+def execute_merge_kiro_hooks(
+    hooks_dir: Path,
+    mapping: dict,
+    project_root: Path | None = None,
+) -> list[str]:
+    """Generate Kiro hook JSON files from the shared hook mapping.
 
+    For each mapping entry, creates a JSON hook file in hooks_dir following
+    the Kiro hook schema: ``{name, version, description, when, then}``.
+
+    Args:
+        hooks_dir: Target directory for generated hook JSON files.
+        mapping: Dict mapping hook script filenames to hook config dicts.
+            Each value should have: event, toolTypes (optional),
+            description (optional).
+        project_root: If provided, script paths are expressed relative to
+            this directory.
+
+    Returns:
+        List of descriptions of what was done.
+    """
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    results = []
+
+    for hook_file, hook_config in mapping.items():
+        if isinstance(hook_config, str):
+            # Simple mapping: filename -> event name
+            event_type = hook_config
+            tool_types = None
+            description = f"Auto-synced from {hook_file}"
+        else:
+            event_type = hook_config.get("event", "preToolUse")
+            tool_types = hook_config.get("toolTypes")
+            description = hook_config.get(
+                "description", f"Auto-synced from {hook_file}"
+            )
+
+        # Build the script command path
+        script_path = hooks_dir / hook_file
+        if project_root is not None and script_path.exists():
+            try:
+                rel_path = script_path.relative_to(project_root.resolve())
+                command = f"python3 {rel_path}"
+            except ValueError:
+                command = f"python3 {script_path}"
+        else:
+            command = f"python3 .kiro/hooks/{hook_file}"
+
+        # Derive a hook name from the script filename
+        hook_name = hook_file.replace(".py", "").replace("_", "-")
+        target_file = hooks_dir / f"{hook_name}.json"
+
+        hook_json = {
+            "name": hook_name.replace("-", " ").title(),
+            "version": "1.0.0",
+            "description": description,
+            "when": {"type": event_type},
+            "then": {"type": "runCommand", "command": command},
+        }
+
+        if tool_types and event_type in ("preToolUse", "postToolUse"):
+            hook_json["when"]["toolTypes"] = tool_types
+
+        if event_type in ("fileEdited", "fileCreated", "fileDeleted"):
+            patterns = hook_config.get("patterns") if isinstance(hook_config, dict) else None
+            if patterns:
+                hook_json["when"]["patterns"] = patterns
+
+        with open(target_file, "w") as f:
+            json.dump(hook_json, f, indent=2)
+
+        results.append(f"kiro-hook: wrote {target_file}")
+
+    return results
 def execute_concatenate(source: Path, target: Path, glob: str) -> str:
     """Concatenate matching files from source into one target file.
 
@@ -296,6 +379,13 @@ def sync_adapter(adapter_dir: Path, project_root: Path) -> list[str]:
                     settings_path, hooks_dir, mapping, project_root
                 )
                 results.append(result)
+            elif fmt == "kiro-hooks-json":
+                mapping = entry.get("mapping", {})
+                hooks_dir = project_root / target_rel
+                kiro_results = execute_merge_kiro_hooks(
+                    hooks_dir, mapping, project_root
+                )
+                results.extend(kiro_results)
             else:
                 results.append(f"skip: unknown merge format '{fmt}'")
 

@@ -17,7 +17,7 @@ observability.
 ```text
 .
 ├── .agent/              # Agent skills, adapters, hooks, rules
-│   ├── adapters/        # Per-tool sync configs (claude/, codex/, cline/, copilot/)
+│   ├── adapters/        # Per-tool sync configs (claude/, codex/, cline/, copilot/, kiro/)
 │   ├── hooks/           # Shared Python hook scripts
 │   ├── rules/           # Shared coding rules (conventions.md, security.md)
 │   ├── skills/          # Agent skills (SKILL.md format)
@@ -65,7 +65,7 @@ task ruff:format        # Format Python files
 task repomix:pack       # Pack repo for AI context
 task skills:list        # List available agent skills
 task skills:new SKILL=x # Create a new skill
-task agent:sync         # Sync all adapters (claude, codex, cline, copilot)
+task agent:sync         # Sync all adapters (claude, codex, cline, copilot, kiro)
 ```
 
 ## Development Guidelines
@@ -157,6 +157,7 @@ CLI tool:
 | codex | Codex CLI | none | `task agent:sync:codex` |
 | cline | Cline CLI | TaskStart, PreToolUse | `task agent:sync:cline` |
 | copilot | Copilot CLI | sessionStart, preToolUse | `task agent:sync:copilot` |
+| kiro | Kiro IDE | fileEdited, preToolUse, postToolUse, promptSubmit, agentStop | `task agent:sync:kiro` |
 
 Run `task agent:sync` to sync all adapters at once.
 
