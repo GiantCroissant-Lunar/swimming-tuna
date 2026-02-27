@@ -143,6 +143,7 @@ Skills are in `.agent/skills/`:
 | [skill-creator](.agent/skills/skill-creator/) | Guide for creating effective skills |
 | [remotion](.agent/skills/remotion/) | Remotion video creation best practices |
 | [memory](.agent/skills/memory/) | Cross-session memory via Supermemory (decisions, debugging) |
+| [swarm-dev](.agent/skills/swarm-dev/) | Swarm dev workflow: decompose, submit, monitor, review, merge |
 
 To add a new skill: `task skills:new SKILL=my-skill`, then edit `.agent/skills/my-skill/SKILL.md`.
 

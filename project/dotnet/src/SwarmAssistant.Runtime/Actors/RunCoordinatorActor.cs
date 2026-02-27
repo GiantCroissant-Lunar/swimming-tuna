@@ -1,5 +1,6 @@
 using Akka.Actor;
 using Microsoft.Extensions.Options;
+using SwarmAssistant.Contracts.Hierarchy;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
@@ -55,12 +56,22 @@ public sealed class RunCoordinatorActor : ReceiveActor
     private readonly HashSet<string> _completedTasks = new(StringComparer.Ordinal);
     private readonly HashSet<string> _failedTasks = new(StringComparer.Ordinal);
     private int _totalTaskCount;
+    private int _mergedTaskCount;
+
+    // Lifecycle state machine
+    private RunSpanStatus _status = RunSpanStatus.Accepted;
+    private string? _featureBranch;
+    private string? _baseBranch;
+    private string? _branchPrefix;
+    private readonly SemaphoreSlim _mergeLock = new(1, 1);
 
     private const int DefaultMaxRetries = 2;
 
     public RunCoordinatorActor(
         string runId,
         string? title,
+        string? baseBranch,
+        string? branchPrefix,
         IActorRef workerActor,
         IActorRef reviewerActor,
         IActorRef supervisorActor,
@@ -88,6 +99,8 @@ public sealed class RunCoordinatorActor : ReceiveActor
     {
         _runId = runId;
         _title = title;
+        _baseBranch = baseBranch ?? "main";
+        _branchPrefix = branchPrefix ?? "feat";
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
@@ -117,6 +130,16 @@ public sealed class RunCoordinatorActor : ReceiveActor
         Receive<TaskAssigned>(HandleTaskAssigned);
         Receive<RunTaskCompleted>(HandleRunTaskCompleted);
         Receive<Terminated>(OnCoordinatorTerminated);
+        Receive<RunConfigured>(HandleRunConfigured);
+        Receive<RunMarkDone>(HandleRunMarkDone);
+
+        EmitRunEvent("agui.run.accepted", new { runId, title });
+    }
+
+    protected override void PostStop()
+    {
+        _mergeLock.Dispose();
+        base.PostStop();
     }
 
     protected override SupervisorStrategy SupervisorStrategy()
@@ -144,6 +167,16 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 "Duplicate task assignment ignored taskId={TaskId} runId={RunId}",
                 taskId, _runId);
             return;
+        }
+
+        // Ensure L0 feature branch exists before dispatching any task
+        EnsureFeatureBranch();
+
+        // Transition to Executing on first task
+        if (_totalTaskCount == 0 && _status is RunSpanStatus.Accepted or RunSpanStatus.Decomposing)
+        {
+            TransitionTo(RunSpanStatus.Executing);
+            EmitRunEvent("agui.run.executing", new { runId = _runId, taskCount = 1 });
         }
 
         _taskRegistry.Register(message, _runId);
@@ -179,7 +212,8 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 _langfuseScoreWriter,
                 _memvidClient,
                 _langfuseSimilarityQuery,
-                _skillMatcher)),
+                _skillMatcher,
+                _featureBranch)),
             $"task-{taskId}");
 
         _taskCoordinators[taskId] = coordinator;
@@ -242,7 +276,97 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 error = message.Error
             });
 
-        LogRunProgress();
+        // Merge gate: merge completed task branch into feature branch
+        if (message.Status == TaskState.Done && _workspaceBranchManager is not null && _featureBranch is not null)
+        {
+            // MergeTaskAsync calls CheckRunCompletion after merge settles
+            _ = MergeTaskAsync(message.TaskId);
+            LogRunProgress();
+        }
+        else
+        {
+            // No merge needed — check completion directly
+            LogRunProgress();
+            CheckRunCompletion();
+        }
+    }
+
+    private async Task MergeTaskAsync(string taskId)
+    {
+        await _mergeLock.WaitAsync();
+        try
+        {
+            var result = await _workspaceBranchManager.MergeTaskBranchAsync(taskId, _featureBranch!);
+            _mergedTaskCount++;
+
+            switch (result)
+            {
+                case MergeResult.Success:
+                    EmitRunEvent("agui.run.task-merged", new { runId = _runId, taskId });
+                    _logger.LogInformation(
+                        "Task branch merged taskId={TaskId} into featureBranch={FeatureBranch} runId={RunId}",
+                        taskId, _featureBranch, _runId);
+                    break;
+
+                case MergeResult.Conflict:
+                    EmitRunEvent("agui.run.merge-conflict", new { runId = _runId, taskId });
+                    _logger.LogWarning(
+                        "Merge conflict taskId={TaskId} featureBranch={FeatureBranch} runId={RunId}",
+                        taskId, _featureBranch, _runId);
+                    break;
+
+                case MergeResult.BranchNotFound:
+                    _logger.LogWarning(
+                        "Task branch not found for merge taskId={TaskId} runId={RunId}",
+                        taskId, _runId);
+                    break;
+
+                case MergeResult.CheckoutFailed:
+                    _logger.LogWarning(
+                        "Checkout failed during merge taskId={TaskId} featureBranch={FeatureBranch} runId={RunId}",
+                        taskId, _featureBranch, _runId);
+                    break;
+            }
+
+            CheckRunCompletion();
+        }
+        finally
+        {
+            _mergeLock.Release();
+        }
+    }
+
+    private void CheckRunCompletion()
+    {
+        var terminalCount = _completedTasks.Count + _failedTasks.Count;
+        if (terminalCount < _totalTaskCount || _totalTaskCount == 0)
+        {
+            return;
+        }
+
+        // Prevent double-trigger if already transitioning
+        if (_status >= RunSpanStatus.ReadyForPr)
+        {
+            return;
+        }
+
+        // Wait for all merges to settle before pushing feature branch
+        if (_featureBranch is not null && _mergedTaskCount < _completedTasks.Count)
+        {
+            return;
+        }
+
+        // All tasks are in terminal state — claim transition synchronously to prevent race
+        if (_featureBranch is not null)
+        {
+            TransitionTo(RunSpanStatus.ReadyForPr);
+            _ = TransitionToReadyForPrAsync();
+        }
+        else
+        {
+            TransitionTo(RunSpanStatus.Done);
+            EmitRunEvent("agui.run.done", new { runId = _runId });
+        }
     }
 
     private void OnCoordinatorTerminated(Terminated message)
@@ -287,6 +411,110 @@ public sealed class RunCoordinatorActor : ReceiveActor
 
         _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, _runId, title);
     }
+
+    private void HandleRunConfigured(RunConfigured message)
+    {
+        _baseBranch = message.BaseBranch;
+        _branchPrefix = message.BranchPrefix;
+
+        _logger.LogInformation(
+            "Run configured runId={RunId} baseBranch={BaseBranch} branchPrefix={BranchPrefix}",
+            _runId, _baseBranch, _branchPrefix);
+
+        EnsureFeatureBranch();
+    }
+
+    /// <summary>
+    /// Ensures the L0 feature branch exists before any task worktrees are created.
+    /// Called synchronously — git checkout -b is fast (&lt;100ms).
+    /// </summary>
+    private void EnsureFeatureBranch()
+    {
+        if (_featureBranch is not null || _workspaceBranchManager is null || string.IsNullOrWhiteSpace(_baseBranch))
+        {
+            return;
+        }
+
+        var slug = ComputeBranchSlug(_title ?? _runId);
+        var prefix = string.IsNullOrWhiteSpace(_branchPrefix) ? "feat" : _branchPrefix;
+        _featureBranch = $"{prefix}/{slug}";
+
+        var result = WorkspaceBranchManager.CreateBranchFromAsync(_featureBranch, _baseBranch)
+            .GetAwaiter().GetResult();
+
+        if (result)
+        {
+            _logger.LogInformation(
+                "L0 feature branch created featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
+                _featureBranch, _baseBranch, _runId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Failed to create L0 feature branch featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
+                _featureBranch, _baseBranch, _runId);
+            _featureBranch = null;
+        }
+    }
+
+    private void HandleRunMarkDone(RunMarkDone message)
+    {
+        if (!string.Equals(message.RunId, _runId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        TransitionTo(RunSpanStatus.Done);
+        EmitRunEvent("agui.run.done", new { runId = _runId });
+    }
+
+    private async Task TransitionToReadyForPrAsync()
+    {
+        if (_featureBranch is null)
+        {
+            return;
+        }
+
+        // Push feature branch (status already set to ReadyForPr by caller)
+        var pushed = await WorkspaceBranchManager.PushBranchAsync(_featureBranch);
+        if (pushed)
+        {
+            _logger.LogInformation(
+                "Feature branch pushed featureBranch={FeatureBranch} runId={RunId}",
+                _featureBranch, _runId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Failed to push feature branch featureBranch={FeatureBranch} runId={RunId}",
+                _featureBranch, _runId);
+        }
+
+        EmitRunEvent("agui.run.ready-for-pr", new { runId = _runId, featureBranch = _featureBranch });
+    }
+
+    private void TransitionTo(RunSpanStatus newStatus)
+    {
+        var previous = _status;
+        _status = newStatus;
+        _logger.LogInformation(
+            "Run state transition runId={RunId} from={From} to={To}",
+            _runId, previous, newStatus);
+    }
+
+    private void EmitRunEvent(string type, object payload)
+    {
+        _uiEvents.Publish(type: type, taskId: null, payload: payload);
+    }
+
+    /// <summary>Gets the current run lifecycle status.</summary>
+    public RunSpanStatus Status => _status;
+
+    /// <summary>Gets the feature branch name, if created.</summary>
+    public string? FeatureBranch => _featureBranch;
+
+    private static string ComputeBranchSlug(string input)
+        => WorkspaceBranchManager.ComputeBranchSlug(input);
 
     private void LogRunProgress()
     {

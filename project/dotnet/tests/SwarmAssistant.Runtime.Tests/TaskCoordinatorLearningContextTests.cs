@@ -89,7 +89,8 @@ public sealed class TaskCoordinatorLearningContextTests : TestKit
                 null,
                 null,
                 langfuse,
-                matcher)));
+                matcher,
+                (string?)null)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));
@@ -159,7 +160,8 @@ public sealed class TaskCoordinatorLearningContextTests : TestKit
                 null,
                 null,
                 langfuse,
-                null)));
+                null,
+                (string?)null)));
 
         coordinator.Tell(new TaskCoordinatorActor.StartCoordination());
         workerProbe.ExpectMsg<ExecuteRoleTask>(m => m.Role == SwarmRole.Orchestrator, TimeSpan.FromSeconds(5));

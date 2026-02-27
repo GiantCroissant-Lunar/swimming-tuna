@@ -280,6 +280,22 @@ internal sealed record PeerAgentResolved(string AgentId, bool Found, IActorRef? 
 
 internal sealed record ForwardPeerMessage(SwarmAssistant.Contracts.Messaging.PeerMessage Message);
 
+// RFC-014: Run orchestration - configure run with branch settings
+/// <summary>
+/// Sent to RunCoordinatorActor after creation to configure feature branch settings.
+/// The actor creates the feature branch upon receiving this message.
+/// </summary>
+internal sealed record RunConfigured(
+    string BaseBranch,
+    string BranchPrefix
+);
+
+// RFC-014: Run orchestration - mark run as done
+/// <summary>
+/// Sent to RunCoordinatorActor to transition to Done state.
+/// </summary>
+internal sealed record RunMarkDone(string RunId);
+
 // RFC-014: Run orchestration - task completion notification to RunCoordinatorActor
 /// <summary>
 /// Sent by TaskCoordinatorActor to its parent (RunCoordinatorActor) when a run-scoped task completes.

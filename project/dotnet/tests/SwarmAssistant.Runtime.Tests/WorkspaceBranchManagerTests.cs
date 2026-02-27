@@ -94,4 +94,23 @@ public sealed class WorkspaceBranchManagerTests
 
         await manager.CleanupBranchAsync("task-nonexistent-xyz");
     }
+
+    [Fact]
+    public async Task MergeTaskBranch_WhenBranchNotFound_ReturnsBranchNotFound()
+    {
+        var manager = new WorkspaceBranchManager(enabled: true);
+
+        var result = await manager.MergeTaskBranchAsync("task-nonexistent-xyz", "main");
+
+        Assert.Equal(MergeResult.BranchNotFound, result);
+    }
+
+    [Fact]
+    public void MergeResult_HasExpectedValues()
+    {
+        Assert.Equal(0, (int)MergeResult.Success);
+        Assert.Equal(1, (int)MergeResult.Conflict);
+        Assert.Equal(2, (int)MergeResult.BranchNotFound);
+        Assert.Equal(3, (int)MergeResult.CheckoutFailed);
+    }
 }
