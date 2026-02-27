@@ -1,5 +1,7 @@
+using System.Text.RegularExpressions;
 using Akka.Actor;
 using Microsoft.Extensions.Options;
+using SwarmAssistant.Contracts.Hierarchy;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
 using SwarmAssistant.Runtime.Configuration;
@@ -55,6 +57,14 @@ public sealed class RunCoordinatorActor : ReceiveActor
     private readonly HashSet<string> _completedTasks = new(StringComparer.Ordinal);
     private readonly HashSet<string> _failedTasks = new(StringComparer.Ordinal);
     private int _totalTaskCount;
+    private int _mergedTaskCount;
+
+    // Lifecycle state machine
+    private RunSpanStatus _status = RunSpanStatus.Accepted;
+    private string? _featureBranch;
+    private string? _baseBranch;
+    private string? _branchPrefix;
+    private readonly SemaphoreSlim _mergeLock = new(1, 1);
 
     private const int DefaultMaxRetries = 2;
 
@@ -117,6 +127,10 @@ public sealed class RunCoordinatorActor : ReceiveActor
         Receive<TaskAssigned>(HandleTaskAssigned);
         Receive<RunTaskCompleted>(HandleRunTaskCompleted);
         Receive<Terminated>(OnCoordinatorTerminated);
+        Receive<RunConfigured>(HandleRunConfigured);
+        Receive<RunMarkDone>(HandleRunMarkDone);
+
+        EmitRunEvent("agui.run.accepted", new { runId, title });
     }
 
     protected override SupervisorStrategy SupervisorStrategy()
@@ -144,6 +158,13 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 "Duplicate task assignment ignored taskId={TaskId} runId={RunId}",
                 taskId, _runId);
             return;
+        }
+
+        // Transition to Executing on first task
+        if (_totalTaskCount == 0 && _status is RunSpanStatus.Accepted or RunSpanStatus.Decomposing)
+        {
+            TransitionTo(RunSpanStatus.Executing);
+            EmitRunEvent("agui.run.executing", new { runId = _runId, taskCount = 1 });
         }
 
         _taskRegistry.Register(message, _runId);
@@ -242,7 +263,71 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 error = message.Error
             });
 
+        // Merge gate: merge completed task branch into feature branch
+        if (message.Status == TaskState.Done && _workspaceBranchManager is not null && _featureBranch is not null)
+        {
+            _ = MergeTaskAsync(message.TaskId);
+        }
+
         LogRunProgress();
+        CheckRunCompletion();
+    }
+
+    private async Task MergeTaskAsync(string taskId)
+    {
+        await _mergeLock.WaitAsync();
+        try
+        {
+            var result = await _workspaceBranchManager.MergeTaskBranchAsync(taskId, _featureBranch!);
+            switch (result)
+            {
+                case MergeResult.Success:
+                    _mergedTaskCount++;
+                    EmitRunEvent("agui.run.task-merged", new { runId = _runId, taskId });
+                    _logger.LogInformation(
+                        "Task branch merged taskId={TaskId} into featureBranch={FeatureBranch} runId={RunId}",
+                        taskId, _featureBranch, _runId);
+                    CheckRunCompletion();
+                    break;
+
+                case MergeResult.Conflict:
+                    EmitRunEvent("agui.run.merge-conflict", new { runId = _runId, taskId });
+                    _logger.LogWarning(
+                        "Merge conflict taskId={TaskId} featureBranch={FeatureBranch} runId={RunId}",
+                        taskId, _featureBranch, _runId);
+                    break;
+
+                case MergeResult.BranchNotFound:
+                    _logger.LogWarning(
+                        "Task branch not found for merge taskId={TaskId} runId={RunId}",
+                        taskId, _runId);
+                    break;
+            }
+        }
+        finally
+        {
+            _mergeLock.Release();
+        }
+    }
+
+    private void CheckRunCompletion()
+    {
+        var terminalCount = _completedTasks.Count + _failedTasks.Count;
+        if (terminalCount < _totalTaskCount || _totalTaskCount == 0)
+        {
+            return;
+        }
+
+        // All tasks are in terminal state
+        if (_featureBranch is not null)
+        {
+            _ = TransitionToReadyForPrAsync();
+        }
+        else
+        {
+            TransitionTo(RunSpanStatus.Done);
+            EmitRunEvent("agui.run.done", new { runId = _runId });
+        }
     }
 
     private void OnCoordinatorTerminated(Terminated message)
@@ -286,6 +371,112 @@ public sealed class RunCoordinatorActor : ReceiveActor
         }
 
         _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, _runId, title);
+    }
+
+    private void HandleRunConfigured(RunConfigured message)
+    {
+        _baseBranch = message.BaseBranch;
+        _branchPrefix = message.BranchPrefix;
+
+        _logger.LogInformation(
+            "Run configured runId={RunId} baseBranch={BaseBranch} branchPrefix={BranchPrefix}",
+            _runId, _baseBranch, _branchPrefix);
+
+        _ = CreateFeatureBranchAsync();
+    }
+
+    private void HandleRunMarkDone(RunMarkDone message)
+    {
+        if (!string.Equals(message.RunId, _runId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        TransitionTo(RunSpanStatus.Done);
+        EmitRunEvent("agui.run.done", new { runId = _runId });
+    }
+
+    private async Task CreateFeatureBranchAsync()
+    {
+        if (_workspaceBranchManager is null || string.IsNullOrWhiteSpace(_baseBranch))
+        {
+            return;
+        }
+
+        var slug = ComputeBranchSlug(_title ?? _runId);
+        var prefix = string.IsNullOrWhiteSpace(_branchPrefix) ? "feat" : _branchPrefix;
+        _featureBranch = $"{prefix}/{slug}";
+
+        // Use EnsureBranchAsync-like approach via git checkout -b
+        var result = await WorkspaceBranchManager.CreateBranchFromAsync(_featureBranch, _baseBranch);
+        if (result)
+        {
+            _logger.LogInformation(
+                "Feature branch created featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
+                _featureBranch, _baseBranch, _runId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Failed to create feature branch featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
+                _featureBranch, _baseBranch, _runId);
+            _featureBranch = null;
+        }
+    }
+
+    private async Task TransitionToReadyForPrAsync()
+    {
+        if (_featureBranch is null)
+        {
+            return;
+        }
+
+        TransitionTo(RunSpanStatus.ReadyForPr);
+
+        // Push feature branch
+        var pushed = await WorkspaceBranchManager.PushBranchAsync(_featureBranch);
+        if (pushed)
+        {
+            _logger.LogInformation(
+                "Feature branch pushed featureBranch={FeatureBranch} runId={RunId}",
+                _featureBranch, _runId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Failed to push feature branch featureBranch={FeatureBranch} runId={RunId}",
+                _featureBranch, _runId);
+        }
+
+        EmitRunEvent("agui.run.ready-for-pr", new { runId = _runId, featureBranch = _featureBranch });
+    }
+
+    private void TransitionTo(RunSpanStatus newStatus)
+    {
+        var previous = _status;
+        _status = newStatus;
+        _logger.LogInformation(
+            "Run state transition runId={RunId} from={From} to={To}",
+            _runId, previous, newStatus);
+    }
+
+    private void EmitRunEvent(string type, object payload)
+    {
+        _uiEvents.Publish(type: type, taskId: null, payload: payload);
+    }
+
+    /// <summary>Gets the current run lifecycle status.</summary>
+    public RunSpanStatus Status => _status;
+
+    /// <summary>Gets the feature branch name, if created.</summary>
+    public string? FeatureBranch => _featureBranch;
+
+    private static string ComputeBranchSlug(string input)
+    {
+        var lower = input.ToLowerInvariant();
+        var sanitized = Regex.Replace(lower, @"[^a-z0-9\-]", "-");
+        var collapsed = Regex.Replace(sanitized, @"-{2,}", "-");
+        return collapsed.Trim('-');
     }
 
     private void LogRunProgress()

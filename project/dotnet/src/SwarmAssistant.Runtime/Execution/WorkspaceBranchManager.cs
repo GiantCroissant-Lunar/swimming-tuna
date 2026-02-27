@@ -4,6 +4,8 @@ using System.Collections.Generic;
 
 namespace SwarmAssistant.Runtime.Execution;
 
+public enum MergeResult { Success, Conflict, BranchNotFound }
+
 public sealed partial class WorkspaceBranchManager
 {
     private readonly bool _enabled;
@@ -335,6 +337,80 @@ public sealed partial class WorkspaceBranchManager
         await Task.WhenAll(stdoutTask, stderrTask);
 
         return (process.ExitCode, await stdoutTask, await stderrTask);
+    }
+
+    /// <summary>
+    /// Creates a new branch from a base branch. Returns true on success.
+    /// </summary>
+    public static async Task<bool> CreateBranchFromAsync(string branchName, string baseBranch)
+    {
+        var result = await RunGitAsync(["checkout", "-b", branchName, baseBranch]);
+        return result.ExitCode == 0;
+    }
+
+    /// <summary>
+    /// Pushes a branch to origin with upstream tracking. Returns true on success.
+    /// </summary>
+    public static async Task<bool> PushBranchAsync(string branchName)
+    {
+        var result = await RunGitAsync(["push", "-u", "origin", branchName]);
+        return result.ExitCode == 0;
+    }
+
+    /// <summary>
+    /// Merges a task branch back into the target branch using --no-ff.
+    /// Returns <see cref="MergeResult.Success"/> on clean merge,
+    /// <see cref="MergeResult.Conflict"/> if the merge has conflicts (auto-aborted),
+    /// or <see cref="MergeResult.BranchNotFound"/> if the task branch does not exist.
+    /// </summary>
+    public async Task<MergeResult> MergeTaskBranchAsync(string taskId, string targetBranch)
+    {
+        var taskBranch = BranchNameForTask(taskId);
+
+        // Verify task branch exists
+        var verifyResult = await RunGitAsync(["rev-parse", "--verify", taskBranch]);
+        if (verifyResult.ExitCode != 0)
+        {
+            _logger?.LogWarning("Task branch not found branch={Branch} taskId={TaskId}", taskBranch, taskId);
+            return MergeResult.BranchNotFound;
+        }
+
+        // Checkout target branch
+        var checkoutResult = await RunGitAsync(["checkout", targetBranch]);
+        if (checkoutResult.ExitCode != 0)
+        {
+            _logger?.LogWarning(
+                "Failed to checkout target branch={Branch} exitCode={ExitCode} stderr={Stderr}",
+                targetBranch, checkoutResult.ExitCode, checkoutResult.StdErr);
+            return MergeResult.Conflict;
+        }
+
+        // Merge with --no-ff
+        var mergeResult = await RunGitAsync(["merge", taskBranch, "--no-ff", "-m",
+            $"merge: {taskBranch} into {targetBranch}"]);
+        if (mergeResult.ExitCode != 0)
+        {
+            _logger?.LogWarning(
+                "Merge conflict taskBranch={TaskBranch} targetBranch={TargetBranch} taskId={TaskId}",
+                taskBranch, targetBranch, taskId);
+            await RunGitAsync(["merge", "--abort"]);
+            return MergeResult.Conflict;
+        }
+
+        // Clean up task branch on success
+        var deleteResult = await RunGitAsync(["branch", "-d", taskBranch]);
+        if (deleteResult.ExitCode != 0)
+        {
+            _logger?.LogDebug(
+                "Failed to delete merged branch={Branch} exitCode={ExitCode}",
+                taskBranch, deleteResult.ExitCode);
+        }
+
+        _logger?.LogInformation(
+            "Merged task branch taskBranch={TaskBranch} into targetBranch={TargetBranch} taskId={TaskId}",
+            taskBranch, targetBranch, taskId);
+
+        return MergeResult.Success;
     }
 
     [GeneratedRegex(@"[^a-zA-Z0-9\-_]")]

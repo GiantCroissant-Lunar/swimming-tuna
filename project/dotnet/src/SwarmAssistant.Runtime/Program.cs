@@ -813,13 +813,50 @@ if (options.A2AEnabled)
 
     app.MapPost("/runs", (RunCreateRequest? req, RunRegistry runRegistry) =>
     {
-        var run = runRegistry.CreateRun(req?.RunId, req?.Title);
+        var run = runRegistry.CreateRun(
+            req?.RunId, req?.Title, req?.Document, req?.BaseBranch, req?.BranchPrefix);
+
+        // Compute feature branch name for response
+        var slug = (run.Title ?? run.RunId).ToLowerInvariant();
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9\-]", "-");
+        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"-{2,}", "-").Trim('-');
+        var featureBranch = $"{run.BranchPrefix ?? "feat"}/{slug}";
+        runRegistry.UpdateFeatureBranch(run.RunId, featureBranch);
+
         return Results.Created($"/runs/{run.RunId}", new
         {
             runId = run.RunId,
             title = run.Title,
-            createdAt = run.CreatedAt
+            createdAt = run.CreatedAt,
+            status = "accepted",
+            featureBranch,
+            baseBranch = run.BaseBranch
         });
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapGet("/runs", (RunRegistry runRegistry) =>
+    {
+        var runs = runRegistry.ListRuns();
+        return Results.Ok(runs.Select(r => new
+        {
+            runId = r.RunId,
+            title = r.Title,
+            createdAt = r.CreatedAt,
+            status = r.Status ?? "accepted",
+            featureBranch = r.FeatureBranch
+        }));
+    }).AddEndpointFilter(requireApiKey);
+
+    app.MapPost("/runs/{runId}/done", (string runId, RunRegistry runRegistry) =>
+    {
+        var run = runRegistry.GetRun(runId);
+        if (run is null)
+        {
+            return Results.NotFound(new { error = "run not found", runId });
+        }
+
+        runRegistry.MarkDone(runId);
+        return Results.Ok(new { runId, status = "done" });
     }).AddEndpointFilter(requireApiKey);
 
     app.MapGet("/runs/{runId}", (

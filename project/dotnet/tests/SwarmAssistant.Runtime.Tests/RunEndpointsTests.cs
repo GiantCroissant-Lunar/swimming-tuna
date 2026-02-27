@@ -66,6 +66,80 @@ public sealed class RunEndpointsTests
         Assert.Equal("First", stored!.Title);
     }
 
+    [Fact]
+    public void RunRegistry_CreateRun_WithDocumentAndBranch()
+    {
+        var registry = new RunRegistry();
+        var run = registry.CreateRun(
+            title: "RFC-014",
+            document: "# RFC-014 design doc",
+            baseBranch: "develop",
+            branchPrefix: "feat");
+
+        Assert.Equal("RFC-014", run.Title);
+        Assert.Equal("# RFC-014 design doc", run.Document);
+        Assert.Equal("develop", run.BaseBranch);
+        Assert.Equal("feat", run.BranchPrefix);
+        Assert.Equal("accepted", run.Status);
+    }
+
+    [Fact]
+    public void RunRegistry_CreateRun_DefaultsBranchFields()
+    {
+        var registry = new RunRegistry();
+        var run = registry.CreateRun(title: "Test Run");
+
+        Assert.Equal("main", run.BaseBranch);
+        Assert.Equal("feat", run.BranchPrefix);
+    }
+
+    [Fact]
+    public void RunRegistry_ListRuns_ReturnsAllRuns()
+    {
+        var registry = new RunRegistry();
+        registry.CreateRun(runId: "run-1", title: "First");
+        registry.CreateRun(runId: "run-2", title: "Second");
+
+        var runs = registry.ListRuns();
+
+        Assert.Equal(2, runs.Count);
+    }
+
+    [Fact]
+    public void RunRegistry_MarkDone_UpdatesStatus()
+    {
+        var registry = new RunRegistry();
+        registry.CreateRun(runId: "run-done", title: "Done Run");
+
+        var result = registry.MarkDone("run-done");
+
+        Assert.True(result);
+        var run = registry.GetRun("run-done");
+        Assert.Equal("done", run!.Status);
+    }
+
+    [Fact]
+    public void RunRegistry_MarkDone_ReturnsFalseForUnknown()
+    {
+        var registry = new RunRegistry();
+
+        var result = registry.MarkDone("run-unknown");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void RunRegistry_UpdateFeatureBranch_SetsField()
+    {
+        var registry = new RunRegistry();
+        registry.CreateRun(runId: "run-fb", title: "FB Run");
+
+        registry.UpdateFeatureBranch("run-fb", "feat/rfc-014");
+
+        var run = registry.GetRun("run-fb");
+        Assert.Equal("feat/rfc-014", run!.FeatureBranch);
+    }
+
     // TaskRegistry.GetTasksByRunId tests
 
     [Fact]
