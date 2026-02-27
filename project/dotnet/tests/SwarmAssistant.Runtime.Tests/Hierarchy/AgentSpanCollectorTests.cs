@@ -320,10 +320,11 @@ public sealed class AgentSpanCollectorTests
 
         await Task.WhenAll(tasks);
 
-        foreach (var spanId in spanIds)
-        {
-            collector.CompleteSpan(spanId, AgentSpanStatus.Completed);
-        }
+        var completionTasks = spanIds
+            .Select(spanId => Task.Run(() =>
+                collector.CompleteSpan(spanId, AgentSpanStatus.Completed)))
+            .ToList();
+        await Task.WhenAll(completionTasks);
 
         var flat = collector.GetFlat("task-1");
         flat.Should().HaveCount(50);
