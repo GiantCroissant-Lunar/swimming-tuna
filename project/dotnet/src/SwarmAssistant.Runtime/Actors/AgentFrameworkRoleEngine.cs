@@ -1,10 +1,20 @@
 using System.Diagnostics;
 using Microsoft.Agents.AI.Workflows;
+using SwarmAssistant.Contracts.Hierarchy;
+using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
+using ExecutionTokenUsage = SwarmAssistant.Runtime.Execution.TokenUsage;
 using SwarmAssistant.Runtime.Execution;
+using SwarmAssistant.Runtime.Hierarchy;
 using SwarmAssistant.Runtime.Telemetry;
 
 namespace SwarmAssistant.Runtime.Actors;
+
+internal sealed record RoleExecutionResult(
+    CliRoleExecutionResult Result,
+    Contracts.Hierarchy.TokenUsage? Usage,
+    decimal? CostUsd,
+    string? AdapterId);
 
 public sealed class AgentFrameworkRoleEngine
 {
@@ -13,6 +23,7 @@ public sealed class AgentFrameworkRoleEngine
     private readonly RoleModelMapping _roleModelMapping;
     private readonly IReadOnlyDictionary<string, IModelProvider> _modelProviders;
     private readonly RuntimeTelemetry _telemetry;
+    private readonly AgentSpanCollector _spanCollector;
     private readonly ILogger _logger;
 
     public AgentFrameworkRoleEngine(
@@ -30,6 +41,7 @@ public sealed class AgentFrameworkRoleEngine
                 provider => provider,
                 StringComparer.OrdinalIgnoreCase);
         _telemetry = telemetry;
+        _spanCollector = new AgentSpanCollector();
         _logger = loggerFactory.CreateLogger<AgentFrameworkRoleEngine>();
     }
 
@@ -46,9 +58,23 @@ public sealed class AgentFrameworkRoleEngine
                 ["agent.framework.mode"] = mode,
             });
 
+        var spanKind = ResolveSpanKindForExecution(mode, command.Role);
+        var span = _spanCollector.StartSpan(
+            command.TaskId,
+            command.RunId,
+            command.Role,
+            spanKind,
+            null,
+            null);
+
+        CliRoleExecutionResult? result = null;
+        Contracts.Hierarchy.TokenUsage? usage = null;
+        decimal? costUsd = null;
+        string? adapterId = null;
+
         try
         {
-            return mode switch
+            var executionResult = mode switch
             {
                 "in-process-workflow" => await ExecuteInProcessWorkflowAsync(command, activity, cancellationToken),
                 "subscription-cli-fallback" => await ExecuteSubscriptionCliAsync(command, activity, cancellationToken),
@@ -57,15 +83,49 @@ public sealed class AgentFrameworkRoleEngine
                 _ => throw new InvalidOperationException(
                     $"Unsupported AgentFrameworkExecutionMode '{_options.AgentFrameworkExecutionMode}'.")
             };
+
+            result = executionResult.Result;
+            usage = executionResult.Usage;
+            costUsd = executionResult.CostUsd;
+            adapterId = executionResult.AdapterId;
+
+            return result;
         }
         catch (Exception exception)
         {
             activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            _spanCollector.CompleteSpan(span.SpanId, AgentSpanStatus.Failed);
             throw;
+        }
+        finally
+        {
+            if (result is not null)
+            {
+                _spanCollector.CompleteSpan(span.SpanId, AgentSpanStatus.Completed, usage, costUsd, adapterId);
+            }
         }
     }
 
-    private async Task<CliRoleExecutionResult> ExecuteInProcessWorkflowAsync(
+    private AgentSpanKind ResolveSpanKindForExecution(string mode, SwarmRole role)
+    {
+        return mode switch
+        {
+            "in-process-workflow" => AgentSpanKind.CliAgent,
+            "subscription-cli-fallback" => AgentSpanKind.CliAgent,
+            "api-direct" => AgentSpanKind.ApiAgent,
+            "hybrid" => WillHybridUseApiDirect(role) ? AgentSpanKind.ApiAgent : AgentSpanKind.CliAgent,
+            _ => AgentSpanKind.CliAgent
+        };
+    }
+
+    private bool WillHybridUseApiDirect(SwarmRole role)
+    {
+        var resolvedRoleModel = _roleModelMapping.Resolve(role);
+        return resolvedRoleModel is not null &&
+            _modelProviders.ContainsKey(resolvedRoleModel.Model.Provider);
+    }
+
+    private async Task<RoleExecutionResult> ExecuteInProcessWorkflowAsync(
         ExecuteRoleTask command,
         Activity? activity,
         CancellationToken cancellationToken)
@@ -117,10 +177,14 @@ public sealed class AgentFrameworkRoleEngine
             command.Role,
             command.TaskId);
 
-        return new CliRoleExecutionResult(output, executor.LastAdapterId ?? string.Empty);
+        return new RoleExecutionResult(
+            new CliRoleExecutionResult(output, executor.LastAdapterId ?? string.Empty),
+            null,
+            null,
+            executor.LastAdapterId);
     }
 
-    private async Task<CliRoleExecutionResult> ExecuteSubscriptionCliAsync(
+    private async Task<RoleExecutionResult> ExecuteSubscriptionCliAsync(
         ExecuteRoleTask command,
         Activity? activity,
         CancellationToken cancellationToken)
@@ -146,10 +210,14 @@ public sealed class AgentFrameworkRoleEngine
             command.TaskId,
             result.Model?.Id ?? "(default)");
 
-        return result;
+        return new RoleExecutionResult(
+            result,
+            null,
+            null,
+            result.AdapterId);
     }
 
-    private async Task<CliRoleExecutionResult> ExecuteApiDirectAsync(
+    private async Task<RoleExecutionResult> ExecuteApiDirectAsync(
         ExecuteRoleTask command,
         Activity? activity,
         CancellationToken cancellationToken)
@@ -180,11 +248,16 @@ public sealed class AgentFrameworkRoleEngine
         {
             activity?.SetTag("gen_ai.request.reasoning", resolvedRoleModel.Reasoning);
         }
+        var cost = CalculateCostUsd(resolvedRoleModel.Model, response.Usage);
+
         activity?.SetTag("gen_ai.usage.input_tokens", response.Usage.InputTokens);
         activity?.SetTag("gen_ai.usage.output_tokens", response.Usage.OutputTokens);
         activity?.SetTag("gen_ai.usage.cache_read_tokens", response.Usage.CacheReadTokens);
         activity?.SetTag("gen_ai.usage.cache_write_tokens", response.Usage.CacheWriteTokens);
-        activity?.SetTag("gen_ai.usage.cost_usd", CalculateCostUsd(resolvedRoleModel.Model, response.Usage));
+        if (cost.HasValue)
+        {
+            activity?.SetTag("gen_ai.usage.cost_usd", cost.Value);
+        }
         activity?.SetTag("gen_ai.request.messages",
             prompt.Length > 10000 ? prompt[..10000] + "...[truncated]" : prompt);
         activity?.SetTag("gen_ai.response.content",
@@ -199,14 +272,31 @@ public sealed class AgentFrameworkRoleEngine
             command.TaskId,
             resolvedRoleModel.Model.Id);
 
-        return new CliRoleExecutionResult(
-            response.Output,
-            AdapterId: $"api-{provider.ProviderId}",
-            Model: resolvedRoleModel.Model,
-            Reasoning: resolvedRoleModel.Reasoning);
+        var usage = ConvertTokenUsage(response.Usage);
+
+        return new RoleExecutionResult(
+            new CliRoleExecutionResult(
+                response.Output,
+                AdapterId: $"api-{provider.ProviderId}",
+                Model: resolvedRoleModel.Model,
+                Reasoning: resolvedRoleModel.Reasoning),
+            usage,
+            cost,
+            $"api-{provider.ProviderId}");
     }
 
-    private async Task<CliRoleExecutionResult> ExecuteHybridAsync(
+    private static Contracts.Hierarchy.TokenUsage ConvertTokenUsage(ExecutionTokenUsage usage)
+    {
+        return new Contracts.Hierarchy.TokenUsage
+        {
+            InputTokens = usage.InputTokens,
+            OutputTokens = usage.OutputTokens,
+            CacheReadTokens = usage.CacheReadTokens > 0 ? usage.CacheReadTokens : null,
+            CacheWriteTokens = usage.CacheWriteTokens > 0 ? usage.CacheWriteTokens : null
+        };
+    }
+
+    private async Task<RoleExecutionResult> ExecuteHybridAsync(
         ExecuteRoleTask command,
         Activity? activity,
         CancellationToken cancellationToken)
@@ -282,7 +372,7 @@ public sealed class AgentFrameworkRoleEngine
         return providers;
     }
 
-    private decimal CalculateCostUsd(ModelSpec model, TokenUsage usage)
+    private decimal? CalculateCostUsd(ModelSpec model, ExecutionTokenUsage usage)
     {
         var cost = model.Cost;
         if (cost.InputPerMillionTokens == 0m &&
@@ -290,9 +380,9 @@ public sealed class AgentFrameworkRoleEngine
             cost.CacheReadPerMillionTokens == 0m)
         {
             _logger.LogWarning(
-                "Cost data unavailable for model={ModelId}; reporting unknown cost sentinel.",
+                "Cost data unavailable for model={ModelId}; reporting unknown cost.",
                 model.Id);
-            return -1m;
+            return null;
         }
 
         var inputCost = (usage.InputTokens / 1_000_000m) * cost.InputPerMillionTokens;
