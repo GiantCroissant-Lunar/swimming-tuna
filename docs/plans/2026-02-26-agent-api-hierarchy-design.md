@@ -1,7 +1,7 @@
 # Agent API, Hierarchy & Run Orchestration — Design
 
 **Date:** 2026-02-26 (updated 2026-02-27)
-**RFCs:** RFC-011, RFC-012, RFC-013, RFC-014, RFC-015
+**RFCs:** RFC-011, RFC-012, RFC-013, RFC-014, RFC-015, RFC-016
 
 ## Context
 
@@ -10,10 +10,10 @@ swarm treats each agent as a black box — sub-agents spawned internally are
 invisible. Additionally, the run lifecycle (accept design doc → decompose →
 execute → merge → PR) is entirely manual, performed by the gatekeeper.
 
-This design covers five RFCs that build the full agent hierarchy — from data
-model to orchestration to observability.
+This design covers six RFCs that build the full agent hierarchy — from data
+model to orchestration to observability to usage analytics.
 
-## Five RFCs
+## Six RFCs
 
 ### RFC-011: API-Direct Activation & Native Providers (Done)
 - `AnthropicModelProvider` (native Messages API)
@@ -45,19 +45,29 @@ model to orchestration to observability.
 - Nested Langfuse spans mapped from `AgentSpan` tree
 - Godot `agent-hierarchy` A2UI payload for RFC-008 Layer 5
 
+### RFC-016: Provider Quota Awareness & Usage Analytics (Draft)
+- `ProviderQuota` — capture rate limit headers from API responses
+- `ProviderQuotaTracker` — store and query remaining capacity per provider
+- Quota-aware soft dispatch ranking in `AgentRegistryActor`
+- Actual token counts preferred over estimation in `BudgetEnvelope`
+- Per-run usage summaries (`GET /a2a/runs/{runId}/usage`)
+- Cross-run trends persisted to `.swarm/analytics/` (`GET /a2a/analytics/usage`)
+
 ## Implementation Order
 
 ```
-RFC-011 (done) → RFC-012 (done) → RFC-013 → RFC-014 → RFC-015
+RFC-011 (done) → RFC-012 (done) → RFC-013 → RFC-014 → RFC-015 → RFC-016
                                       │
                                       ├── RFC-014 (doing the work)
-                                      └── RFC-015 (observing the work)
+                                      ├── RFC-015 (observing the work)
+                                      └── RFC-016 (measuring the work)
 ```
 
 RFC-013 first: shared data model unlocks both others.
 RFC-014 next: highest practical value — automates the manual gatekeeper workflow.
-RFC-015 last: observability polish, independent from RFC-014.
-RFC-014 and RFC-015 can be parallelized after RFC-013 lands.
+RFC-015: observability — independent from RFC-014.
+RFC-016: usage analytics — builds on RFC-013 spans + RFC-007 budget.
+RFC-014, RFC-015, and RFC-016 can be parallelized after RFC-013 lands.
 
 ## Full Hierarchy Mental Model
 
