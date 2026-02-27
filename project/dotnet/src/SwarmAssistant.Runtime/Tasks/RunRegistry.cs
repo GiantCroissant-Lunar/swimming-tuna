@@ -45,20 +45,33 @@ public sealed class RunRegistry
 
     public bool MarkDone(string runId)
     {
-        if (!_runs.TryGetValue(runId, out var entry))
+        while (true)
         {
-            return false;
-        }
+            if (!_runs.TryGetValue(runId, out var entry))
+            {
+                return false;
+            }
 
-        _runs.TryUpdate(runId, entry with { Status = "done" }, entry);
-        return true;
+            if (_runs.TryUpdate(runId, entry with { Status = "done" }, entry))
+            {
+                return true;
+            }
+        }
     }
 
     public void UpdateFeatureBranch(string runId, string featureBranch)
     {
-        if (_runs.TryGetValue(runId, out var entry))
+        while (true)
         {
-            _runs.TryUpdate(runId, entry with { FeatureBranch = featureBranch }, entry);
+            if (!_runs.TryGetValue(runId, out var entry))
+            {
+                return;
+            }
+
+            if (_runs.TryUpdate(runId, entry with { FeatureBranch = featureBranch }, entry))
+            {
+                return;
+            }
         }
     }
 }

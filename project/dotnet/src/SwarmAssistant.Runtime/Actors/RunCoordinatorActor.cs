@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Akka.Actor;
 using Microsoft.Extensions.Options;
 using SwarmAssistant.Contracts.Hierarchy;
@@ -135,6 +134,12 @@ public sealed class RunCoordinatorActor : ReceiveActor
         Receive<RunMarkDone>(HandleRunMarkDone);
 
         EmitRunEvent("agui.run.accepted", new { runId, title });
+    }
+
+    protected override void PostStop()
+    {
+        _mergeLock.Dispose();
+        base.PostStop();
     }
 
     protected override SupervisorStrategy SupervisorStrategy()
@@ -326,6 +331,12 @@ public sealed class RunCoordinatorActor : ReceiveActor
             return;
         }
 
+        // Prevent double-trigger if already transitioning
+        if (_status >= RunSpanStatus.ReadyForPr)
+        {
+            return;
+        }
+
         // All tasks are in terminal state
         if (_featureBranch is not null)
         {
@@ -485,12 +496,7 @@ public sealed class RunCoordinatorActor : ReceiveActor
     public string? FeatureBranch => _featureBranch;
 
     private static string ComputeBranchSlug(string input)
-    {
-        var lower = input.ToLowerInvariant();
-        var sanitized = Regex.Replace(lower, @"[^a-z0-9\-]", "-");
-        var collapsed = Regex.Replace(sanitized, @"-{2,}", "-");
-        return collapsed.Trim('-');
-    }
+        => WorkspaceBranchManager.ComputeBranchSlug(input);
 
     private void LogRunProgress()
     {

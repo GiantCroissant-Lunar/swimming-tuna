@@ -30,6 +30,18 @@ public sealed partial class WorkspaceBranchManager
     }
 
     /// <summary>
+    /// Computes a URL-safe branch slug from arbitrary input text.
+    /// Lowercases, replaces non-alphanumeric chars with hyphens, collapses runs, trims.
+    /// </summary>
+    public static string ComputeBranchSlug(string input)
+    {
+        var lower = input.ToLowerInvariant();
+        var sanitized = Regex.Replace(lower, @"[^a-z0-9\-]", "-");
+        var collapsed = Regex.Replace(sanitized, @"-{2,}", "-");
+        return collapsed.Trim('-');
+    }
+
+    /// <summary>
     /// Creates an isolated git worktree for the task. Returns the absolute worktree path
     /// on success, or <c>null</c> when disabled or if the git command fails.
     /// This method never throws.

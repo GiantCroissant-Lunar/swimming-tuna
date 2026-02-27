@@ -817,9 +817,7 @@ if (options.A2AEnabled)
             req?.RunId, req?.Title, req?.Document, req?.BaseBranch, req?.BranchPrefix);
 
         // Compute feature branch name for response
-        var slug = (run.Title ?? run.RunId).ToLowerInvariant();
-        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"[^a-z0-9\-]", "-");
-        slug = System.Text.RegularExpressions.Regex.Replace(slug, @"-{2,}", "-").Trim('-');
+        var slug = SwarmAssistant.Runtime.Execution.WorkspaceBranchManager.ComputeBranchSlug(run.Title ?? run.RunId);
         var featureBranch = $"{run.BranchPrefix ?? "feat"}/{slug}";
         runRegistry.UpdateFeatureBranch(run.RunId, featureBranch);
 
