@@ -76,6 +76,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
                 "pi",
                 ["--print", "--prompt", "{{prompt}}"],
                 ["error: no api key", "error: authentication"],
+                ProviderFlag: "--provider",
                 ModelFlag: "--model",
                 ReasoningFlag: "--thinking"),
             ["local-echo"] = new(
@@ -477,6 +478,13 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
 
         if (!string.IsNullOrWhiteSpace(adapter.ModelFlag))
         {
+            if (!string.IsNullOrWhiteSpace(adapter.ProviderFlag) &&
+                !string.IsNullOrWhiteSpace(resolvedRoleModel.Model.Provider))
+            {
+                executeArgs.Add(adapter.ProviderFlag);
+                executeArgs.Add(resolvedRoleModel.Model.Provider);
+            }
+
             executeArgs.Add(adapter.ModelFlag);
             executeArgs.Add(resolvedRoleModel.Model.Id);
         }
@@ -665,6 +673,7 @@ internal sealed class SubscriptionCliRoleExecutor : IDisposable
         string[] ExecuteArgs,
         string[] RejectOutputSubstrings,
         bool IsInternal = false,
+        string? ProviderFlag = null,
         string? ModelFlag = null,
         string? ModelEnvVar = null,
         string? ModeFlag = null,

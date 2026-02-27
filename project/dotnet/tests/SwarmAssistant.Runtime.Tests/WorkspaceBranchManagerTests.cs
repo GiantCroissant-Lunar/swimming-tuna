@@ -53,6 +53,16 @@ public sealed class WorkspaceBranchManagerTests
     }
 
     [Fact]
+    public async Task EnsureWorktree_WithParentBranch_WhenDisabled_ReturnsNull()
+    {
+        var manager = new WorkspaceBranchManager(enabled: false, worktreeIsolation: true);
+
+        var result = await manager.EnsureWorktreeAsync("task-abc-123", "main");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task RemoveWorktree_WhenDisabled_DoesNotThrow()
     {
         var manager = new WorkspaceBranchManager(enabled: false, worktreeIsolation: true);

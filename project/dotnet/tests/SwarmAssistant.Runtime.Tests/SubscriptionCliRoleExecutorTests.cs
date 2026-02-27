@@ -181,6 +181,7 @@ public sealed class SubscriptionCliRoleExecutorTests
         var executeCommandProperty = adapterType.GetProperty("ExecuteCommand");
         var executeArgsProperty = adapterType.GetProperty("ExecuteArgs");
         var rejectOutputSubstringsProperty = adapterType.GetProperty("RejectOutputSubstrings");
+        var providerFlagProperty = adapterType.GetProperty("ProviderFlag");
         var modelFlagProperty = adapterType.GetProperty("ModelFlag");
         var reasoningFlagProperty = adapterType.GetProperty("ReasoningFlag");
         var isInternalProperty = adapterType.GetProperty("IsInternal");
@@ -202,9 +203,47 @@ public sealed class SubscriptionCliRoleExecutorTests
         Assert.NotNull(rejectOutputSubstrings);
         Assert.Equal(["error: no api key", "error: authentication"], rejectOutputSubstrings!);
 
+        Assert.Equal("--provider", providerFlagProperty?.GetValue(piAdapter));
         Assert.Equal("--model", modelFlagProperty?.GetValue(piAdapter));
         Assert.Equal("--thinking", reasoningFlagProperty?.GetValue(piAdapter));
         Assert.Equal(false, isInternalProperty?.GetValue(piAdapter));
+    }
+
+    [Fact]
+    public void ApplyModelExecutionHints_ForPi_IncludesProviderAndModel()
+    {
+        var adapterDefinitionsField = typeof(SubscriptionCliRoleExecutor)
+            .GetField("AdapterDefinitions", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(adapterDefinitionsField);
+
+        var adapterDefinitions = adapterDefinitionsField?.GetValue(null);
+        Assert.NotNull(adapterDefinitions);
+
+        var indexer = adapterDefinitions!.GetType().GetProperty("Item");
+        Assert.NotNull(indexer);
+
+        var piAdapter = indexer!.GetValue(adapterDefinitions, ["pi"]);
+        Assert.NotNull(piAdapter);
+
+        var applyHintsMethod = typeof(SubscriptionCliRoleExecutor)
+            .GetMethod("ApplyModelExecutionHints", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(applyHintsMethod);
+
+        var executeArgs = new List<string>();
+        var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var resolvedModel = new ResolvedRoleModel(
+            new ModelSpec
+            {
+                Provider = "zai",
+                Id = "glm-4.7",
+                DisplayName = "glm-4.7"
+            },
+            "high");
+
+        applyHintsMethod!.Invoke(null, [piAdapter, SwarmRole.Planner, resolvedModel, executeArgs, environment]);
+
+        Assert.Equal(["--provider", "zai", "--model", "glm-4.7", "--thinking", "high"], executeArgs);
+        Assert.Empty(environment);
     }
 
     [Fact]

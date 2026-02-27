@@ -1,5 +1,7 @@
 using Akka.Actor;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
+using System.Text;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
@@ -50,6 +52,8 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly Dictionary<string, IActorRef> _parentCoordinators = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _childParentTaskIds = new(StringComparer.Ordinal);
     private readonly Dictionary<IActorRef, string> _spawnedAgentIds = new();
+    private readonly Dictionary<string, IActorRef> _runCoordinators = new(StringComparer.Ordinal);
+    private readonly Dictionary<IActorRef, string> _runCoordinatorRunIds = new();
 
     private const int DefaultMaxRetries = 2;
 
@@ -185,6 +189,75 @@ public sealed class DispatcherActor : ReceiveActor
             return;
         }
 
+        // If task is associated with a run, delegate to RunCoordinatorActor
+        if (!string.IsNullOrWhiteSpace(runId))
+        {
+            HandleRunScopedTaskAssigned(message, runId);
+            return;
+        }
+
+        // Otherwise, create TaskCoordinatorActor directly
+        HandleStandaloneTaskAssigned(message);
+    }
+
+    private void HandleRunScopedTaskAssigned(TaskAssigned message, string runId)
+    {
+        if (_runCoordinators.TryGetValue(runId, out var runCoordinator))
+        {
+            // Existing RunCoordinatorActor - forward task
+            runCoordinator.Tell(message);
+            _logger.LogInformation(
+                "Forwarded run-scoped task to existing coordinator taskId={TaskId} runId={RunId}",
+                message.TaskId, runId);
+            return;
+        }
+
+        // Create new RunCoordinatorActor for this run
+        var goapPlanner = new GoapPlanner(SwarmActions.All);
+
+        var actorName = BuildRunCoordinatorActorName(runId);
+        runCoordinator = Context.ActorOf(
+            Props.Create(() => new RunCoordinatorActor(
+                runId,
+                null,
+                _workerActor,
+                _reviewerActor,
+                _supervisorActor,
+                _blackboardActor,
+                _consensusActor,
+                _roleEngine,
+                goapPlanner,
+                _loggerFactory,
+                _telemetry,
+                _uiEvents,
+                _taskRegistry,
+                Options.Create(_options),
+                _outcomeTracker,
+                _strategyAdvisorActor,
+                _eventRecorder,
+                _codeIndexActor,
+                _projectContext,
+                _workspaceBranchManager,
+                _buildVerifier,
+                _sandboxEnforcer,
+                _langfuseScoreWriter,
+                _memvidClient,
+                _langfuseSimilarityQuery,
+                _skillMatcher)),
+            actorName);
+
+        _runCoordinators[runId] = runCoordinator;
+        _runCoordinatorRunIds[runCoordinator] = runId;
+        Context.Watch(runCoordinator);
+
+        _logger.LogInformation(
+            "Created RunCoordinatorActor for runId={RunId}", runId);
+
+        runCoordinator.Tell(message);
+    }
+
+    private void HandleStandaloneTaskAssigned(TaskAssigned message)
+    {
         _taskRegistry.Register(message);
 
         RecordTaskSubmitted(message.TaskId, message.Title);
@@ -384,6 +457,16 @@ public sealed class DispatcherActor : ReceiveActor
             return;
         }
 
+        // Handle RunCoordinatorActor termination
+        if (_runCoordinatorRunIds.TryGetValue(message.ActorRef, out var runId))
+        {
+            _runCoordinators.Remove(runId);
+            _runCoordinatorRunIds.Remove(message.ActorRef);
+            _logger.LogInformation(
+                "RunCoordinatorActor terminated runId={RunId}", runId);
+            return;
+        }
+
         if (!_coordinatorTaskIds.TryGetValue(message.ActorRef, out var taskId))
         {
             return;
@@ -440,5 +523,37 @@ public sealed class DispatcherActor : ReceiveActor
 
         var registeredRunId = _taskRegistry.GetTask(taskId)?.RunId;
         _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, registeredRunId, title);
+    }
+
+    private static string BuildRunCoordinatorActorName(string runId)
+    {
+        var sanitizedRunId = SanitizeActorNamePart(runId);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(runId))[..4]).ToLowerInvariant();
+        return $"run-{sanitizedRunId}-{hash}";
+    }
+
+    private static string SanitizeActorNamePart(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            if (char.IsLetterOrDigit(character) || character is '-' or '_' or '.')
+            {
+                builder.Append(character);
+            }
+            else
+            {
+                builder.Append('-');
+            }
+        }
+
+        var sanitized = builder.ToString().Trim('-');
+        if (string.IsNullOrWhiteSpace(sanitized))
+        {
+            return "run";
+        }
+
+        const int maxLength = 48;
+        return sanitized.Length <= maxLength ? sanitized : sanitized[..maxLength];
     }
 }

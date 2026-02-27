@@ -203,5 +203,5 @@ Run end-to-end persistence verification:
 Update `config/swarm.config.json` command templates to match your installed tools.
 
 - `copilot` uses the modern `copilot --prompt ...` flow.
-- `cline` and `kimi` are configurable command adapters.
+- `cline`, `kimi`, `kilo`, and `pi` are configurable command adapters.
 - No provider API key integration is implemented in this MVP by design.

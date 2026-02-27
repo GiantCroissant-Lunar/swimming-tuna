@@ -4,13 +4,14 @@ namespace SwarmAssistant.Contracts.Messaging;
 
 public enum SwarmRole
 {
-    Planner,
-    Builder,
-    Reviewer,
-    Orchestrator,
-    Researcher,
-    Debugger,
-    Tester
+    Planner = 0,
+    Builder = 1,
+    Reviewer = 2,
+    Orchestrator = 3,
+    Researcher = 4,
+    Debugger = 5,
+    Tester = 6,
+    Decomposer = 7
 }
 
 public sealed record TaskAssigned(

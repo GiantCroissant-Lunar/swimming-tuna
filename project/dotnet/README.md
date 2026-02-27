@@ -47,6 +47,7 @@ export Runtime__LangfuseOtlpEndpoint=http://localhost:3000/api/public/otel/v1/tr
 - `cline`
 - `kimi`
 - `kilo`
+- `pi`
 - `local-echo` (deterministic fallback)
 - Local profile defaults to `subscription-cli-fallback` with `SandboxMode=host`.
   > **⚠️ Security note:** `SandboxMode=host` executes adapter CLI commands directly on your
@@ -69,10 +70,10 @@ export Runtime__DockerSandboxWrapper__Args__4=-lc
 export Runtime__DockerSandboxWrapper__Args__5={{command}} {{args_joined}}
 ```
 
-### Kimi + Kilo Dogfood Profile
+### Pi + Z.AI Dogfood Profile
 
-Use the `Dogfood` environment profile to run the swarm with Kimi/Kilo only
-(`CliAdapterOrder=["kimi","kilo"]`, no `local-echo` fallback):
+Use the `Dogfood` environment profile to run the swarm with pi first
+(`CliAdapterOrder=["pi","kilo","kimi"]`, no `local-echo` fallback):
 
 ```bash
 DOTNET_ENVIRONMENT=Dogfood dotnet run --project project/dotnet/src/SwarmAssistant.Runtime --no-launch-profile
@@ -80,8 +81,13 @@ DOTNET_ENVIRONMENT=Dogfood dotnet run --project project/dotnet/src/SwarmAssistan
 
 Prerequisites:
 
-- `kimi` and `kilo` CLIs installed and on `PATH`
-- both CLIs authenticated (`kimi --prompt "ping"` and `kilo run "ping" --auto`)
+- `pi`, `kimi`, and `kilo` CLIs installed and on `PATH`
+- run `task setup:pi:zai` once to set the z.ai coding provider URL in `~/.pi/agent/models.json`
+- set the z.ai key in your shell:
+  - `export ZAI_API_KEY=<your-key>`
+- verify pi can reach z.ai GLM-4.7:
+  - `pi --provider zai --model glm-4.7 -p "ping"`
+- ensure `RoleModelMapping` includes `Orchestrator` (otherwise pi may fallback to another adapter for orchestration decisions)
 
 ### RFC-010 Model Mapping (Initial)
 
