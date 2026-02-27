@@ -254,7 +254,10 @@ public sealed class AgentFrameworkRoleEngine
         activity?.SetTag("gen_ai.usage.output_tokens", response.Usage.OutputTokens);
         activity?.SetTag("gen_ai.usage.cache_read_tokens", response.Usage.CacheReadTokens);
         activity?.SetTag("gen_ai.usage.cache_write_tokens", response.Usage.CacheWriteTokens);
-        activity?.SetTag("gen_ai.usage.cost_usd", cost);
+        if (cost.HasValue)
+        {
+            activity?.SetTag("gen_ai.usage.cost_usd", cost.Value);
+        }
         activity?.SetTag("gen_ai.request.messages",
             prompt.Length > 10000 ? prompt[..10000] + "...[truncated]" : prompt);
         activity?.SetTag("gen_ai.response.content",
@@ -369,7 +372,7 @@ public sealed class AgentFrameworkRoleEngine
         return providers;
     }
 
-    private decimal CalculateCostUsd(ModelSpec model, ExecutionTokenUsage usage)
+    private decimal? CalculateCostUsd(ModelSpec model, ExecutionTokenUsage usage)
     {
         var cost = model.Cost;
         if (cost.InputPerMillionTokens == 0m &&
@@ -377,9 +380,9 @@ public sealed class AgentFrameworkRoleEngine
             cost.CacheReadPerMillionTokens == 0m)
         {
             _logger.LogWarning(
-                "Cost data unavailable for model={ModelId}; reporting unknown cost sentinel.",
+                "Cost data unavailable for model={ModelId}; reporting unknown cost.",
                 model.Id);
-            return -1m;
+            return null;
         }
 
         var inputCost = (usage.InputTokens / 1_000_000m) * cost.InputPerMillionTokens;
