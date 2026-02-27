@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Collections.Generic;
 
 namespace SwarmAssistant.Runtime.Execution;
 
@@ -31,7 +32,9 @@ public sealed partial class WorkspaceBranchManager
     /// on success, or <c>null</c> when disabled or if the git command fails.
     /// This method never throws.
     /// </summary>
-    public async Task<string?> EnsureWorktreeAsync(string taskId)
+    /// <param name="taskId">The task identifier used to generate the branch name.</param>
+    /// <param name="parentBranch">Optional parent branch to base the worktree on. Defaults to current HEAD if null.</param>
+    public async Task<string?> EnsureWorktreeAsync(string taskId, string? parentBranch = null)
     {
         if (!_enabled || !_worktreeIsolation)
         {
@@ -49,12 +52,17 @@ public sealed partial class WorkspaceBranchManager
 
         try
         {
-            var result = await RunGitAsync(["worktree", "add", worktreePath, "-b", branchName]);
+            var args = new List<string> { "worktree", "add", worktreePath, "-b", branchName };
+            if (!string.IsNullOrWhiteSpace(parentBranch))
+            {
+                args.Add(parentBranch);
+            }
+            var result = await RunGitAsync(args.ToArray());
             if (result.ExitCode == 0)
             {
                 _logger?.LogInformation(
-                    "Worktree created path={WorktreePath} branch={Branch} taskId={TaskId}",
-                    worktreePath, branchName, taskId);
+                    "Worktree created path={WorktreePath} branch={Branch} parentBranch={ParentBranch} taskId={TaskId}",
+                    worktreePath, branchName, parentBranch ?? "HEAD", taskId);
                 return worktreePath;
             }
 

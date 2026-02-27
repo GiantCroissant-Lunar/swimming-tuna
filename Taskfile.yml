@@ -267,7 +267,22 @@ tasks:
     cmds:
       - python .agent/tools/sync.py --adapter kiro
 
+  setup:pi:kimi:
+    desc: Configure pi Kimi provider override (base URL) in ~/.pi/agent/models.json
+    cmds:
+      - bash scripts/setup-pi-kimi.sh
+
+  setup:pi:zai:
+    desc: Configure pi z.ai provider override (coding endpoint) in ~/.pi/agent/models.json
+    cmds:
+      - bash scripts/setup-pi-zai.sh
+
   dogfood:diagnostic:
     desc: Run dogfood diagnostic (submits real task, traces pipeline)
     cmds:
       - bash scripts/dogfood-diagnostic.sh {{.CLI_ARGS}}
+
+  dogfood:rfc014:
+    desc: Kick off RFC-014 run and submit the implementation task set
+    cmds:
+      - bash scripts/dogfood-rfc014.sh {{.CLI_ARGS}}

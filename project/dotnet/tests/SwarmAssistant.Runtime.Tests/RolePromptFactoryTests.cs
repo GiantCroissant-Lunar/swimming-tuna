@@ -239,4 +239,28 @@ public sealed class RolePromptFactoryTests
         var orchestratorPrompt = RolePromptFactory.BuildPrompt(orchestratorTask, strategyAdvice: null, codeContext: null, projectContext: null, matchedSkills: skills);
         Assert.DoesNotContain("--- Agent Skills ---", orchestratorPrompt);
     }
+
+    [Fact]
+    public void Decomposer_GeneratesCorrectPrompt()
+    {
+        var task = new ExecuteRoleTask(
+            TaskId: "run-1",
+            Role: SwarmRole.Decomposer,
+            Title: "Implement RFC-012",
+            Description: "# RFC-012: Pi Adapter\n\nAdd support for Pi CLI adapter...",
+            PlanningOutput: null,
+            BuildOutput: null);
+
+        var prompt = RolePromptFactory.BuildPrompt(task);
+
+        Assert.Contains("decomposer agent", prompt);
+        Assert.Contains("Implement RFC-012", prompt);
+        Assert.Contains("## Document", prompt);
+        Assert.Contains("# RFC-012: Pi Adapter", prompt);
+        Assert.Contains("## Output Format", prompt);
+        Assert.Contains("ONLY a valid JSON array", prompt);
+        Assert.Contains("\"title\"", prompt);
+        Assert.Contains("\"description\"", prompt);
+        Assert.Contains("\"priority\"", prompt);
+    }
 }
