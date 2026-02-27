@@ -279,11 +279,16 @@ public sealed class RunCoordinatorActor : ReceiveActor
         // Merge gate: merge completed task branch into feature branch
         if (message.Status == TaskState.Done && _workspaceBranchManager is not null && _featureBranch is not null)
         {
+            // MergeTaskAsync calls CheckRunCompletion after merge settles
             _ = MergeTaskAsync(message.TaskId);
+            LogRunProgress();
         }
-
-        LogRunProgress();
-        CheckRunCompletion();
+        else
+        {
+            // No merge needed — check completion directly
+            LogRunProgress();
+            CheckRunCompletion();
+        }
     }
 
     private async Task MergeTaskAsync(string taskId)
@@ -292,15 +297,15 @@ public sealed class RunCoordinatorActor : ReceiveActor
         try
         {
             var result = await _workspaceBranchManager.MergeTaskBranchAsync(taskId, _featureBranch!);
+            _mergedTaskCount++;
+
             switch (result)
             {
                 case MergeResult.Success:
-                    _mergedTaskCount++;
                     EmitRunEvent("agui.run.task-merged", new { runId = _runId, taskId });
                     _logger.LogInformation(
                         "Task branch merged taskId={TaskId} into featureBranch={FeatureBranch} runId={RunId}",
                         taskId, _featureBranch, _runId);
-                    CheckRunCompletion();
                     break;
 
                 case MergeResult.Conflict:
@@ -322,6 +327,8 @@ public sealed class RunCoordinatorActor : ReceiveActor
                         taskId, _featureBranch, _runId);
                     break;
             }
+
+            CheckRunCompletion();
         }
         finally
         {
@@ -339,6 +346,12 @@ public sealed class RunCoordinatorActor : ReceiveActor
 
         // Prevent double-trigger if already transitioning
         if (_status >= RunSpanStatus.ReadyForPr)
+        {
+            return;
+        }
+
+        // Wait for all merges to settle before pushing feature branch
+        if (_featureBranch is not null && _mergedTaskCount < _completedTasks.Count)
         {
             return;
         }
