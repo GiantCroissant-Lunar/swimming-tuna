@@ -100,7 +100,7 @@ public sealed class AgentFrameworkRoleEngine
         {
             if (result is not null)
             {
-                var completedSpan = _spanCollector.CompleteSpan(span.SpanId, AgentSpanStatus.Completed, usage, costUsd);
+                _spanCollector.CompleteSpan(span.SpanId, AgentSpanStatus.Completed, usage, costUsd, adapterId);
             }
         }
     }

@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
-using SwarmAssistant.Contracts.Hierarchy;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Actors;
 using SwarmAssistant.Runtime.Configuration;
@@ -20,7 +19,7 @@ public sealed class AgentFrameworkRoleEngineTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_CliMode_StartsAndCompletesSpan()
+    public async Task ExecuteAsync_CliMode_ReturnsResult()
     {
         var options = new RuntimeOptions
         {
@@ -48,7 +47,7 @@ public sealed class AgentFrameworkRoleEngineTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_ApiDirectMode_StartsAndCompletesSpan()
+    public async Task ExecuteAsync_ApiDirectMode_ThrowsWhenProviderMissing()
     {
         var options = new RuntimeOptions
         {
@@ -73,14 +72,10 @@ public sealed class AgentFrameworkRoleEngineTests
             RunId: "run-1"
         );
 
-        try
-        {
-            await engine.ExecuteAsync(command, CancellationToken.None);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No model provider registered"))
-        {
-            // Expected - no provider configured
-        }
+        Func<Task> act = async () => await engine.ExecuteAsync(command, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*No model provider registered*");
     }
 
     [Fact]

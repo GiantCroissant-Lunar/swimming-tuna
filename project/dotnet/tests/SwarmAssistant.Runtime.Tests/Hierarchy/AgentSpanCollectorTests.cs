@@ -51,14 +51,15 @@ public sealed class AgentSpanCollectorTests
     }
 
     [Fact]
-    public void StartSpan_WithNonExistentParent_UsesLevelZero()
+    public void StartSpan_WithNonExistentParent_Throws()
     {
         var collector = new AgentSpanCollector();
 
-        var span = collector.StartSpan("task-1", "run-1", SwarmRole.Builder,
+        Action act = () => collector.StartSpan("task-1", "run-1", SwarmRole.Builder,
             AgentSpanKind.CliAgent, "non-existent-parent", "claude");
 
-        span.Level.Should().Be(0);
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*Parent span non-existent-parent not found*");
     }
 
     [Fact]
@@ -98,6 +99,22 @@ public sealed class AgentSpanCollectorTests
         completed.Usage.Should().Be(usage);
         completed.CostUsd.Should().Be(0.015m);
         completed.StartedAt.Should().Be(started.StartedAt);
+    }
+
+    [Fact]
+    public void CompleteSpan_WithAdapterId_UpdatesAgentAndAdapter()
+    {
+        var collector = new AgentSpanCollector();
+        var started = collector.StartSpan("task-1", "run-1", SwarmRole.Builder,
+            AgentSpanKind.CliAgent, null, null);
+
+        var completed = collector.CompleteSpan(
+            started.SpanId,
+            AgentSpanStatus.Completed,
+            adapterId: "kilo");
+
+        completed.AdapterId.Should().Be("kilo");
+        completed.AgentId.Should().Be("kilo");
     }
 
     [Fact]
@@ -209,7 +226,7 @@ public sealed class AgentSpanCollectorTests
     }
 
     [Fact]
-    public void GetTree_WithMultipleRoots_ReturnsOneRoot()
+    public void GetTree_WithMultipleRoots_Throws()
     {
         var collector = new AgentSpanCollector();
 
@@ -218,10 +235,10 @@ public sealed class AgentSpanCollectorTests
         collector.StartSpan("task-1", "run-1", SwarmRole.Builder,
             AgentSpanKind.CliAgent, null, "claude");
 
-        var tree = collector.GetTree("task-1");
+        Action act = () => collector.GetTree("task-1");
 
-        tree.Should().NotBeNull();
-        tree!.Span.Kind.Should().Match<AgentSpanKind>(k => k == AgentSpanKind.Coordinator || k == AgentSpanKind.CliAgent);
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Expected one root span for task 'task-1', found 2.*");
     }
 
     [Fact]
@@ -316,14 +333,15 @@ public sealed class AgentSpanCollectorTests
     [Fact]
     public void GetFlat_OrdersByStartTime()
     {
-        var collector = new AgentSpanCollector();
+        var timeProvider = new TestTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        var collector = new AgentSpanCollector(timeProvider);
 
         var span1 = collector.StartSpan("task-1", "run-1", SwarmRole.Planner,
             AgentSpanKind.Coordinator, null, "kilo");
-        Thread.Sleep(10);
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
         var span2 = collector.StartSpan("task-1", "run-1", SwarmRole.Builder,
             AgentSpanKind.CliAgent, span1.SpanId, "claude");
-        Thread.Sleep(10);
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
         var span3 = collector.StartSpan("task-1", "run-1", SwarmRole.Reviewer,
             AgentSpanKind.CliAgent, span1.SpanId, "copilot");
 
@@ -333,5 +351,14 @@ public sealed class AgentSpanCollectorTests
         flat[0].SpanId.Should().Be(span1.SpanId);
         flat[1].SpanId.Should().Be(span2.SpanId);
         flat[2].SpanId.Should().Be(span3.SpanId);
+    }
+
+    private sealed class TestTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan delta) => _now = _now.Add(delta);
     }
 }

@@ -7,21 +7,32 @@ namespace SwarmAssistant.Runtime.Hierarchy;
 
 internal sealed class AgentSpanCollector
 {
-    private readonly ConcurrentDictionary<string, AgentSpan> _spans = new();
-    private readonly object _idLock = new();
-    private int _nextSpanId = 1;
+    private readonly TimeProvider TimeProvider;
+    private readonly ConcurrentDictionary<string, AgentSpan> Spans = new();
+    private readonly object IdLock = new();
+    private int NextSpanId = 1;
+
+    public AgentSpanCollector(TimeProvider? timeProvider = null)
+    {
+        TimeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public AgentSpan StartSpan(string taskId, string? runId, SwarmRole? role,
         AgentSpanKind kind, string? parentSpanId, string? adapterId)
     {
         int level = 0;
-        if (parentSpanId != null && _spans.TryGetValue(parentSpanId, out var parent))
+        if (parentSpanId is not null)
         {
+            if (!Spans.TryGetValue(parentSpanId, out var parent))
+            {
+                throw new ArgumentException($"Parent span {parentSpanId} not found", nameof(parentSpanId));
+            }
+
             level = parent.Level + 1;
         }
 
         var spanId = GenerateSpanId();
-        var now = DateTimeOffset.UtcNow;
+        var now = TimeProvider.GetUtcNow();
 
         var span = new AgentSpan
         {
@@ -39,33 +50,35 @@ internal sealed class AgentSpanCollector
             Flavor = kind == AgentSpanKind.SubAgent ? SubAgentFlavor.Normal : SubAgentFlavor.None
         };
 
-        _spans[spanId] = span;
+        Spans[spanId] = span;
         return span;
     }
 
     public AgentSpan CompleteSpan(string spanId, AgentSpanStatus status,
-        TokenUsage? usage = null, decimal? costUsd = null)
+        TokenUsage? usage = null, decimal? costUsd = null, string? adapterId = null)
     {
-        if (!_spans.TryGetValue(spanId, out var span))
+        if (!Spans.TryGetValue(spanId, out var span))
         {
             throw new ArgumentException($"Span {spanId} not found", nameof(spanId));
         }
 
         var completedSpan = span with
         {
-            CompletedAt = DateTimeOffset.UtcNow,
+            CompletedAt = TimeProvider.GetUtcNow(),
             Status = status,
             Usage = usage,
-            CostUsd = costUsd
+            CostUsd = costUsd,
+            AdapterId = adapterId ?? span.AdapterId,
+            AgentId = string.IsNullOrWhiteSpace(adapterId) ? span.AgentId : adapterId
         };
 
-        _spans[spanId] = completedSpan;
+        Spans[spanId] = completedSpan;
         return completedSpan;
     }
 
     public IReadOnlyList<AgentSpan> GetFlat(string taskId)
     {
-        return _spans.Values
+        return Spans.Values
             .Where(s => s.TaskId == taskId)
             .OrderBy(s => s.StartedAt)
             .ToList()
@@ -74,7 +87,7 @@ internal sealed class AgentSpanCollector
 
     public IReadOnlyList<AgentSpan> GetByRun(string runId)
     {
-        return _spans.Values
+        return Spans.Values
             .Where(s => s.RunId == runId)
             .OrderBy(s => s.StartedAt)
             .ToList()
@@ -83,7 +96,7 @@ internal sealed class AgentSpanCollector
 
     public AgentSpanTree? GetTree(string taskId)
     {
-        var taskSpans = _spans.Values
+        var taskSpans = Spans.Values
             .Where(s => s.TaskId == taskId)
             .ToDictionary(s => s.SpanId);
 
@@ -92,10 +105,18 @@ internal sealed class AgentSpanCollector
             return null;
         }
 
-        var rootSpans = taskSpans.Values.Where(s => s.ParentSpanId == null).ToList();
+        var rootSpans = taskSpans.Values
+            .Where(s => s.ParentSpanId == null)
+            .OrderBy(s => s.StartedAt)
+            .ToList();
         if (rootSpans.Count == 0)
         {
             return null;
+        }
+        if (rootSpans.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Expected one root span for task '{taskId}', found {rootSpans.Count}.");
         }
 
         return new AgentSpanTree
@@ -122,7 +143,7 @@ internal sealed class AgentSpanCollector
 
     public static SubAgentFlavor DetectFlavor(string toolName, JsonElement? toolArgs)
     {
-        if (toolName == "Task" && toolArgs != null && toolArgs.Value.TryGetProperty("resume", out var resume))
+        if (toolName == "Task" && toolArgs != null && toolArgs.Value.TryGetProperty("resume", out _))
         {
             return SubAgentFlavor.CoWork;
         }
@@ -132,9 +153,9 @@ internal sealed class AgentSpanCollector
 
     private string GenerateSpanId()
     {
-        lock (_idLock)
+        lock (IdLock)
         {
-            return $"span-{_nextSpanId++}";
+            return $"span-{NextSpanId++}";
         }
     }
 }
