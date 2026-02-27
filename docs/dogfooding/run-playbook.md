@@ -38,6 +38,10 @@ create run → submit tasks → monitor → replay → retro
    export KIMI_API_KEY='<key>'
    task setup:pi:kimi
    ```
+   Dogfood-only note: this preflight is only for validating `pi` fallback behavior.
+   MVP default remains subscription-backed CLIs first (`copilot`/`cline`/`kimi`)
+   with local fallback, not direct API-key workflows.
+   Prefer env/secret-store injection over inline secrets in one-off commands.
    If preflight fails, do not run `pi` first for that run.
 5. Record the **run metadata** (see [Required Run Metadata](#required-run-metadata)).
 
@@ -134,7 +138,8 @@ Create a run log file before starting Phase 1. Use this template:
 - **Operator:** @<github-handle>
 - **Run goal:** <one-line description of what is being validated>
 - **Runtime profile:** Local | SecureLocal | CI
-- **Adapter order:** copilot | cline | kimi | kilo | pi | local-echo (list active order)
+- **Adapter order (example):** copilot | cline | kimi | kilo | pi | local-echo
+  (record active order from runtime config source-of-truth, `Runtime__CliAdapterOrder`)
 - **ArcadeDB enabled:** yes | no
 - **Langfuse tracing enabled:** yes | no
 - **Fault injection:** SimulateBuilderFailure=<true|false>, SimulateReviewerFailure=<true|false>

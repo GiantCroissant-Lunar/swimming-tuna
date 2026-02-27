@@ -49,20 +49,21 @@ public sealed partial class WorkspaceBranchManager
         }
 
         var worktreePath = Path.Combine(repoRoot, ".worktrees", branchName.Replace('/', '-'));
+        var normalizedParentBranch = string.IsNullOrWhiteSpace(parentBranch) ? null : parentBranch.Trim();
 
         try
         {
             var args = new List<string> { "worktree", "add", worktreePath, "-b", branchName };
-            if (!string.IsNullOrWhiteSpace(parentBranch))
+            if (normalizedParentBranch is not null)
             {
-                args.Add(parentBranch);
+                args.Add(normalizedParentBranch);
             }
             var result = await RunGitAsync(args.ToArray());
             if (result.ExitCode == 0)
             {
                 _logger?.LogInformation(
                     "Worktree created path={WorktreePath} branch={Branch} parentBranch={ParentBranch} taskId={TaskId}",
-                    worktreePath, branchName, parentBranch ?? "HEAD", taskId);
+                    worktreePath, branchName, normalizedParentBranch ?? "HEAD", taskId);
                 return worktreePath;
             }
 
