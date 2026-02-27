@@ -9,7 +9,7 @@ using Xunit;
 
 namespace SwarmAssistant.Runtime.Tests.Actors;
 
-public sealed class AgentFrameworkRoleEngineTests
+public sealed class AgentFrameworkRoleEngineTests : IDisposable
 {
     private readonly ILoggerFactory _loggerFactory;
 
@@ -79,7 +79,7 @@ public sealed class AgentFrameworkRoleEngineTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WithException_CompletesSpanWithFailedStatus()
+    public async Task ExecuteAsync_UnsupportedMode_ThrowsInvalidOperationException()
     {
         var options = new RuntimeOptions
         {
@@ -102,5 +102,10 @@ public sealed class AgentFrameworkRoleEngineTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Unsupported AgentFrameworkExecutionMode*");
+    }
+
+    public void Dispose()
+    {
+        _loggerFactory.Dispose();
     }
 }

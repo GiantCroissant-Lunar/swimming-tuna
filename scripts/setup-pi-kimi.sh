@@ -91,8 +91,8 @@ echo "  model   : ${MODEL_ID}"
 echo
 
 if [[ "${PI_SKIP_PREFLIGHT:-0}" != "1" ]]; then
-  if [[ -z "${KIMI_API_KEY:-}" ]]; then
-    echo "Skipping pi preflight because KIMI_API_KEY is not set in this shell."
+  if [[ -z "${!API_KEY_ENV-}" ]]; then
+    echo "Skipping pi preflight because ${API_KEY_ENV} is not set in this shell."
   else
     PREFLIGHT_MODEL="${PROVIDER_ID}/${MODEL_ID}"
     PREFLIGHT_PROMPT="${PI_PREFLIGHT_PROMPT:-Reply with exactly: ok}"
@@ -120,5 +120,5 @@ fi
 
 echo
 echo "Next step (current shell):"
-echo "  export KIMI_API_KEY='<your-kimi-key>'"
+echo "  export ${API_KEY_ENV}='<your-kimi-key>'"
 echo "  pi --model ${PROVIDER_ID}/${MODEL_ID} -p 'ping'"

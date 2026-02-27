@@ -1,5 +1,7 @@
 using Akka.Actor;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
+using System.Text;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Runtime.Configuration;
 using SwarmAssistant.Runtime.Execution;
@@ -213,6 +215,7 @@ public sealed class DispatcherActor : ReceiveActor
         // Create new RunCoordinatorActor for this run
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
+        var actorName = BuildRunCoordinatorActorName(runId);
         runCoordinator = Context.ActorOf(
             Props.Create(() => new RunCoordinatorActor(
                 runId,
@@ -241,7 +244,7 @@ public sealed class DispatcherActor : ReceiveActor
                 _memvidClient,
                 _langfuseSimilarityQuery,
                 _skillMatcher)),
-            $"run-{runId}");
+            actorName);
 
         _runCoordinators[runId] = runCoordinator;
         _runCoordinatorRunIds[runCoordinator] = runId;
@@ -520,5 +523,37 @@ public sealed class DispatcherActor : ReceiveActor
 
         var registeredRunId = _taskRegistry.GetTask(taskId)?.RunId;
         _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, registeredRunId, title);
+    }
+
+    private static string BuildRunCoordinatorActorName(string runId)
+    {
+        var sanitizedRunId = SanitizeActorNamePart(runId);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(runId))[..4]).ToLowerInvariant();
+        return $"run-{sanitizedRunId}-{hash}";
+    }
+
+    private static string SanitizeActorNamePart(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            if (char.IsLetterOrDigit(character) || character is '-' or '_' or '.')
+            {
+                builder.Append(character);
+            }
+            else
+            {
+                builder.Append('-');
+            }
+        }
+
+        var sanitized = builder.ToString().Trim('-');
+        if (string.IsNullOrWhiteSpace(sanitized))
+        {
+            return "run";
+        }
+
+        const int maxLength = 48;
+        return sanitized.Length <= maxLength ? sanitized : sanitized[..maxLength];
     }
 }

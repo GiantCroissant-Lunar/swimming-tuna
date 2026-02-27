@@ -90,8 +90,8 @@ echo "  model   : ${MODEL_ID}"
 echo
 
 if [[ "${PI_SKIP_PREFLIGHT:-0}" != "1" ]]; then
-  if [[ -z "${ZAI_API_KEY:-}" ]]; then
-    echo "Skipping pi preflight because ZAI_API_KEY is not set in this shell."
+  if [[ -z "${!API_KEY_ENV-}" ]]; then
+    echo "Skipping pi preflight because ${API_KEY_ENV} is not set in this shell."
   else
     PREFLIGHT_PROMPT="${PI_PREFLIGHT_PROMPT:-Reply with exactly: ok}"
     set +e
@@ -105,7 +105,7 @@ if [[ "${PI_SKIP_PREFLIGHT:-0}" != "1" ]]; then
       echo "${preflight_output}"
       echo
       if echo "${preflight_output}" | grep -Eqi "401|403|unauthorized|authentication"; then
-        echo "Likely auth failure. Verify ZAI_API_KEY and provider permissions."
+        echo "Likely auth failure. Verify ${API_KEY_ENV} and provider permissions."
       elif echo "${preflight_output}" | grep -Eqi "not found|model"; then
         echo "Model/provider mismatch. Verify ${PROVIDER_ID}/${MODEL_ID} and endpoint ${BASE_URL}."
       fi
@@ -116,5 +116,5 @@ fi
 
 echo
 echo "Next step (current shell):"
-echo "  export ZAI_API_KEY='<your-zai-key>'"
+echo "  export ${API_KEY_ENV}='<your-zai-key>'"
 echo "  pi --provider ${PROVIDER_ID} --model ${MODEL_ID} -p 'ping'"

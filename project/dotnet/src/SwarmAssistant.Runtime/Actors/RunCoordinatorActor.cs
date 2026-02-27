@@ -147,6 +147,7 @@ public sealed class RunCoordinatorActor : ReceiveActor
         }
 
         _taskRegistry.Register(message, _runId);
+        RecordTaskSubmitted(taskId, message.Title);
 
         var coordinator = Context.ActorOf(
             Props.Create(() => new TaskCoordinatorActor(
@@ -275,6 +276,16 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 LogRunProgress();
             }
         }
+    }
+
+    private void RecordTaskSubmitted(string taskId, string title)
+    {
+        if (_eventRecorder is null)
+        {
+            return;
+        }
+
+        _ = _eventRecorder.RecordTaskSubmittedAsync(taskId, _runId, title);
     }
 
     private void LogRunProgress()

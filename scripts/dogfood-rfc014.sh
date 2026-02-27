@@ -26,9 +26,15 @@ if [[ "${health_code}" != "200" ]]; then
 fi
 
 if [[ "${ALLOW_ACTIVE_TASKS:-0}" != "1" ]]; then
-  active_count="$(curl -s "${BASE_URL}/a2a/tasks" \
-    | python3 -c 'import json,sys; items=json.load(sys.stdin); print(sum(1 for t in items if t.get("status") not in ("done","failed","blocked")))' \
-    2>/dev/null || echo "0")"
+  if ! active_tasks_json="$(curl -fsS "${BASE_URL}/a2a/tasks" 2>"${TMP_DIR}/active-tasks.err")"; then
+    echo "ERROR: failed to fetch task list from ${BASE_URL}/a2a/tasks"
+    cat "${TMP_DIR}/active-tasks.err" 2>/dev/null || true
+    exit 1
+  fi
+  if ! active_count="$(printf '%s' "${active_tasks_json}" | python3 -c 'import json,sys; items=json.load(sys.stdin); print(sum(1 for t in items if t.get("status") not in ("done","failed","blocked")))')"; then
+    echo "ERROR: failed to parse /a2a/tasks response for active task count."
+    exit 1
+  fi
   if [[ "${active_count}" != "0" ]]; then
     echo "ERROR: found ${active_count} active task(s)."
     echo "Wait for tasks to reach done/failed/blocked before starting a new RFC-014 kickoff run."

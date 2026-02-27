@@ -100,6 +100,8 @@ Inspect: http://127.0.0.1:5080/runs/run-abc123/tasks
 ## Reliability Requirements
 
 - Exactly one terminal notification per run (dedupe by `runId`).
+- Phase 1 dedupe scope is per poller process (in-memory); restarting the poller may re-send.
+- Phase 2 must enforce durable dedupe in runtime state so restarts still keep one notification.
 - Poller tolerates transient HTTP errors with retry.
 - Do not print webhook secrets in logs.
 - Handle empty/non-JSON responses safely (no crash loops).

@@ -30,9 +30,14 @@ create run → submit tasks → monitor → replay → retro
    ```
 4. If `pi` is in adapter order, run provider preflight before kickoff:
    ```bash
-   ZAI_API_KEY='<key>' task setup:pi:zai
+   export ZAI_API_KEY='<key>'
+   task setup:pi:zai
    ```
-   If using Kimi instead, run `KIMI_API_KEY='<key>' task setup:pi:kimi`.
+   If using Kimi instead:
+   ```bash
+   export KIMI_API_KEY='<key>'
+   task setup:pi:kimi
+   ```
    If preflight fails, do not run `pi` first for that run.
 5. Record the **run metadata** (see [Required Run Metadata](#required-run-metadata)).
 
