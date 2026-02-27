@@ -4,7 +4,7 @@ using System.Collections.Generic;
 
 namespace SwarmAssistant.Runtime.Execution;
 
-public enum MergeResult { Success, Conflict, BranchNotFound }
+public enum MergeResult { Success, Conflict, BranchNotFound, CheckoutFailed }
 
 public sealed partial class WorkspaceBranchManager
 {
@@ -373,7 +373,8 @@ public sealed partial class WorkspaceBranchManager
     /// Merges a task branch back into the target branch using --no-ff.
     /// Returns <see cref="MergeResult.Success"/> on clean merge,
     /// <see cref="MergeResult.Conflict"/> if the merge has conflicts (auto-aborted),
-    /// or <see cref="MergeResult.BranchNotFound"/> if the task branch does not exist.
+    /// <see cref="MergeResult.BranchNotFound"/> if the task branch does not exist,
+    /// or <see cref="MergeResult.CheckoutFailed"/> if checking out the target branch fails.
     /// </summary>
     public async Task<MergeResult> MergeTaskBranchAsync(string taskId, string targetBranch)
     {
@@ -394,7 +395,7 @@ public sealed partial class WorkspaceBranchManager
             _logger?.LogWarning(
                 "Failed to checkout target branch={Branch} exitCode={ExitCode} stderr={Stderr}",
                 targetBranch, checkoutResult.ExitCode, checkoutResult.StdErr);
-            return MergeResult.Conflict;
+            return MergeResult.CheckoutFailed;
         }
 
         // Merge with --no-ff

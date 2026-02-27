@@ -315,6 +315,12 @@ public sealed class RunCoordinatorActor : ReceiveActor
                         "Task branch not found for merge taskId={TaskId} runId={RunId}",
                         taskId, _runId);
                     break;
+
+                case MergeResult.CheckoutFailed:
+                    _logger.LogWarning(
+                        "Checkout failed during merge taskId={TaskId} featureBranch={FeatureBranch} runId={RunId}",
+                        taskId, _featureBranch, _runId);
+                    break;
             }
         }
         finally
@@ -337,9 +343,10 @@ public sealed class RunCoordinatorActor : ReceiveActor
             return;
         }
 
-        // All tasks are in terminal state
+        // All tasks are in terminal state — claim transition synchronously to prevent race
         if (_featureBranch is not null)
         {
+            TransitionTo(RunSpanStatus.ReadyForPr);
             _ = TransitionToReadyForPrAsync();
         }
         else
@@ -455,9 +462,7 @@ public sealed class RunCoordinatorActor : ReceiveActor
             return;
         }
 
-        TransitionTo(RunSpanStatus.ReadyForPr);
-
-        // Push feature branch
+        // Push feature branch (status already set to ReadyForPr by caller)
         var pushed = await WorkspaceBranchManager.PushBranchAsync(_featureBranch);
         if (pushed)
         {

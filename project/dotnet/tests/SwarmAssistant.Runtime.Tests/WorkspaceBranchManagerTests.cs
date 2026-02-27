@@ -111,5 +111,6 @@ public sealed class WorkspaceBranchManagerTests
         Assert.Equal(0, (int)MergeResult.Success);
         Assert.Equal(1, (int)MergeResult.Conflict);
         Assert.Equal(2, (int)MergeResult.BranchNotFound);
+        Assert.Equal(3, (int)MergeResult.CheckoutFailed);
     }
 }
