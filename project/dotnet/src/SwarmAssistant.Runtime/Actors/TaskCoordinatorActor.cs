@@ -1507,6 +1507,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
             taskId: _taskId,
             payload: new { summary, source = Self.Path.Name });
 
+        // RFC-014: Notify RunCoordinatorActor when run-scoped task completes
+        if (_runId is not null)
+        {
+            Context.Parent.Tell(new RunTaskCompleted(
+                _taskId,
+                _runId,
+                TaskState.Done,
+                summary));
+        }
+
         Context.Stop(Self);
     }
 
@@ -1543,6 +1553,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 error,
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, error)
             });
+
+        // RFC-014: Notify RunCoordinatorActor when run-scoped task fails
+        if (_runId is not null)
+        {
+            Context.Parent.Tell(new RunTaskCompleted(
+                _taskId,
+                _runId,
+                TaskState.Blocked,
+                Error: error));
+        }
 
         Context.Stop(Self);
     }
@@ -1581,6 +1601,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, reason)
             });
 
+        // RFC-014: Notify RunCoordinatorActor when run-scoped task escalates
+        if (_runId is not null)
+        {
+            Context.Parent.Tell(new RunTaskCompleted(
+                _taskId,
+                _runId,
+                TaskState.Blocked,
+                Error: reason));
+        }
+
         Context.Stop(Self);
     }
 
@@ -1608,6 +1638,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 error = reason,
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, reason)
             });
+
+        // RFC-014: Notify RunCoordinatorActor when run-scoped task is blocked by intervention
+        if (_runId is not null)
+        {
+            Context.Parent.Tell(new RunTaskCompleted(
+                _taskId,
+                _runId,
+                TaskState.Blocked,
+                Error: reason));
+        }
 
         Context.Stop(Self);
     }
@@ -2011,6 +2051,16 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                 error,
                 a2ui = A2UiPayloadFactory.UpdateStatus(_taskId, TaskState.Blocked, error)
             });
+
+        // RFC-014: Notify RunCoordinatorActor when run-scoped sub-task fails
+        if (_runId is not null)
+        {
+            Context.Parent.Tell(new RunTaskCompleted(
+                _taskId,
+                _runId,
+                TaskState.Blocked,
+                Error: error));
+        }
 
         Context.Stop(Self);
     }

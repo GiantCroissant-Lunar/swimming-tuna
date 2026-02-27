@@ -1,7 +1,9 @@
 using Akka.Actor;
 using SwarmAssistant.Contracts.Messaging;
 using SwarmAssistant.Contracts.Planning;
+using SwarmAssistant.Contracts.Tasks;
 using SwarmAssistant.Runtime.Execution;
+using TaskState = SwarmAssistant.Contracts.Tasks.TaskStatus;
 
 namespace SwarmAssistant.Runtime.Actors;
 
@@ -277,3 +279,16 @@ internal sealed record ResolvePeerAgent(string AgentId);
 internal sealed record PeerAgentResolved(string AgentId, bool Found, IActorRef? AgentRef = null, string? EndpointUrl = null);
 
 internal sealed record ForwardPeerMessage(SwarmAssistant.Contracts.Messaging.PeerMessage Message);
+
+// RFC-014: Run orchestration - task completion notification to RunCoordinatorActor
+/// <summary>
+/// Sent by TaskCoordinatorActor to its parent (RunCoordinatorActor) when a run-scoped task completes.
+/// The parent RunCoordinatorActor uses this to track task completion and manage the merge gate.
+/// </summary>
+internal sealed record RunTaskCompleted(
+    string TaskId,
+    string RunId,
+    TaskState Status,
+    string? Summary = null,
+    string? Error = null
+);
