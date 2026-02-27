@@ -45,6 +45,7 @@ public sealed class DispatcherActor : ReceiveActor
     private readonly ILangfuseSimilarityQuery? _langfuseSimilarityQuery;
     private readonly SkillMatcher? _skillMatcher;
     private readonly MemvidClient? _memvidClient;
+    private readonly RunRegistry? _runRegistry;
     private readonly ILogger _logger;
 
     private readonly Dictionary<string, IActorRef> _coordinators = new(StringComparer.Ordinal);
@@ -129,7 +130,8 @@ public sealed class DispatcherActor : ReceiveActor
         ILangfuseScoreWriter? langfuseScoreWriter = null,
         MemvidClient? memvidClient = null,
         ILangfuseSimilarityQuery? langfuseSimilarityQuery = null,
-        SkillMatcher? skillMatcher = null)
+        SkillMatcher? skillMatcher = null,
+        RunRegistry? runRegistry = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -154,6 +156,7 @@ public sealed class DispatcherActor : ReceiveActor
         _langfuseSimilarityQuery = langfuseSimilarityQuery;
         _skillMatcher = skillMatcher;
         _memvidClient = memvidClient;
+        _runRegistry = runRegistry;
         _logger = loggerFactory.CreateLogger<DispatcherActor>();
 
         Receive<TaskAssigned>(HandleTaskAssigned);
@@ -212,6 +215,12 @@ public sealed class DispatcherActor : ReceiveActor
             return;
         }
 
+        // Look up run metadata for branch configuration
+        var runEntry = _runRegistry?.GetRun(runId);
+        var runTitle = runEntry?.Title;
+        var baseBranch = runEntry?.BaseBranch ?? "main";
+        var branchPrefix = runEntry?.BranchPrefix ?? "feat";
+
         // Create new RunCoordinatorActor for this run
         var goapPlanner = new GoapPlanner(SwarmActions.All);
 
@@ -219,7 +228,9 @@ public sealed class DispatcherActor : ReceiveActor
         runCoordinator = Context.ActorOf(
             Props.Create(() => new RunCoordinatorActor(
                 runId,
-                null,
+                runTitle,
+                baseBranch,
+                branchPrefix,
                 _workerActor,
                 _reviewerActor,
                 _supervisorActor,
@@ -294,7 +305,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _langfuseScoreWriter,
                 _memvidClient,
                 _langfuseSimilarityQuery,
-                _skillMatcher)),
+                _skillMatcher,
+                (string?)null)),
             $"task-{message.TaskId}");
 
         _coordinators[message.TaskId] = coordinator;
@@ -359,7 +371,8 @@ public sealed class DispatcherActor : ReceiveActor
                 _langfuseScoreWriter,
                 _memvidClient,
                 _langfuseSimilarityQuery,
-                _skillMatcher)),
+                _skillMatcher,
+                (string?)null)),
             $"task-{message.ChildTaskId}");
 
         _coordinators[message.ChildTaskId] = coordinator;

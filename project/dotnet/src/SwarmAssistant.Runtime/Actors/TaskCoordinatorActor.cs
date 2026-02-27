@@ -84,6 +84,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
     private string? _reviewOutput;
     private string? _workspaceBranchName;
     private string? _worktreePath;
+    private readonly string? _parentBranch;
     private string? _siblingContext;
     private string? _langfuseContext;
     private bool _langfuseContextLoaded;
@@ -194,7 +195,8 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         ILangfuseScoreWriter? langfuseScoreWriter = null,
         MemvidClient? memvidClient = null,
         ILangfuseSimilarityQuery? langfuseSimilarityQuery = null,
-        SkillMatcher? skillMatcher = null)
+        SkillMatcher? skillMatcher = null,
+        string? parentBranch = null)
     {
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
@@ -220,6 +222,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
         _langfuseSimilarityQuery = langfuseSimilarityQuery;
         _skillMatcher = skillMatcher;
         _memvidClient = memvidClient;
+        _parentBranch = parentBranch;
         _logger = loggerFactory.CreateLogger<TaskCoordinatorActor>();
 
         _taskId = taskId;
@@ -1194,7 +1197,7 @@ public sealed class TaskCoordinatorActor : ReceiveActor
                     }
                     else
                     {
-                        var worktree = await _workspaceBranchManager.EnsureWorktreeAsync(_taskId);
+                        var worktree = await _workspaceBranchManager.EnsureWorktreeAsync(_taskId, _parentBranch);
                         if (worktree is not null)
                         {
                             _worktreePath = worktree;

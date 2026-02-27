@@ -71,6 +71,8 @@ public sealed class RunCoordinatorActor : ReceiveActor
     public RunCoordinatorActor(
         string runId,
         string? title,
+        string? baseBranch,
+        string? branchPrefix,
         IActorRef workerActor,
         IActorRef reviewerActor,
         IActorRef supervisorActor,
@@ -98,6 +100,8 @@ public sealed class RunCoordinatorActor : ReceiveActor
     {
         _runId = runId;
         _title = title;
+        _baseBranch = baseBranch ?? "main";
+        _branchPrefix = branchPrefix ?? "feat";
         _workerActor = workerActor;
         _reviewerActor = reviewerActor;
         _supervisorActor = supervisorActor;
@@ -160,6 +164,9 @@ public sealed class RunCoordinatorActor : ReceiveActor
             return;
         }
 
+        // Ensure L0 feature branch exists before dispatching any task
+        EnsureFeatureBranch();
+
         // Transition to Executing on first task
         if (_totalTaskCount == 0 && _status is RunSpanStatus.Accepted or RunSpanStatus.Decomposing)
         {
@@ -200,7 +207,8 @@ public sealed class RunCoordinatorActor : ReceiveActor
                 _langfuseScoreWriter,
                 _memvidClient,
                 _langfuseSimilarityQuery,
-                _skillMatcher)),
+                _skillMatcher,
+                _featureBranch)),
             $"task-{taskId}");
 
         _taskCoordinators[taskId] = coordinator;
@@ -382,7 +390,40 @@ public sealed class RunCoordinatorActor : ReceiveActor
             "Run configured runId={RunId} baseBranch={BaseBranch} branchPrefix={BranchPrefix}",
             _runId, _baseBranch, _branchPrefix);
 
-        _ = CreateFeatureBranchAsync();
+        EnsureFeatureBranch();
+    }
+
+    /// <summary>
+    /// Ensures the L0 feature branch exists before any task worktrees are created.
+    /// Called synchronously — git checkout -b is fast (&lt;100ms).
+    /// </summary>
+    private void EnsureFeatureBranch()
+    {
+        if (_featureBranch is not null || _workspaceBranchManager is null || string.IsNullOrWhiteSpace(_baseBranch))
+        {
+            return;
+        }
+
+        var slug = ComputeBranchSlug(_title ?? _runId);
+        var prefix = string.IsNullOrWhiteSpace(_branchPrefix) ? "feat" : _branchPrefix;
+        _featureBranch = $"{prefix}/{slug}";
+
+        var result = WorkspaceBranchManager.CreateBranchFromAsync(_featureBranch, _baseBranch)
+            .GetAwaiter().GetResult();
+
+        if (result)
+        {
+            _logger.LogInformation(
+                "L0 feature branch created featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
+                _featureBranch, _baseBranch, _runId);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Failed to create L0 feature branch featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
+                _featureBranch, _baseBranch, _runId);
+            _featureBranch = null;
+        }
     }
 
     private void HandleRunMarkDone(RunMarkDone message)
@@ -394,34 +435,6 @@ public sealed class RunCoordinatorActor : ReceiveActor
 
         TransitionTo(RunSpanStatus.Done);
         EmitRunEvent("agui.run.done", new { runId = _runId });
-    }
-
-    private async Task CreateFeatureBranchAsync()
-    {
-        if (_workspaceBranchManager is null || string.IsNullOrWhiteSpace(_baseBranch))
-        {
-            return;
-        }
-
-        var slug = ComputeBranchSlug(_title ?? _runId);
-        var prefix = string.IsNullOrWhiteSpace(_branchPrefix) ? "feat" : _branchPrefix;
-        _featureBranch = $"{prefix}/{slug}";
-
-        // Use EnsureBranchAsync-like approach via git checkout -b
-        var result = await WorkspaceBranchManager.CreateBranchFromAsync(_featureBranch, _baseBranch);
-        if (result)
-        {
-            _logger.LogInformation(
-                "Feature branch created featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
-                _featureBranch, _baseBranch, _runId);
-        }
-        else
-        {
-            _logger.LogWarning(
-                "Failed to create feature branch featureBranch={FeatureBranch} baseBranch={BaseBranch} runId={RunId}",
-                _featureBranch, _baseBranch, _runId);
-            _featureBranch = null;
-        }
     }
 
     private async Task TransitionToReadyForPrAsync()

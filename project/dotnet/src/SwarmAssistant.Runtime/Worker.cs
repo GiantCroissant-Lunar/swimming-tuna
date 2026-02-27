@@ -43,6 +43,7 @@ public sealed class Worker : BackgroundService
     private readonly ILangfuseScoreWriter? _langfuseScoreWriter;
     private readonly ILangfuseSimilarityQuery? _langfuseSimilarityQuery;
     private readonly MemvidClient? _memvidClient;
+    private readonly RunRegistry _runRegistry;
 
     private ActorSystem? _actorSystem;
     private IActorRef? _supervisor;
@@ -64,7 +65,8 @@ public sealed class Worker : BackgroundService
         ITaskExecutionEventWriter? eventWriter = null,
         ILangfuseScoreWriter? langfuseScoreWriter = null,
         ILangfuseSimilarityQuery? langfuseSimilarityQuery = null,
-        MemvidClient? memvidClient = null)
+        MemvidClient? memvidClient = null,
+        RunRegistry? runRegistry = null)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -80,6 +82,7 @@ public sealed class Worker : BackgroundService
         _langfuseScoreWriter = langfuseScoreWriter;
         _langfuseSimilarityQuery = langfuseSimilarityQuery;
         _memvidClient = memvidClient;
+        _runRegistry = runRegistry ?? new RunRegistry();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -379,7 +382,8 @@ public sealed class Worker : BackgroundService
                 _langfuseScoreWriter,
                 _memvidClient,
                 _langfuseSimilarityQuery,
-                skillMatcher)),
+                skillMatcher,
+                _runRegistry)),
             "dispatcher");
         _actorRegistry.SetDispatcher(dispatcher);
         _dispatcher = dispatcher;

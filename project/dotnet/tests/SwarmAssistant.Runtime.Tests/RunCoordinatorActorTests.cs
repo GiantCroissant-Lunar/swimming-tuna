@@ -26,6 +26,7 @@ public sealed class RunCoordinatorActorTests : TestKit
     private readonly RuntimeTelemetry _telemetry;
     private readonly UiEventStream _uiEvents;
     private readonly TaskRegistry _taskRegistry;
+    private readonly RunRegistry _runRegistry;
 
     public RunCoordinatorActorTests()
     {
@@ -43,6 +44,7 @@ public sealed class RunCoordinatorActorTests : TestKit
         _telemetry = new RuntimeTelemetry(_options, _loggerFactory);
         _uiEvents = new UiEventStream();
         _taskRegistry = new TaskRegistry(new NoOpTaskMemoryWriter(), NullLogger<TaskRegistry>.Instance);
+        _runRegistry = new RunRegistry();
     }
 
     private IActorRef CreateDispatcher(string suffix)
@@ -84,7 +86,7 @@ public sealed class RunCoordinatorActorTests : TestKit
                 _uiEvents,
                 _taskRegistry,
                 Microsoft.Extensions.Options.Options.Create(_options),
-                null, null, null, null, null, null, null, null, null, null)),
+                null, null, null, null, null, null, null, null, null, null, null, null, _runRegistry)),
             $"dispatcher-{suffix}");
     }
 
@@ -96,6 +98,9 @@ public sealed class RunCoordinatorActorTests : TestKit
         var dispatcher = CreateDispatcher("run-single");
         var runId = $"run-{Guid.NewGuid():N}";
         var taskId = $"task-{Guid.NewGuid():N}";
+
+        // Create run in registry so RunCoordinatorActor gets branch config
+        _runRegistry.CreateRun(runId, "Single Task Run", baseBranch: "main", branchPrefix: "feat");
 
         // Pre-register task with runId so dispatcher routes to RunCoordinatorActor
         _taskRegistry.Register(
@@ -123,6 +128,7 @@ public sealed class RunCoordinatorActorTests : TestKit
     {
         var dispatcher = CreateDispatcher("run-multi");
         var runId = $"run-{Guid.NewGuid():N}";
+        _runRegistry.CreateRun(runId, "Multi Task Run", baseBranch: "main", branchPrefix: "feat");
         var taskIds = Enumerable.Range(1, 2)
             .Select(_ => $"task-{Guid.NewGuid():N}")
             .ToList();
@@ -174,6 +180,7 @@ public sealed class RunCoordinatorActorTests : TestKit
         var runId = $"run-{Guid.NewGuid():N}";
         var taskId = $"task-{Guid.NewGuid():N}";
 
+        _runRegistry.CreateRun(runId, "Dup Task Run", baseBranch: "main", branchPrefix: "feat");
         _taskRegistry.Register(
             new TaskAssigned(taskId, "Dup Task", "Duplicate test.", DateTimeOffset.UtcNow),
             runId);
@@ -198,6 +205,8 @@ public sealed class RunCoordinatorActorTests : TestKit
         var taskId1 = $"task-{Guid.NewGuid():N}";
         var taskId2 = $"task-{Guid.NewGuid():N}";
 
+        _runRegistry.CreateRun(runId1, "Run 1", baseBranch: "main", branchPrefix: "feat");
+        _runRegistry.CreateRun(runId2, "Run 2", baseBranch: "main", branchPrefix: "feat");
         _taskRegistry.Register(
             new TaskAssigned(taskId1, "Run1 Task", "From run 1.", DateTimeOffset.UtcNow),
             runId1);
